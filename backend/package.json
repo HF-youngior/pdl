@@ -1,0 +1,35 @@
+{
+  "name": "enterprise-management-backend",
+  "version": "1.0.0",
+  "description": "企业管理系统后端服务 - 多层级权限系统",
+  "main": "server_enterprise.js",
+  "scripts": {
+    "start": "node server_enterprise.js",
+    "dev": "nodemon server_enterprise.js",
+    "init-db": "node -e \"require('./server_enterprise.js')\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "enterprise",
+    "management",
+    "task",
+    "permission",
+    "hierarchy"
+  ],
+  "author": "Enterprise Management System",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "mysql2": "^3.6.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

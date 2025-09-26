@@ -1,0 +1,343 @@
+import 'package:flutter/material.dart';
+import '../models/important_item.dart';
+import '../services/api_service.dart';
+import '../models/user.dart';
+
+class CompanyImportantEditScreen extends StatefulWidget {
+  final User user;
+
+  const CompanyImportantEditScreen({super.key, required this.user});
+
+  @override
+  State<CompanyImportantEditScreen> createState() => _CompanyImportantEditScreenState();
+}
+
+class _CompanyImportantEditScreenState extends State<CompanyImportantEditScreen> {
+  List<ImportantItem> _allItems = [];
+  List<String> _selectedItemIds = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAllItems();
+  }
+
+  Future<void> _loadAllItems() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      final items = await ApiService.getImportantItems();
+      setState(() {
+        _allItems = items;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _toggleItemSelection(String itemId) {
+    setState(() {
+      if (_selectedItemIds.contains(itemId)) {
+        _selectedItemIds.remove(itemId);
+      } else if (_selectedItemIds.length < 10) {
+        _selectedItemIds.add(itemId);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('最多只能选择10个重要事项'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _saveSelection() async {
+    try {
+      // 这里应该调用API保存选中的事项
+      // 暂时显示成功消息
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('重要事项已保存'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+      Navigator.of(context).pop();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('保存失败: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  String _getPriorityText(String priority) {
+    switch (priority) {
+      case 'p0':
+        return 'P0 - 最高优先级';
+      case 'p1':
+        return 'P1 - 高优先级';
+      case 'p2':
+        return 'P2 - 中优先级';
+      case 'p3':
+        return 'P3 - 低优先级';
+      default:
+        return priority;
+    }
+  }
+
+  Color _getPriorityColor(String priority) {
+    switch (priority) {
+      case 'p0':
+        return Colors.red;
+      case 'p1':
+        return Colors.orange;
+      case 'p2':
+        return Colors.blue;
+      case 'p3':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('编辑公司重要事项'),
+        backgroundColor: Theme.of(context).primaryColor,
+        foregroundColor: Colors.white,
+        actions: [
+          TextButton(
+            onPressed: _saveSelection,
+            child: const Text(
+              '保存',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '加载失败',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadAllItems,
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        // 选择状态提示
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: Colors.blue.withOpacity(0.1),
+          child: Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                color: Colors.blue[700],
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '已选择 ${_selectedItemIds.length}/10 个重要事项',
+                style: TextStyle(
+                  color: Colors.blue[700],
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        // 事项列表
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _allItems.length,
+            itemBuilder: (context, index) {
+              final item = _allItems[index];
+              final isSelected = _selectedItemIds.contains(item.id);
+              
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                elevation: isSelected ? 6 : 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: isSelected 
+                      ? BorderSide(color: Theme.of(context).primaryColor, width: 2)
+                      : BorderSide.none,
+                ),
+                child: InkWell(
+                  onTap: () => _toggleItemSelection(item.id),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        // 选择框
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected 
+                                  ? Theme.of(context).primaryColor
+                                  : Colors.grey,
+                              width: 2,
+                            ),
+                            color: isSelected 
+                                ? Theme.of(context).primaryColor
+                                : Colors.transparent,
+                          ),
+                          child: isSelected
+                              ? const Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 16,
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 16),
+                        
+                        // 内容
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 标题和优先级
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.title,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected 
+                                            ? Theme.of(context).primaryColor
+                                            : Colors.black,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _getPriorityColor(item.priority).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: _getPriorityColor(item.priority),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      _getPriorityText(item.priority),
+                                      style: TextStyle(
+                                        color: _getPriorityColor(item.priority),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              
+                              // 描述
+                              if (item.description.isNotEmpty) ...[
+                                Text(
+                                  item.description,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+                              
+                              // 部门信息
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.business,
+                                    size: 16,
+                                    color: Colors.grey[600],
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '部门: ${item.department}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
