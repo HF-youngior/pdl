@@ -289,6 +289,323 @@ function checkPermission(requiredRoles) {
 
 // 路由
 
+// API 根路径 - 返回 API 信息（HTML 美化页面）
+app.get('/api', (req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>企业管理系统 API</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+    .header .status {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 0.9em;
+      margin-top: 10px;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #4ade80;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .content {
+      padding: 40px;
+    }
+    .section {
+      margin-bottom: 40px;
+    }
+    .section-title {
+      font-size: 1.8em;
+      color: #333;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 3px solid #667eea;
+    }
+    .endpoint-group {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .endpoint-group h3 {
+      color: #667eea;
+      font-size: 1.3em;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+    }
+    .endpoint-group h3:before {
+      content: "📁";
+      margin-right: 10px;
+    }
+    .endpoint {
+      background: white;
+      padding: 15px 20px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+      display: flex;
+      align-items: center;
+      transition: all 0.3s;
+    }
+    .endpoint:hover {
+      transform: translateX(5px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .method {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-weight: bold;
+      font-size: 0.85em;
+      margin-right: 15px;
+      min-width: 60px;
+      text-align: center;
+    }
+    .method.get { background: #10b981; color: white; }
+    .method.post { background: #3b82f6; color: white; }
+    .method.put { background: #f59e0b; color: white; }
+    .method.delete { background: #ef4444; color: white; }
+    .endpoint-path {
+      flex: 1;
+      font-family: 'Courier New', monospace;
+      color: #333;
+      font-size: 1em;
+    }
+    .quick-links {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .quick-link {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 25px;
+      border-radius: 10px;
+      text-decoration: none;
+      text-align: center;
+      transition: all 0.3s;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .quick-link:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+    .quick-link h3 {
+      font-size: 1.2em;
+      margin-bottom: 8px;
+    }
+    .quick-link p {
+      font-size: 0.9em;
+      opacity: 0.9;
+    }
+    .footer {
+      text-align: center;
+      padding: 30px;
+      background: #f8f9fa;
+      color: #666;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🚀 企业管理系统 API</h1>
+      <div class="status">
+        <span class="status-dot"></span>
+        <span>服务运行中 · v1.0.0</span>
+      </div>
+    </div>
+    
+    <div class="content">
+      <div class="section">
+        <h2 class="section-title">🔗 快速访问</h2>
+        <div class="quick-links">
+          <a href="/web_admin" class="quick-link">
+            <h3>🖥️ Web 管理端</h3>
+            <p>访问 Web 管理界面</p>
+          </a>
+          <a href="http://localhost:8080" class="quick-link">
+            <h3>🏠 主页</h3>
+            <p>返回系统主页</p>
+          </a>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">📡 API 端点</h2>
+        
+        <div class="endpoint-group">
+          <h3>用户认证</h3>
+          <div class="endpoint">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/auth/login</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>用户管理</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/user/profile</span>
+          </div>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/users</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>部门管理</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/departments</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>公司重要事项</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/company-important-items</span>
+          </div>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/company-important-items/all</span>
+          </div>
+          <div class="endpoint">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/company-important-items</span>
+          </div>
+          <div class="endpoint">
+            <span class="method put">PUT</span>
+            <span class="endpoint-path">/api/company-important-items/:id/select</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>重要事项库</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/important-items</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>任务管理</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/tasks</span>
+          </div>
+          <div class="endpoint">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/tasks</span>
+          </div>
+          <div class="endpoint">
+            <span class="method put">PUT</span>
+            <span class="endpoint-path">/api/tasks/:id/status</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>通知管理</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/notifications</span>
+          </div>
+          <div class="endpoint">
+            <span class="method put">PUT</span>
+            <span class="endpoint-path">/api/notifications/:id/read</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>个人日志</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/personal-logs</span>
+          </div>
+          <div class="endpoint">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/personal-logs</span>
+          </div>
+          <div class="endpoint">
+            <span class="method put">PUT</span>
+            <span class="endpoint-path">/api/personal-logs/:id/complete</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>系统日志</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/logs</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>个人信息</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/personal-info/:userId</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="footer">
+      <p>© 2024 企业管理系统 · API v1.0.0 · 运行在 http://localhost:8080</p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+  res.send(html);
+});
+
 // 用户认证
 app.post('/api/auth/login', async (req, res) => {
   try {
