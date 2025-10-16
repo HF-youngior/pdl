@@ -714,35 +714,76 @@ app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
 
 // 创建个人日志
 app.post('/api/personal-logs', authenticateToken, async (req, res) => {
+  const connection = db; // 单连接环境
   try {
-    const { title, content, category, quadrant, related_task_id } = req.body;
-    const id = require('crypto').randomUUID();
+    const { log, linkages } = req.body || {};
+    if (!log) {
+      return res.status(400).json({ error: '缺少日志数据' });
+    }
 
-    await db.execute(
-      'INSERT INTO personal_logs (id, user_id, title, content, category, quadrant, related_task_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, req.user.id, title, content, category, quadrant, related_task_id]
+    const logId = log.log_id || require('crypto').randomUUID();
+    const userId = req.user.id;
+    const logDate = log.log_date;
+    const weather = log.weather;
+    const keywords = log.keywords || null;
+    const logTitle = log.log_title || '个人日志';
+    const logContent = log.log_content || null;
+    const category = log.category || 'work';
+    const quadrant = log.quadrant || 'important_not_urgent';
+    const isArchived = !!log.is_archived;
+
+    await connection.execute(
+      `INSERT INTO personal_logs (log_id, user_id, log_date, weather, keywords, log_title, log_content, category, quadrant, is_archived)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [logId, userId, logDate, weather, keywords, logTitle, logContent, category, quadrant, isArchived]
     );
 
-    res.status(201).json({ message: '日志创建成功', id });
+    if (Array.isArray(linkages) && linkages.length > 0) {
+      for (const l of linkages) {
+        const taskId = l.task_id;
+        const progress = Number(l.progress_percentage ?? 0);
+        const status = l.task_status || 'in_progress';
+        await connection.execute(
+          `INSERT INTO log_task_linkage (log_id, task_id, progress_percentage, task_status)
+           VALUES (?, ?, ?, ?)`,
+          [logId, taskId, progress, status]
+        );
+        // 可选：同步更新任务表的进度/状态
+        await connection.execute(
+          `UPDATE tasks SET progress_percentage = ?, status = ? WHERE id = ?`,
+          [progress, status === 'interrupted' ? 'cancelled' : status, taskId]
+        );
+      }
+    }
+
+    res.status(201).json({ message: '日志创建成功', id: logId });
   } catch (error) {
     console.error('创建个人日志错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
 
-// 获取个人日志
+// 获取个人日志（主表+关联）
 app.get('/api/personal-logs', authenticateToken, async (req, res) => {
   try {
-    const [rows] = await db.execute(
-      `SELECT pl.*, t.title as related_task_title
-       FROM personal_logs pl
-       LEFT JOIN tasks t ON pl.related_task_id = t.id
-       WHERE pl.user_id = ?
-       ORDER BY pl.created_at DESC`,
+    const [logs] = await db.execute(
+      `SELECT * FROM personal_logs WHERE user_id = ? ORDER BY created_at DESC`,
       [req.user.id]
     );
 
-    res.json(rows);
+    const result = [];
+    for (const row of logs) {
+      const [links] = await db.execute(
+        `SELECT log_id, task_id, progress_percentage, task_status, linkage_time FROM log_task_linkage WHERE log_id = ?`,
+        [row.log_id]
+      );
+      result.push({
+        ...row,
+        linkages: links,
+      });
+    }
+
+    res.json(result);
   } catch (error) {
     console.error('获取个人日志错误:', error);
     res.status(500).json({ error: '服务器内部错误' });

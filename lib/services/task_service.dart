@@ -168,4 +168,32 @@ class TaskService {
     final endOfWeek = startOfWeek.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
     return getTasksByDateRange(startOfWeek, endOfWeek);
   }
+
+  // 更新任务状态/进度（调用后端 /api/tasks/:id/status）
+  static Future<void> updateTaskStatus(
+    String id, {
+    required String status,
+    int? progressPercentage,
+    String? specialNotes,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'status': status,
+      };
+      if (progressPercentage != null) body['progress_percentage'] = progressPercentage;
+      if (specialNotes != null && specialNotes.trim().isNotEmpty) body['special_notes'] = specialNotes.trim();
+
+      final response = await http.put(
+        Uri.parse('$baseUrl/tasks/$id/status'),
+        headers: _getAuthHeaders(),
+        body: json.encode(body),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('更新任务状态失败: ${response.statusCode} ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('更新任务状态失败: $e');
+    }
+  }
 }

@@ -5,6 +5,7 @@ import '../models/important_item.dart';
 import '../models/task.dart';
 import '../models/personal_info.dart';
 import '../models/log.dart';
+import '../models/personal_log.dart';
 import 'task_service.dart';
 
 class ApiService {
@@ -143,6 +144,45 @@ class ApiService {
     } catch (e) {
       print('创建日志错误: $e');
       return false;
+    }
+  }
+
+  // 新增：创建个人日志（新结构，包含多任务关联）
+  static Future<bool> createPersonalLog(PersonalLog log) async {
+    try {
+      final payload = {
+        'log': log.toJson()
+          ..remove('created_at')
+          ..remove('updated_at'),
+        'linkages': log.linkages.map((e) => e.toJson()).toList(),
+      };
+      final response = await http.post(
+        Uri.parse('$baseUrl/personal-logs'),
+        headers: _getAuthHeaders(),
+        body: jsonEncode(payload),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      print('创建个人日志错误: $e');
+      return false;
+    }
+  }
+
+  // 新增：获取个人日志（包含关联）
+  static Future<List<PersonalLog>> getPersonalLogs() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/personal-logs'),
+        headers: _getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((e) => PersonalLog.fromJson(e)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('获取个人日志错误: $e');
+      return [];
     }
   }
 }

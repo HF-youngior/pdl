@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/log.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
+import '../services/task_service.dart';
 import '../models/user.dart';
 
 class LogEnhancedScreen extends StatefulWidget {
@@ -484,43 +485,76 @@ class _AddLogDialog extends StatefulWidget {
 
 class _AddLogDialogState extends State<_AddLogDialog> {
   final _formKey = GlobalKey<FormState>();
+  // 日志标题与正文输入控制器
   final _actionController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _moodController = TextEditingController();
-  final _completionController = TextEditingController();
   
+  // 旧版字段（分类/四象限/单任务关联）已废弃，不再在 UI 中展示
+  // 如需兼容后端旧接口，内部将使用合理默认值
   String _selectedCategory = 'work';
   String _selectedQuadrant = 'important_not_urgent';
-  String? _selectedTaskId;
+  String? _selectedTaskId; // 仅用于兼容字段（选择的第一个关联任务）
+
+  // 新增：日期、天气、关键词、关联任务编辑状态
+  DateTime _selectedDate = DateTime.now();
+  String _selectedWeather = 'sunny'; // sunny, cloudy, light_rain, heavy_rain, snow, storm, fog
+  final List<String> _keywords = [];
+  final TextEditingController _keywordInputController = TextEditingController();
+  final Map<String, _AssociatedTaskEdit> _selectedTaskEdits = {}; // taskId -> edit state
 
   @override
   void dispose() {
     _actionController.dispose();
     _descriptionController.dispose();
-    _moodController.dispose();
-    _completionController.dispose();
+    _keywordInputController.dispose();
     super.dispose();
   }
 
   Future<void> _saveLog() async {
+    // 1) 校验必填：标题与正文
     if (!_formKey.currentState!.validate()) return;
 
     try {
+      // 2) 组装日志对象：日期、天气、关键词、正文、关联任务（取第一个以兼容旧字段）
       final log = Log(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         userId: widget.user.id,
         userName: widget.user.name,
-        action: _actionController.text.trim(),
-        description: _descriptionController.text.trim(),
+        action: _actionController.text.trim().isEmpty ? '个人日志' : _actionController.text.trim(),
+        description: _buildLogDescription(),
         category: _selectedCategory,
         quadrant: _selectedQuadrant,
-        createdAt: DateTime.now(),
-        relatedTaskId: _selectedTaskId,
+        createdAt: DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+          DateTime.now().hour,
+          DateTime.now().minute,
+        ),
+        relatedTaskId: _selectedTaskEdits.isNotEmpty ? _selectedTaskEdits.keys.first : _selectedTaskId,
+        metadata: {
+          'weather': _selectedWeather,
+          'keywords': _keywords,
+        },
       );
 
+      // 3) 调用日志创建接口
       final success = await ApiService.createLog(log);
       
       if (success) {
+        // 4) 同步更新每个已关联任务的进度/状态（逐条尝试，失败不阻断整体）
+        for (final edit in _selectedTaskEdits.values) {
+          try {
+            await TaskService.updateTaskStatus(
+              edit.taskId,
+              status: edit.status,
+              progressPercentage: edit.progress,
+              specialNotes: null,
+            );
+          } catch (e) {
+            // 单个任务失败不阻断整体，继续尝试后续任务
+          }
+        }
         if (mounted) {
           Navigator.of(context).pop();
           widget.onLogAdded();
@@ -544,6 +578,15 @@ class _AddLogDialogState extends State<_AddLogDialog> {
         );
       }
     }
+  }
+
+  String _buildLogDescription() {
+    final parts = <String>[];
+    if (_keywords.isNotEmpty) {
+      parts.add('关键词: ${_keywords.join(', ')}');
+    }
+    parts.add(_descriptionController.text.trim());
+    return parts.where((e) => e.isNotEmpty).join('\n\n');
   }
 
   @override
@@ -580,97 +623,36 @@ class _AddLogDialogState extends State<_AddLogDialog> {
               ),
               const SizedBox(height: 20),
               
-              // 表单内容
+              // 表单内容：将旧版的分类/四象限/心情/完成情况全部替换为新设计
               Expanded(
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
-                      // 活动标题
-                      TextFormField(
-                        controller: _actionController,
-                        decoration: const InputDecoration(
-                          labelText: '活动标题',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return '请输入活动标题';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // 分类选择
-                      DropdownButtonFormField<String>(
-                        value: _selectedCategory,
-                        decoration: const InputDecoration(
-                          labelText: '分类',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'work', child: Text('工作')),
-                          DropdownMenuItem(value: 'learning', child: Text('学习')),
-                          DropdownMenuItem(value: 'personal', child: Text('个人')),
-                          DropdownMenuItem(value: 'meeting', child: Text('会议')),
+                      // 日期/天气 选择行
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildDatePickerCard(context),
+                          ),
+                          const SizedBox(width: 12),
+                          _buildWeatherPickerButton(context),
                         ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedCategory = value!;
-                          });
-                        },
                       ),
                       const SizedBox(height: 16),
-                      
-                      // 四象限选择
-                      DropdownButtonFormField<String>(
-                        value: _selectedQuadrant,
-                        decoration: const InputDecoration(
-                          labelText: '重要紧急程度',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'important_urgent', child: Text('重要且紧急')),
-                          DropdownMenuItem(value: 'important_not_urgent', child: Text('重要不紧急')),
-                          DropdownMenuItem(value: 'not_important_urgent', child: Text('紧急不重要')),
-                          DropdownMenuItem(value: 'not_important_not_urgent', child: Text('不重要不紧急')),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedQuadrant = value!;
-                          });
-                        },
-                      ),
+
+                      // 关键词输入区
+                      _buildKeywordsInputArea(),
                       const SizedBox(height: 16),
                       
-                      // 关联任务
-                      DropdownButtonFormField<String?>(
-                        value: _selectedTaskId,
-                        decoration: const InputDecoration(
-                          labelText: '关联任务（可选）',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: [
-                          const DropdownMenuItem<String?>(value: null, child: Text('无关联任务')),
-                          ...widget.tasks.map((task) => DropdownMenuItem<String?>(
-                            value: task.id,
-                            child: Text(task.title),
-                          )),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedTaskId = value;
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 16),
+                      // 去除“活动标题”输入框：action 将在保存时使用默认“个人日志”或内联规则生成
                       
-                      // 详细描述
+                      // 正文输入：今日总结/复盘，包含富文本功能占位按钮
                       TextFormField(
                         controller: _descriptionController,
                         decoration: const InputDecoration(
                           labelText: '详细描述',
                           border: OutlineInputBorder(),
+                          hintText: '今天也辛苦啦~',
                         ),
                         maxLines: 3,
                         validator: (value) {
@@ -680,30 +662,14 @@ class _AddLogDialogState extends State<_AddLogDialog> {
                           return null;
                         },
                       ),
+                      const SizedBox(height: 8),
+                      // 去除加粗/列表占位按钮
                       const SizedBox(height: 16),
-                      
-                      // 心情感受
-                      TextFormField(
-                        controller: _moodController,
-                        decoration: const InputDecoration(
-                          labelText: '心情感受',
-                          border: OutlineInputBorder(),
-                          hintText: '今天的心情如何？有什么感受？',
-                        ),
-                        maxLines: 2,
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // 完成情况
-                      TextFormField(
-                        controller: _completionController,
-                        decoration: const InputDecoration(
-                          labelText: '工作完成情况',
-                          border: OutlineInputBorder(),
-                          hintText: '今天的工作完成情况如何？',
-                        ),
-                        maxLines: 2,
-                      ),
+
+                      // 关联任务选择与编辑
+                      _buildAssociateTaskSelector(context),
+                      const SizedBox(height: 8),
+                      _buildAssociatedTaskList(),
                     ],
                   ),
                 ),
@@ -731,4 +697,413 @@ class _AddLogDialogState extends State<_AddLogDialog> {
       ),
     );
   }
+
+  // UI 片段：日期选择卡片
+  Widget _buildDatePickerCard(BuildContext context) {
+    return InkWell(
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: _selectedDate,
+          firstDate: DateTime(2020),
+          lastDate: DateTime(2030),
+        );
+        if (picked != null) {
+          setState(() {
+            _selectedDate = picked;
+          });
+        }
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.blue.withOpacity(0.06),
+          border: Border.all(color: Colors.blue.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.calendar_today, size: 18, color: Colors.blue),
+            const SizedBox(width: 8),
+            Text(
+              '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            // 文案移除：仅显示已选日期
+          ],
+        ),
+      ),
+    );
+  }
+
+  // UI 片段：天气选择按钮
+  Widget _buildWeatherPickerButton(BuildContext context) {
+    final weatherToEmoji = {
+      'sunny': '☀️',
+      'cloudy': '⛅',
+      'light_rain': '🌧️',
+      'heavy_rain': '⛈️',
+      'snow': '❄️',
+      'storm': '⚡',
+      'fog': '🌫️',
+    };
+    return InkWell(
+      onTap: () async {
+        final value = await showModalBottomSheet<String>(
+          context: context,
+          builder: (ctx) {
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildWeatherOption(ctx, 'sunny', '晴朗', weatherToEmoji['sunny']!),
+                  _buildWeatherOption(ctx, 'cloudy', '多云', weatherToEmoji['cloudy']!),
+                  _buildWeatherOption(ctx, 'light_rain', '小雨', weatherToEmoji['light_rain']!),
+                  _buildWeatherOption(ctx, 'heavy_rain', '大雨', weatherToEmoji['heavy_rain']!),
+                  _buildWeatherOption(ctx, 'snow', '下雪', weatherToEmoji['snow']!),
+                  _buildWeatherOption(ctx, 'storm', '雷暴', weatherToEmoji['storm']!),
+                  _buildWeatherOption(ctx, 'fog', '多雾', weatherToEmoji['fog']!),
+                ],
+              ),
+            );
+          },
+        );
+        if (value != null) {
+          setState(() {
+            _selectedWeather = value;
+          });
+        }
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.orange.withOpacity(0.06),
+          border: Border.all(color: Colors.orange.withOpacity(0.2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _weatherEmoji(_selectedWeather),
+              style: const TextStyle(fontSize: 18),
+            ),
+            // 文案移除：仅显示天气图标
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeatherOption(BuildContext context, String value, String label, String emoji) {
+    return ListTile(
+      leading: Text(emoji, style: const TextStyle(fontSize: 18)),
+      title: Text(label),
+      onTap: () => Navigator.of(context).pop(value),
+    );
+  }
+
+  String _weatherEmoji(String value) {
+    switch (value) {
+      case 'sunny':
+        return '☀️';
+      case 'cloudy':
+        return '⛅';
+      case 'light_rain':
+        return '🌧️';
+      case 'heavy_rain':
+        return '⛈️';
+      case 'snow':
+        return '❄️';
+      case 'storm':
+        return '⚡';
+      case 'fog':
+        return '🌫️';
+      default:
+        return '☀️';
+    }
+  }
+
+  // UI 片段：关键词区
+  Widget _buildKeywordsInputArea() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _keywordInputController,
+                decoration: InputDecoration(
+                  labelText: _keywords.length < 3 ? '添加关键词' : null,
+                  hintText: _keywords.length >= 3 ? '够了够了 三个能概括' : null,
+                  border: const OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _addKeyword(),
+                enabled: _keywords.length < 3,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: _addKeyword,
+              child: const Text('添加'),
+            )
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: _keywords
+              .map((k) => Chip(
+                    label: Text(k),
+                    onDeleted: () {
+                      setState(() {
+                        _keywords.remove(k);
+                      });
+                    },
+                  ))
+              .toList(),
+        ),
+        // 文本框已显示提示语，这里不再单独提示
+      ],
+    );
+  }
+
+  void _addKeyword() {
+    final value = _keywordInputController.text.trim();
+    if (value.isEmpty) return;
+    if (_keywords.length >= 3) return;
+    if (_keywords.contains(value)) return;
+    setState(() {
+      _keywords.add(value);
+      _keywordInputController.clear();
+    });
+  }
+
+  // 关联任务选择器
+  Widget _buildAssociateTaskSelector(BuildContext context) {
+    final taskItems = widget.tasks
+        .where((t) => t.status == 'in_progress' || t.status == 'completed')
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.link, size: 18),
+            const SizedBox(width: 6),
+            const Text('关联任务'),
+            const Spacer(),
+            Text('${_selectedTaskEdits.length} 已关联'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Autocomplete<Task>(
+          optionsBuilder: (textEditingValue) {
+            final q = textEditingValue.text.toLowerCase();
+            return taskItems.where((t) => t.title.toLowerCase().contains(q));
+          },
+          displayStringForOption: (t) => t.title,
+          onSelected: (task) {
+            setState(() {
+              _selectedTaskEdits.putIfAbsent(
+                task.id,
+                () => _AssociatedTaskEdit(
+                  taskId: task.id,
+                  title: task.title,
+                  priority: task.priority,
+                  deadline: task.deadline,
+                  progress: 0,
+                  status: task.status,
+                ),
+              );
+            });
+          },
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            return TextField(
+              controller: controller,
+              focusNode: focusNode,
+              decoration: const InputDecoration(
+                hintText: '搜索任务标题...',
+                border: OutlineInputBorder(),
+              ),
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 4,
+                child: SizedBox(
+                  height: 200,
+                  child: ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: options.length,
+                    itemBuilder: (context, index) {
+                      final t = options.elementAt(index);
+                      return ListTile(
+                        title: Text(t.title),
+                        subtitle: Text('优先级: ${t.priority}  截止: ${t.deadline != null ? _fmtDate(t.deadline!) : '无'}'),
+                        onTap: () => onSelected(t),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  // 已关联任务列表
+  Widget _buildAssociatedTaskList() {
+    if (_selectedTaskEdits.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.grey.withOpacity(0.05),
+          border: Border.all(color: Colors.grey.withOpacity(0.2)),
+        ),
+        child: const Align(
+          alignment: Alignment.centerLeft,
+          child: Text('尚未关联任务'),
+        ),
+      );
+    }
+    final edits = _selectedTaskEdits.values.toList();
+    return Column(
+      children: edits.map((e) => _buildTaskEditCard(e)).toList(),
+    );
+  }
+
+  Widget _buildTaskEditCard(_AssociatedTaskEdit edit) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(edit.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                IconButton(
+                  tooltip: '移除',
+                  onPressed: () {
+                    setState(() {
+                      _selectedTaskEdits.remove(edit.taskId);
+                    });
+                  },
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                _buildTag('优先级: ${edit.priority.toUpperCase()}'),
+                const SizedBox(width: 8),
+                _buildTag('截止: ${edit.deadline != null ? _fmtDate(edit.deadline!) : '无'}'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // 进度
+            Row(
+              children: [
+                const Text('完成进度'),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Slider(
+                    value: (edit.progress ?? 0).toDouble(),
+                    min: 0,
+                    max: 100,
+                    divisions: 20,
+                    label: '${edit.progress ?? 0}%',
+                    onChanged: (v) {
+                      setState(() {
+                        edit.progress = v.round();
+                      });
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 48,
+                  child: Text('${edit.progress ?? 0}%'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // 状态
+            Row(
+              children: [
+                const Text('任务状态'),
+                const SizedBox(width: 12),
+                DropdownButton<String>(
+                  value: edit.status,
+                  items: const [
+                    DropdownMenuItem(value: 'in_progress', child: Text('进行中')),
+                    DropdownMenuItem(value: 'completed', child: Text('已完成')),
+                    DropdownMenuItem(value: 'cancelled', child: Text('已中断')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      edit.status = v;
+                      // 若选择“已完成”，自动将进度置为100%
+                      if (v == 'completed') {
+                        edit.progress = 100;
+                      }
+                    });
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTag(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(text, style: const TextStyle(fontSize: 12)),
+    );
+  }
+
+  String _fmtDate(DateTime d) {
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+}
+
+class _AssociatedTaskEdit {
+  final String taskId;
+  final String title;
+  final String priority;
+  final DateTime? deadline;
+  int? progress;
+  String status;
+
+  _AssociatedTaskEdit({
+    required this.taskId,
+    required this.title,
+    required this.priority,
+    required this.deadline,
+    required this.progress,
+    required this.status,
+  });
 }
