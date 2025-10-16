@@ -3,6 +3,7 @@ const cors = require('cors');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -14,6 +15,9 @@ app.use(express.json());
 
 // 静态文件服务 - 提供Web管理端
 app.use('/web_admin', express.static('../web_admin'));
+
+// 静态文件服务 - 提供公共资源
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
 // 数据库连接
 const dbConfig = {
@@ -289,15 +293,20 @@ function checkPermission(requiredRoles) {
 
 // 路由
 
-// API 根路径 - 返回 API 信息（HTML 美化页面）
+// API 根路径 - 返回 API 文档页面
 app.get('/api', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'api-docs.html'));
+});
+
+// API 根路径（旧版本 - 保留以防需要）
+app.get('/api/old', (req, res) => {
   const html = `
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>企业管理系统 API</title>
+  <title>企业管理系统 API 文档与测试</title>
   <style>
     * {
       margin: 0;

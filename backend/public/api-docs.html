@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>企业管理系统 API 文档与测试</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px 40px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 2.2em;
+      margin-bottom: 10px;
+    }
+    .header .status {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 0.9em;
+      margin-top: 10px;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #4ade80;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .content {
+      padding: 30px;
+      max-height: calc(100vh - 200px);
+      overflow-y: auto;
+    }
+    .quick-links {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+    .quick-link {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      text-decoration: none;
+      text-align: center;
+      transition: all 0.3s;
+    }
+    .quick-link:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+    }
+    .endpoint-item {
+      background: #f8f9fa;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      overflow: hidden;
+      border: 1px solid #e0e0e0;
+    }
+    .endpoint-header {
+      padding: 15px 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      background: white;
+      transition: all 0.3s;
+    }
+    .endpoint-header:hover {
+      background: #f8f9fa;
+    }
+    .method {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-weight: bold;
+      font-size: 0.85em;
+      margin-right: 15px;
+      min-width: 60px;
+      text-align: center;
+    }
+    .method.get { background: #10b981; color: white; }
+    .method.post { background: #3b82f6; color: white; }
+    .method.put { background: #f59e0b; color: white; }
+    .method.delete { background: #ef4444; color: white; }
+    .endpoint-path {
+      flex: 1;
+      font-family: 'Courier New', monospace;
+      color: #333;
+      font-size: 1em;
+      font-weight: 500;
+    }
+    .endpoint-desc {
+      color: #666;
+      font-size: 0.9em;
+      margin-left: 10px;
+    }
+    .expand-icon {
+      margin-left: auto;
+      transition: transform 0.3s;
+      font-size: 1.2em;
+      color: #667eea;
+    }
+    .endpoint-item.expanded .expand-icon {
+      transform: rotate(180deg);
+    }
+    .endpoint-details {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+      padding: 0 20px;
+      background: white;
+    }
+    .endpoint-item.expanded .endpoint-details {
+      max-height: 2000px;
+      padding: 20px;
+      border-top: 2px solid #f0f0f0;
+    }
+    .detail-section {
+      margin-bottom: 20px;
+    }
+    .detail-title {
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 10px;
+      font-size: 1.1em;
+    }
+    .param-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 15px;
+    }
+    .param-table th,
+    .param-table td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .param-table th {
+      background: #f8f9fa;
+      font-weight: 600;
+      color: #333;
+    }
+    .param-required {
+      color: #ef4444;
+      font-size: 0.85em;
+      font-weight: bold;
+    }
+    .param-optional {
+      color: #10b981;
+      font-size: 0.85em;
+    }
+    .code-block {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+      overflow-x: auto;
+      margin-bottom: 15px;
+    }
+    .test-section {
+      background: #f0f4ff;
+      padding: 20px;
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+    .test-input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #d0d0d0;
+      border-radius: 5px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+      margin-bottom: 10px;
+      min-height: 100px;
+    }
+    .test-button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 12px 30px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+    .test-button:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    .test-button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .test-result {
+      margin-top: 15px;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .test-result.success {
+      background: #d1fae5;
+      border: 1px solid #10b981;
+      color: #065f46;
+    }
+    .test-result.error {
+      background: #fee2e2;
+      border: 1px solid #ef4444;
+      color: #991b1b;
+    }
+    .auth-section {
+      background: #fff7ed;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border-left: 4px solid #f59e0b;
+    }
+    .token-input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #d0d0d0;
+      border-radius: 5px;
+      font-family: 'Courier New', monospace;
+      margin-top: 10px;
+    }
+    .search-box {
+      width: 100%;
+      padding: 12px 20px;
+      border: 2px solid #667eea;
+      border-radius: 10px;
+      font-size: 1em;
+      margin-bottom: 20px;
+    }
+    .group-title {
+      font-size: 1.5em;
+      color: #333;
+      margin: 30px 0 15px 0;
+      padding-bottom: 10px;
+      border-bottom: 3px solid #667eea;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🚀 企业管理系统 API 文档与测试</h1>
+      <div class="status">
+        <span class="status-dot"></span>
+        <span>服务运行中 · v1.0.0</span>
+      </div>
+    </div>
+    
+    <div class="content">
+      <div class="quick-links">
+        <a href="/web_admin" class="quick-link">
+          <h3>🖥️ Web 管理端</h3>
+        </a>
+        <a href="http://localhost:8080" class="quick-link">
+          <h3>🏠 系统主页</h3>
+        </a>
+      </div>
+
+      <div class="auth-section">
+        <strong>🔑 认证令牌 (Token)</strong>
+        <p style="margin: 10px 0; font-size: 0.9em;">登录后将 Token 粘贴到这里，之后的测试请求会自动携带</p>
+        <input type="text" id="authToken" class="token-input" placeholder="Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+      </div>
+
+      <input type="text" class="search-box" id="searchBox" placeholder="🔍 搜索 API 端点...">
+
+      <div id="apiList">
+        <!-- 用户认证 -->
+        <h2 class="group-title">👤 用户认证</h2>
+        
+        <div class="endpoint-item" data-search="login 登录 认证">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/auth/login</span>
+            <span class="endpoint-desc">用户登录</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="detail-section">
+              <div class="detail-title">📝 请求参数</div>
+              <table class="param-table">
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+                <tr>
+                  <td><code>username</code></td>
+                  <td>string</td>
+                  <td><span class="param-required">必填</span></td>
+                  <td>用户名</td>
+                </tr>
+                <tr>
+                  <td><code>password</code></td>
+                  <td>string</td>
+                  <td><span class="param-required">必填</span></td>
+                  <td>密码</td>
+                </tr>
+              </table>
+            </div>
+            
+            <div class="detail-section">
+              <div class="detail-title">📤 请求示例</div>
+              <div class="code-block">{
+  "username": "admin",
+  "password": "admin123"
+}</div>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-title">📥 响应示例</div>
+              <div class="code-block">{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": 1,
+    "username": "admin",
+    "realname": "系统管理员",
+    "role": "admin"
+  }
+}</div>
+            </div>
+
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <textarea class="test-input" placeholder="输入 JSON 格式的请求数据">{"username":"admin","password":"admin123"}</textarea>
+              <button class="test-button" onclick="testApi('/api/auth/login', 'POST', this, false)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 用户管理 -->
+        <h2 class="group-title">👥 用户管理</h2>
+
+        <div class="endpoint-item" data-search="profile 个人资料 用户信息">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/user/profile</span>
+            <span class="endpoint-desc">获取当前用户信息</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="detail-section">
+              <div class="detail-title">🔐 认证</div>
+              <p>需要 Bearer Token</p>
+            </div>
+            
+            <div class="detail-section">
+              <div class="detail-title">📥 响应示例</div>
+              <div class="code-block">{
+  "id": 1,
+  "username": "admin",
+  "realname": "系统管理员",
+  "role": "admin",
+  "department_id": null
+}</div>
+            </div>
+
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <button class="test-button" onclick="testApi('/api/user/profile', 'GET', this, true)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="endpoint-item" data-search="users 用户列表">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/users</span>
+            <span class="endpoint-desc">获取用户列表</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="detail-section">
+              <div class="detail-title">🔐 认证</div>
+              <p>需要 Bearer Token (仅管理员)</p>
+            </div>
+
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <button class="test-button" onclick="testApi('/api/users', 'GET', this, true)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 部门管理 -->
+        <h2 class="group-title">🏢 部门管理</h2>
+
+        <div class="endpoint-item" data-search="departments 部门列表">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/departments</span>
+            <span class="endpoint-desc">获取部门列表</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="detail-section">
+              <div class="detail-title">🔐 认证</div>
+              <p>需要 Bearer Token</p>
+            </div>
+
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <button class="test-button" onclick="testApi('/api/departments', 'GET', this, true)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 公司重要事项 -->
+        <h2 class="group-title">📋 公司重要事项</h2>
+
+        <div class="endpoint-item" data-search="company-important-items 公司重要事项">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/company-important-items</span>
+            <span class="endpoint-desc">获取公司重要事项 (分页)</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="detail-section">
+              <div class="detail-title">📝 查询参数</div>
+              <table class="param-table">
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+                <tr>
+                  <td><code>page</code></td>
+                  <td>number</td>
+                  <td><span class="param-optional">可选</span></td>
+                  <td>页码 (默认: 1)</td>
+                </tr>
+                <tr>
+                  <td><code>pageSize</code></td>
+                  <td>number</td>
+                  <td><span class="param-optional">可选</span></td>
+                  <td>每页数量 (默认: 10)</td>
+                </tr>
+              </table>
+            </div>
+
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <button class="test-button" onclick="testApi('/api/company-important-items?page=1&pageSize=10', 'GET', this, true)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="endpoint-item" data-search="company-important-items all 所有事项">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/company-important-items/all</span>
+            <span class="endpoint-desc">获取所有公司重要事项 (不分页)</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <button class="test-button" onclick="testApi('/api/company-important-items/all', 'GET', this, true)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="endpoint-item" data-search="create 创建 添加事项">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/company-important-items</span>
+            <span class="endpoint-desc">创建公司重要事项</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="detail-section">
+              <div class="detail-title">📝 请求参数</div>
+              <table class="param-table">
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+                <tr>
+                  <td><code>item_id</code></td>
+                  <td>number</td>
+                  <td><span class="param-required">必填</span></td>
+                  <td>重要事项库 ID</td>
+                </tr>
+              </table>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-title">📤 请求示例</div>
+              <div class="code-block">{"item_id": 1}</div>
+            </div>
+
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <textarea class="test-input" placeholder="输入 JSON 格式的请求数据">{"item_id":1}</textarea>
+              <button class="test-button" onclick="testApi('/api/company-important-items', 'POST', this, true)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="endpoint-item" data-search="select 选择事项">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method put">PUT</span>
+            <span class="endpoint-path">/api/company-important-items/:id/select</span>
+            <span class="endpoint-desc">选择/取消选择事项</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="detail-section">
+              <div class="detail-title">📝 请求参数</div>
+              <table class="param-table">
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+                <tr>
+                  <td><code>:id</code></td>
+                  <td>number</td>
+                  <td><span class="param-required">必填</span></td>
+                  <td>URL 路径参数 - 事项 ID</td>
+                </tr>
+                <tr>
+                  <td><code>is_selected</code></td>
+                  <td>boolean</td>
+                  <td><span class="param-required">必填</span></td>
+                  <td>是否选择 (true/false)</td>
+                </tr>
+              </table>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-title">📤 请求示例</div>
+              <div class="code-block">PUT /api/company-important-items/1/select
+{"is_selected": true}</div>
+            </div>
+
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <input type="text" class="token-input" placeholder="事项 ID" value="1" id="selectItemId">
+              <textarea class="test-input" placeholder="输入 JSON 格式的请求数据">{"is_selected":true}</textarea>
+              <button class="test-button" onclick="testApiWithId('/api/company-important-items/{id}/select', 'PUT', this, true, 'selectItemId')">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 任务管理 -->
+        <h2 class="group-title">✅ 任务管理</h2>
+
+        <div class="endpoint-item" data-search="tasks 任务列表">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/tasks</span>
+            <span class="endpoint-desc">获取任务列表</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <button class="test-button" onclick="testApi('/api/tasks', 'GET', this, true)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="endpoint-item" data-search="create task 创建任务">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/tasks</span>
+            <span class="endpoint-desc">创建任务</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="detail-section">
+              <div class="detail-title">📝 请求参数</div>
+              <table class="param-table">
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+                <tr>
+                  <td><code>title</code></td>
+                  <td>string</td>
+                  <td><span class="param-required">必填</span></td>
+                  <td>任务标题</td>
+                </tr>
+                <tr>
+                  <td><code>description</code></td>
+                  <td>string</td>
+                  <td><span class="param-optional">可选</span></td>
+                  <td>任务描述</td>
+                </tr>
+                <tr>
+                  <td><code>assigned_to</code></td>
+                  <td>number</td>
+                  <td><span class="param-optional">可选</span></td>
+                  <td>分配给的用户 ID</td>
+                </tr>
+                <tr>
+                  <td><code>due_date</code></td>
+                  <td>string</td>
+                  <td><span class="param-optional">可选</span></td>
+                  <td>截止日期 (YYYY-MM-DD)</td>
+                </tr>
+              </table>
+            </div>
+
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <textarea class="test-input" placeholder="输入 JSON 格式的请求数据">{"title":"测试任务","description":"这是一个测试任务","due_date":"2025-12-31"}</textarea>
+              <button class="test-button" onclick="testApi('/api/tasks', 'POST', this, true)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 个人日志 -->
+        <h2 class="group-title">📝 个人日志</h2>
+
+        <div class="endpoint-item" data-search="personal-logs 个人日志">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/personal-logs</span>
+            <span class="endpoint-desc">获取个人日志列表</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <button class="test-button" onclick="testApi('/api/personal-logs', 'GET', this, true)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="endpoint-item" data-search="create log 创建日志">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/personal-logs</span>
+            <span class="endpoint-desc">创建个人日志</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="detail-section">
+              <div class="detail-title">📝 请求参数</div>
+              <table class="param-table">
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+                <tr>
+                  <td><code>content</code></td>
+                  <td>string</td>
+                  <td><span class="param-required">必填</span></td>
+                  <td>日志内容</td>
+                </tr>
+                <tr>
+                  <td><code>log_date</code></td>
+                  <td>string</td>
+                  <td><span class="param-optional">可选</span></td>
+                  <td>日志日期 (YYYY-MM-DD)</td>
+                </tr>
+              </table>
+            </div>
+
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <textarea class="test-input" placeholder="输入 JSON 格式的请求数据">{"content":"今天完成了重要任务","log_date":"2025-10-16"}</textarea>
+              <button class="test-button" onclick="testApi('/api/personal-logs', 'POST', this, true)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 通知管理 -->
+        <h2 class="group-title">🔔 通知管理</h2>
+
+        <div class="endpoint-item" data-search="notifications 通知列表">
+          <div class="endpoint-header" onclick="toggleEndpoint(this)">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/notifications</span>
+            <span class="endpoint-desc">获取通知列表</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-details">
+            <div class="test-section">
+              <div class="detail-title">🧪 API 测试</div>
+              <button class="test-button" onclick="testApi('/api/notifications', 'GET', this, true)">发送请求</button>
+              <div class="test-result" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 展开/收起端点详情
+    function toggleEndpoint(header) {
+      const item = header.parentElement;
+      item.classList.toggle('expanded');
+    }
+
+    // 测试 API
+    async function testApi(url, method, button, needsAuth) {
+      const item = button.parentElement;
+      const resultDiv = item.querySelector('.test-result');
+      const textarea = item.querySelector('.test-input');
+      
+      button.disabled = true;
+      button.textContent = '发送中...';
+      
+      try {
+        const options = {
+          method: method,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        };
+
+        // 添加认证 token
+        if (needsAuth) {
+          const token = document.getElementById('authToken').value.trim();
+          if (token) {
+            options.headers['Authorization'] = token.startsWith('Bearer ') ? token : 'Bearer ' + token;
+          } else {
+            throw new Error('需要认证 Token，请先登录并填写 Token');
+          }
+        }
+
+        // 添加请求体
+        if (method !== 'GET' && textarea) {
+          const bodyText = textarea.value.trim();
+          if (bodyText) {
+            options.body = bodyText;
+          }
+        }
+
+        const response = await fetch(url, options);
+        const data = await response.json();
+        
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'test-result ' + (response.ok ? 'success' : 'error');
+        resultDiv.textContent = JSON.stringify(data, null, 2);
+
+        // 如果是登录接口且成功，自动填充 token
+        if (url.includes('/login') && response.ok && data.token) {
+          document.getElementById('authToken').value = 'Bearer ' + data.token;
+          alert('✅ 登录成功！Token 已自动填充，现在可以测试其他需要认证的接口了');
+        }
+      } catch (error) {
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'test-result error';
+        resultDiv.textContent = '错误: ' + error.message;
+      } finally {
+        button.disabled = false;
+        button.textContent = '发送请求';
+      }
+    }
+
+    // 测试带 ID 参数的 API
+    async function testApiWithId(urlTemplate, method, button, needsAuth, idInputId) {
+      const id = document.getElementById(idInputId).value.trim();
+      if (!id) {
+        alert('请输入 ID');
+        return;
+      }
+      const url = urlTemplate.replace('{id}', id);
+      await testApi(url, method, button, needsAuth);
+    }
+
+    // 搜索功能
+    document.getElementById('searchBox').addEventListener('input', function(e) {
+      const searchTerm = e.target.value.toLowerCase();
+      const items = document.querySelectorAll('.endpoint-item');
+      
+      items.forEach(item => {
+        const searchData = item.getAttribute('data-search') || '';
+        const pathText = item.querySelector('.endpoint-path').textContent;
+        const descText = item.querySelector('.endpoint-desc').textContent;
+        const searchContent = (searchData + ' ' + pathText + ' ' + descText).toLowerCase();
+        
+        if (searchContent.includes(searchTerm)) {
+          item.style.display = 'block';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+
+      // 隐藏/显示分组标题
+      document.querySelectorAll('.group-title').forEach(title => {
+        let nextElement = title.nextElementSibling;
+        let hasVisibleItems = false;
+        
+        while (nextElement && !nextElement.classList.contains('group-title')) {
+          if (nextElement.classList.contains('endpoint-item') && nextElement.style.display !== 'none') {
+            hasVisibleItems = true;
+            break;
+          }
+          nextElement = nextElement.nextElementSibling;
+        }
+        
+        title.style.display = hasVisibleItems ? 'block' : 'none';
+      });
+    });
+  </script>
+</body>
+</html>
+
