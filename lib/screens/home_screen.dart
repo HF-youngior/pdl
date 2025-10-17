@@ -3,7 +3,7 @@ import '../models/user.dart';
 import '../widgets/quadrant_widget.dart';
 import 'dashboard_screen.dart';
 import 'view_screen.dart';
-import 'log_screen.dart';
+import 'log_enhanced_screen.dart';
 import 'ai_map_screen.dart';
 import 'profile_screen.dart';
 
@@ -27,7 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _screens.addAll([
       DashboardScreen(user: widget.user),
       const ViewScreen(),
-      const LogScreen(),
+      LogEnhancedScreen(user: widget.user),
       const AiMapScreen(),
       ProfileScreen(user: widget.user),
     ]);
