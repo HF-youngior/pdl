@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../models/user.dart';
-import '../widgets/quadrant_widget.dart';
 import 'dashboard_screen.dart';
 import 'view_screen.dart';
 import 'log_enhanced_screen.dart';

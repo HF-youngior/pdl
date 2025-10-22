@@ -17,18 +17,13 @@ class ViewScreen extends StatefulWidget {
 }
 
 class _ViewScreenState extends State<ViewScreen> {
-  List<Task> _tasks = [];
+  final List<Task> _tasks = [];
   DateTime _currentDate = DateTime.now();
-  bool _isLoading = true;
-  String? _error;
 
   @override
   void initState() {
     super.initState();
     // 月视图现在使用新的API，不需要在这里加载任务数据
-    setState(() {
-      _isLoading = false;
-    });
   }
 
   void _onDateSelected(DateTime date) {
@@ -441,15 +436,15 @@ class _ViewScreenState extends State<ViewScreen> {
   String _getPriorityText(String priority) {
     switch (priority) {
       case 'important_urgent':
-        return '工作';
+        return '重要且紧急';
       case 'important_not_urgent':
-        return '学习';
+        return '重要不紧急';
       case 'not_important_urgent':
-        return '生活';
+        return '紧急不重要';
       case 'not_important_not_urgent':
-        return '其他';
+        return '不重要不紧急';
       default:
-        return '学习';
+        return '重要不紧急';
     }
   }
 
@@ -513,11 +508,11 @@ class _ViewScreenState extends State<ViewScreen> {
   Widget _buildBody() {
     return CalendarWidget(
       tasks: _tasks, // 保留兼容性，但月视图不再使用这个数据
+      user: widget.user,
       currentDate: _currentDate,
       onDateSelected: _onDateSelected,
       onTaskSelected: _onTaskSelected,
       onTaskAdd: _onTaskAdd,
-      user: widget.user,
     );
   }
 }
