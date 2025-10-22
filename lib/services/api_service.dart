@@ -22,14 +22,17 @@ class ApiService {
     _authToken = null;
   }
   
-  // 获取认证头
-  static Map<String, String> _getAuthHeaders() {
+  // 获取认证头（公开方法，供其他服务使用）
+  static Map<String, String> getAuthHeaders() {
     final headers = {'Content-Type': 'application/json'};
     if (_authToken != null) {
       headers['Authorization'] = 'Bearer $_authToken';
     }
     return headers;
   }
+  
+  // 私有方法保持向后兼容
+  static Map<String, String> _getAuthHeaders() => getAuthHeaders();
   
   // 用户认证
   static Future<User?> login(String username, String password) async {
@@ -183,6 +186,40 @@ class ApiService {
     } catch (e) {
       print('获取个人日志错误: $e');
       return [];
+    }
+  }
+
+  // 新增：获取月视图数据
+  static Future<Map<String, dynamic>?> getMonthView(int year, int month) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/calendar/month-view?year=$year&month=$month'),
+        headers: _getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print('获取月视图数据错误: $e');
+      return null;
+    }
+  }
+
+  // 新增：获取日详情数据
+  static Future<Map<String, dynamic>?> getDayDetail(String date) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/calendar/day-detail?date=$date'),
+        headers: _getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print('获取日详情数据错误: $e');
+      return null;
     }
   }
 }

@@ -829,6 +829,190 @@
         </div>
       </div>
     </div>
+
+    <!-- 月视图日历 -->
+    <div class="section">
+      <h2 class="section-title">月视图日历</h2>
+      
+      <div class="endpoint" data-tags="calendar month view 月视图 日历">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/calendar/month-view</span>
+          <span class="description">获取指定月份的任务和日志</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。用于月视图日历显示，返回整个月每天的任务和日志数据。
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">查询参数</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>year</code></td>
+                  <td>number</td>
+                  <td><span class="required">必填</span></td>
+                  <td>年份，例如: 2025</td>
+                </tr>
+                <tr>
+                  <td><code>month</code></td>
+                  <td>number</td>
+                  <td><span class="required">必填</span></td>
+                  <td>月份，1-12</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">请求示例</div>
+            <div class="code-block">GET /api/calendar/month-view?year=2025&month=10</div>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">响应示例</div>
+            <div class="code-block">{
+  "year": 2025,
+  "month": 10,
+  "days": [
+    {
+      "date": "2025-10-01",
+      "tasks": [
+        {
+          "id": "task-001",
+          "title": "完成季度报告",
+          "status": "in_progress",
+          "priority": "p0",
+          "color": "#FF5722"
+        }
+      ],
+      "logs": [
+        {
+          "id": "log-001",
+          "title": "日志标题",
+          "content": "日志内容"
+        }
+      ],
+      "hasData": true
+    }
+  ],
+  "summary": {
+    "totalTasks": 15,
+    "totalLogs": 8,
+    "daysWithData": 12
+  }
+}</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <div style="margin-bottom: 10px;">
+              <label style="font-size: 13px; margin-right: 10px;">年份:</label>
+              <input type="number" id="calendarYear" value="2025" style="width: 80px; padding: 5px; border: 1px solid #ddd; margin-right: 15px;">
+              <label style="font-size: 13px; margin-right: 10px;">月份:</label>
+              <input type="number" id="calendarMonth" value="10" min="1" max="12" style="width: 60px; padding: 5px; border: 1px solid #ddd;">
+            </div>
+            <button class="test-btn" onclick="testCalendarMonth(this)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="calendar day detail 日期详情 弹窗">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/calendar/day-detail</span>
+          <span class="description">获取指定日期的详细任务和日志</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。用于点击日历某天时弹窗显示该日的所有任务和日志详情。
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">查询参数</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>date</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>日期，格式: YYYY-MM-DD</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">请求示例</div>
+            <div class="code-block">GET /api/calendar/day-detail?date=2025-10-16</div>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">响应示例</div>
+            <div class="code-block">{
+  "date": "2025-10-16",
+  "tasks": [
+    {
+      "id": "task-001",
+      "title": "完成项目方案",
+      "description": "详细描述...",
+      "status": "in_progress",
+      "priority": "p0",
+      "start_time": "2025-10-16T09:00:00.000Z",
+      "end_time": "2025-10-16T18:00:00.000Z",
+      "department_name": "技术部",
+      "creator_name": "张三"
+    }
+  ],
+  "logs": [
+    {
+      "id": "log-001",
+      "title": "工作日志",
+      "content": "今天完成了...",
+      "category": "工作",
+      "is_completed": true,
+      "created_at": "2025-10-16T10:30:00.000Z"
+    }
+  ],
+  "summary": {
+    "totalTasks": 3,
+    "totalLogs": 2,
+    "completedTasks": 1,
+    "completedLogs": 2
+  }
+}</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <div style="margin-bottom: 10px;">
+              <label style="font-size: 13px; margin-right: 10px;">日期:</label>
+              <input type="date" id="calendarDate" value="2025-10-16" style="padding: 5px; border: 1px solid #ddd;">
+            </div>
+            <button class="test-btn" onclick="testCalendarDay(this)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -893,6 +1077,21 @@
         button.disabled = false;
         button.textContent = '发送请求';
       }
+    }
+
+    // 测试月视图日历接口
+    async function testCalendarMonth(button) {
+      const year = document.getElementById('calendarYear').value;
+      const month = document.getElementById('calendarMonth').value;
+      const url = `/api/calendar/month-view?year=${year}&month=${month}`;
+      await testApi(url, 'GET', button, true);
+    }
+
+    // 测试日期详情接口
+    async function testCalendarDay(button) {
+      const date = document.getElementById('calendarDate').value;
+      const url = `/api/calendar/day-detail?date=${date}`;
+      await testApi(url, 'GET', button, true);
     }
 
     // 搜索功能

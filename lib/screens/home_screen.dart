@@ -26,7 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _screens.addAll([
       DashboardScreen(user: widget.user),
-      const ViewScreen(),
+      ViewScreen(user: widget.user),
       LogEnhancedScreen(user: widget.user),
       const AiMapScreen(),
       ProfileScreen(user: widget.user),

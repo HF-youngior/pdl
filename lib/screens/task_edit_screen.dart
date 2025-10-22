@@ -309,72 +309,28 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 优先级（四象限分类）
+              // 任务分类
               const Text('任务分类', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: const Text('重要且紧急'),
-                          subtitle: const Text('需要立即处理'),
-                          value: 'important_urgent',
-                          groupValue: _selectedPriority,
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedPriority = value!;
-                            });
-                          },
-                        ),
-                      ),
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: const Text('重要不紧急'),
-                          subtitle: const Text('需要计划处理'),
-                          value: 'important_not_urgent',
-                          groupValue: _selectedPriority,
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedPriority = value!;
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: const Text('紧急不重要'),
-                          subtitle: const Text('可以委托他人'),
-                          value: 'not_important_urgent',
-                          groupValue: _selectedPriority,
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedPriority = value!;
-                            });
-                          },
-                        ),
-                      ),
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: const Text('不重要不紧急'),
-                          subtitle: const Text('可以延后处理'),
-                          value: 'not_important_not_urgent',
-                          groupValue: _selectedPriority,
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedPriority = value!;
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
+              DropdownButtonFormField<String>(
+                value: _selectedPriority,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'important_urgent', child: Text('工作')),
+                  DropdownMenuItem(value: 'important_not_urgent', child: Text('学习')),
+                  DropdownMenuItem(value: 'not_important_urgent', child: Text('生活')),
+                  DropdownMenuItem(value: 'not_important_not_urgent', child: Text('其他')),
                 ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedPriority = value;
+                    });
+                  }
+                },
               ),
 
               const SizedBox(height: 16),

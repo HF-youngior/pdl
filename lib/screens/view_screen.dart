@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import '../models/user.dart';
 import '../services/task_service.dart';
 import '../widgets/calendar_widget.dart';
 import '../utils/test_data_generator.dart';
@@ -7,7 +8,9 @@ import 'task_edit_screen.dart';
 import 'api_test_screen.dart';
 
 class ViewScreen extends StatefulWidget {
-  const ViewScreen({super.key});
+  final User? user;
+  
+  const ViewScreen({super.key, this.user});
 
   @override
   State<ViewScreen> createState() => _ViewScreenState();
@@ -22,33 +25,10 @@ class _ViewScreenState extends State<ViewScreen> {
   @override
   void initState() {
     super.initState();
-    _loadTasks();
-  }
-
-  Future<void> _loadTasks() async {
-    try {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
-
-      // 获取当前月份的任务
-      final tasks = await TaskService.getTasksByMonth(_currentDate);
-      
-      setState(() {
-        _tasks = tasks;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _refreshTasks() async {
-    await _loadTasks();
+    // 月视图现在使用新的API，不需要在这里加载任务数据
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   void _onDateSelected(DateTime date) {
@@ -285,8 +265,6 @@ class _ViewScreenState extends State<ViewScreen> {
         await TaskService.updateTask(task.id, task);
       }
       
-      await _refreshTasks();
-      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -434,7 +412,6 @@ class _ViewScreenState extends State<ViewScreen> {
   Future<void> _deleteTask(Task task) async {
     try {
       await TaskService.deleteTask(task.id);
-      await _refreshTasks();
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -464,15 +441,15 @@ class _ViewScreenState extends State<ViewScreen> {
   String _getPriorityText(String priority) {
     switch (priority) {
       case 'important_urgent':
-        return '重要且紧急';
+        return '工作';
       case 'important_not_urgent':
-        return '重要不紧急';
+        return '学习';
       case 'not_important_urgent':
-        return '紧急不重要';
+        return '生活';
       case 'not_important_not_urgent':
-        return '不重要不紧急';
+        return '其他';
       default:
-        return '重要不紧急';
+        return '学习';
     }
   }
 
@@ -527,10 +504,6 @@ class _ViewScreenState extends State<ViewScreen> {
             icon: const Icon(Icons.network_check),
             tooltip: 'API测试',
           ),
-          IconButton(
-            onPressed: _refreshTasks,
-            icon: const Icon(Icons.refresh),
-          ),
         ],
       ),
       body: _buildBody(),
@@ -538,52 +511,13 @@ class _ViewScreenState extends State<ViewScreen> {
   }
 
   Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Colors.red,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '加载失败',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _error!,
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _refreshTasks,
-              child: const Text('重试'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _refreshTasks,
-      child: CalendarWidget(
-        tasks: _tasks,
-        currentDate: _currentDate,
-        onDateSelected: _onDateSelected,
-        onTaskSelected: _onTaskSelected,
-        onTaskAdd: _onTaskAdd,
-      ),
+    return CalendarWidget(
+      tasks: _tasks, // 保留兼容性，但月视图不再使用这个数据
+      currentDate: _currentDate,
+      onDateSelected: _onDateSelected,
+      onTaskSelected: _onTaskSelected,
+      onTaskAdd: _onTaskAdd,
+      user: widget.user,
     );
   }
 }
