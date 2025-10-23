@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
-import '../models/user.dart';
 import '../services/calendar_service.dart';
-import '../services/api_service.dart';
-import '../services/task_service.dart';
-import '../models/log.dart';
 
 enum CalendarView { month, week, day }
 
@@ -14,7 +10,7 @@ class CalendarWidget extends StatefulWidget {
   final Function(DateTime) onDateSelected;
   final Function(Task) onTaskSelected;
   final Function(DateTime) onTaskAdd;
-  final User? user;
+  final Function(DateTime) onLogAdd;
 
   const CalendarWidget({
     super.key,
@@ -23,7 +19,7 @@ class CalendarWidget extends StatefulWidget {
     required this.onDateSelected,
     required this.onTaskSelected,
     required this.onTaskAdd,
-    this.user,
+    required this.onLogAdd,
   });
 
   @override
@@ -34,6 +30,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   CalendarView _currentView = CalendarView.month;
   DateTime _currentDate = DateTime.now();
   MonthViewData? _monthViewData;
+  Map<String, DayDetailData> _weekViewData = {}; // 周视图数据
   bool _isLoading = false;
   String? _error;
 
@@ -60,6 +57,8 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     // 如果切换到月视图，加载数据
     if (view == CalendarView.month) {
       _loadMonthViewData();
+    } else if (view == CalendarView.week) {
+      _loadWeekViewData();
     }
   }
 
@@ -82,8 +81,10 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     if (_currentView == CalendarView.month) {
       _loadMonthViewData(showToast: true);
       // 月视图切换时不触发日期选择事件，避免弹出浮窗
+    } else if (_currentView == CalendarView.week) {
+      _loadWeekViewData();
     } else {
-      // 周视图和日视图切换时才触发日期选择事件
+      // 日视图切换时才触发日期选择事件
       widget.onDateSelected(_currentDate);
     }
   }
@@ -136,6 +137,39 @@ class _CalendarWidgetState extends State<CalendarWidget> {
           ),
         );
       }
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadWeekViewData() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final weekStart = _getWeekStart(_currentDate);
+      final weekDays = List.generate(7, (index) => weekStart.add(Duration(days: index)));
+      
+      // 并行加载一周的数据
+      final futures = weekDays.map((day) => CalendarService.getDayDetail(day));
+      final results = await Future.wait(futures);
+      
+      // 存储到map中
+      final Map<String, DayDetailData> dataMap = {};
+      for (int i = 0; i < weekDays.length; i++) {
+        final dateKey = '${weekDays[i].year}-${weekDays[i].month.toString().padLeft(2, '0')}-${weekDays[i].day.toString().padLeft(2, '0')}';
+        dataMap[dateKey] = results[i];
+      }
+      
+      setState(() {
+        _weekViewData = dataMap;
+        _isLoading = false;
+      });
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -376,6 +410,11 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     final weekStart = _getWeekStart(_currentDate);
     final weekDays = List.generate(7, (index) => weekStart.add(Duration(days: index)));
 
+    // 如果正在加载，显示加载指示器
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return Column(
       children: [
         // 星期标题
@@ -408,10 +447,12 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         Expanded(
           child: Row(
             children: weekDays.map((day) {
-              final dayTasks = _getTasksForDay(day);
+              final dateKey = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+              final dayData = _weekViewData[dateKey];
+              
               return Expanded(
                 child: GestureDetector(
-                  onTap: () => widget.onDateSelected(day),
+                  onTap: () => _onDateTapped(day),
                   onLongPress: () => widget.onTaskAdd(day),
                   child: Container(
                     margin: const EdgeInsets.symmetric(horizontal: 1),
@@ -419,33 +460,58 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                       border: Border.all(color: Colors.grey.shade300),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: ListView.builder(
-                      itemCount: dayTasks.length,
-                      itemBuilder: (context, index) {
-                        final task = dayTasks[index];
-                        return GestureDetector(
-                          onTap: () => widget.onTaskSelected(task),
-                          child: Container(
-                            margin: const EdgeInsets.all(2),
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: task.status == 'completed' ? Colors.grey : _parseColor(task.color),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              task.title,
-                              style: TextStyle(
-                                color: task.status == 'completed' ? Colors.white70 : Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                decoration: task.status == 'completed' ? TextDecoration.lineThrough : null,
+                    child: dayData == null 
+                      ? const Center(child: Text(''))
+                      : ListView(
+                          padding: const EdgeInsets.all(2),
+                          children: [
+                            // 任务列表
+                            ...dayData.tasks.map((task) => GestureDetector(
+                              onTap: () => _onDateTapped(day),
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(vertical: 2),
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: task.status == 'completed' ? Colors.grey : _getTaskColor(task),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  task.title,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    decoration: task.status == 'completed' ? TextDecoration.lineThrough : null,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                            )),
+                            // 日志列表
+                            ...dayData.logs.map((log) => GestureDetector(
+                              onTap: () => _onDateTapped(day),
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(vertical: 2),
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: _getLogColor(log),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  log.title,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )),
+                          ],
+                        ),
                   ),
                 ),
               );
@@ -519,7 +585,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
           height: duration * 60,
           margin: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
-            color: task.status == 'completed' ? Colors.grey : _parseColor(task.color),
+            color: task.status == 'completed' ? Colors.grey : Colors.red.shade300,
             borderRadius: BorderRadius.circular(4),
           ),
           child: Padding(
@@ -710,7 +776,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                 width: 4,
                                 height: 20,
                                 decoration: BoxDecoration(
-                                  color: Colors.blue,
+                                  color: Colors.red.shade300,
                                   borderRadius: BorderRadius.circular(2),
                                 ),
                               ),
@@ -973,19 +1039,19 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                         child: ElevatedButton.icon(
                           onPressed: () {
                             Navigator.of(context).pop();
-                            _showAddLogDialog(context, day);
+                            widget.onTaskAdd(day);
                           },
                           style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            backgroundColor: Colors.green,
+                            backgroundColor: Colors.blue,
                             foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          icon: const Icon(Icons.edit_note),
+                          icon: const Icon(Icons.add_task),
                           label: const Text(
-                            '创建日志',
+                            '添加任务',
                             style: TextStyle(fontSize: 16),
                           ),
                         ),
@@ -995,17 +1061,19 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                         child: ElevatedButton.icon(
                           onPressed: () {
                             Navigator.of(context).pop();
-                            widget.onTaskAdd(day);
+                            widget.onLogAdd(day);
                           },
                           style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          icon: const Icon(Icons.add_task),
+                          icon: const Icon(Icons.edit_note),
                           label: const Text(
-                            '创建任务',
+                            '添加日志',
                             style: TextStyle(fontSize: 16),
                           ),
                         ),
@@ -1032,21 +1100,21 @@ class _CalendarWidgetState extends State<CalendarWidget> {
 
   // 获取任务颜色
   Color _getTaskColor(CalendarTask task) {
-    if (task.color != null) {
-      return _parseColor(task.color!);
-    }
-    return Colors.blue;
+    // 统一使用浅红色显示任务，与绿色的学习日志区分
+    return Colors.red.shade300;
   }
 
   // 获取日志颜色
   Color _getLogColor(CalendarLog log) {
-    switch (log.category) {
+    switch (log.category.toLowerCase()) {
       case 'work':
-        return Colors.green;
-      case 'personal':
-        return Colors.orange;
+        return Colors.blue; // 工作 - 蓝色
+      case 'meeting':
+        return Colors.purple; // 会议 - 紫色
       case 'learning':
-        return Colors.purple;
+        return Colors.green; // 学习 - 绿色
+      case 'personal':
+        return Colors.orange; // 个人 - 橙色
       default:
         return Colors.grey;
     }
@@ -1094,13 +1162,15 @@ class _CalendarWidgetState extends State<CalendarWidget> {
 
   // 获取分类文本
   String _getCategoryText(String category) {
-    switch (category) {
+    switch (category.toLowerCase()) {
       case 'work':
         return '工作';
-      case 'personal':
-        return '个人';
+      case 'meeting':
+        return '会议';
       case 'learning':
         return '学习';
+      case 'personal':
+        return '个人';
       default:
         return '其他';
     }
@@ -1546,638 +1616,4 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       }
     }
   }
-
-  // 显示添加日志对话框
-  void _showAddLogDialog(BuildContext context, DateTime day) {
-    if (widget.user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('用户信息不可用'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => _AddLogDialog(
-        user: widget.user!,
-        tasks: widget.tasks,
-        selectedDate: day,
-        onLogAdded: () {
-          // 重新加载月视图数据
-          if (_currentView == CalendarView.month) {
-            _loadMonthViewData();
-          }
-        },
-      ),
-    );
-  }
-}
-
-// 添加日志对话框
-class _AddLogDialog extends StatefulWidget {
-  final User user;
-  final List<Task> tasks;
-  final DateTime selectedDate;
-  final VoidCallback onLogAdded;
-
-  const _AddLogDialog({
-    required this.user,
-    required this.tasks,
-    required this.selectedDate,
-    required this.onLogAdded,
-  });
-
-  @override
-  State<_AddLogDialog> createState() => _AddLogDialogState();
-}
-
-class _AddLogDialogState extends State<_AddLogDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _actionController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  
-  String _selectedCategory = 'work';
-  String _selectedQuadrant = 'important_not_urgent';
-  String? _selectedTaskId;
-  DateTime? _selectedDate;
-  String _selectedWeather = 'sunny';
-  final List<String> _keywords = [];
-  final TextEditingController _keywordInputController = TextEditingController();
-  final Map<String, _AssociatedTaskEdit> _selectedTaskEdits = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedDate = widget.selectedDate;
-  }
-
-  @override
-  void dispose() {
-    _actionController.dispose();
-    _descriptionController.dispose();
-    _keywordInputController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _saveLog() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    try {
-      final log = Log(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        userId: widget.user.id,
-        userName: widget.user.name,
-        action: _actionController.text.trim().isEmpty ? '个人日志' : _actionController.text.trim(),
-        description: _buildLogDescription(),
-        category: _selectedCategory,
-        quadrant: _selectedQuadrant,
-        createdAt: DateTime(
-          _selectedDate!.year,
-          _selectedDate!.month,
-          _selectedDate!.day,
-          DateTime.now().hour,
-          DateTime.now().minute,
-        ),
-        relatedTaskId: _selectedTaskEdits.isNotEmpty ? _selectedTaskEdits.keys.first : _selectedTaskId,
-        metadata: {
-          'weather': _selectedWeather,
-          'keywords': _keywords,
-        },
-      );
-
-      final success = await ApiService.createLog(log);
-      
-      if (success) {
-        for (final edit in _selectedTaskEdits.values) {
-          try {
-            await TaskService.updateTaskStatus(
-              edit.taskId,
-              status: edit.status,
-              progressPercentage: edit.progress,
-              specialNotes: null,
-            );
-          } catch (e) {
-            // 继续
-          }
-        }
-        if (mounted) {
-          Navigator.of(context).pop();
-          widget.onLogAdded();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('日志添加成功'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } else {
-        throw Exception('保存失败');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('添加失败: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  String _buildLogDescription() {
-    final parts = <String>[];
-    if (_keywords.isNotEmpty) {
-      parts.add('关键词: ${_keywords.join(', ')}');
-    }
-    parts.add(_descriptionController.text.trim());
-    return parts.where((e) => e.isNotEmpty).join('\n\n');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.9,
-        height: MediaQuery.of(context).size.height * 0.8,
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    '添加日志',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildDatePickerCard(context),
-                          ),
-                          const SizedBox(width: 12),
-                          _buildWeatherPickerButton(context),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _buildKeywordsInputArea(),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _descriptionController,
-                        decoration: const InputDecoration(
-                          labelText: '详细描述',
-                          border: OutlineInputBorder(),
-                          hintText: '今天也辛苦啦~',
-                        ),
-                        maxLines: 3,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return '请输入详细描述';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      _buildAssociateTaskSelector(context),
-                      const SizedBox(height: 8),
-                      _buildAssociatedTaskList(),
-                    ],
-                  ),
-                ),
-              ),
-              
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('取消'),
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton(
-                    onPressed: _saveLog,
-                    child: const Text('保存'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDatePickerCard(BuildContext context) {
-    return InkWell(
-      onTap: () async {
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: _selectedDate!,
-          firstDate: DateTime(2020),
-          lastDate: DateTime(2030),
-        );
-        if (picked != null) {
-          setState(() {
-            _selectedDate = picked;
-          });
-        }
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.blue.withOpacity(0.06),
-          border: Border.all(color: Colors.blue.withOpacity(0.2)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.calendar_today, size: 18, color: Colors.blue),
-            const SizedBox(width: 8),
-            Text(
-              '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWeatherPickerButton(BuildContext context) {
-    return InkWell(
-      onTap: () async {
-        final value = await showModalBottomSheet<String>(
-          context: context,
-          builder: (ctx) {
-            return SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildWeatherOption(ctx, 'sunny', '晴朗', '☀️'),
-                  _buildWeatherOption(ctx, 'cloudy', '多云', '⛅'),
-                  _buildWeatherOption(ctx, 'light_rain', '小雨', '🌧️'),
-                  _buildWeatherOption(ctx, 'heavy_rain', '大雨', '⛈️'),
-                  _buildWeatherOption(ctx, 'snow', '下雪', '❄️'),
-                  _buildWeatherOption(ctx, 'storm', '雷暴', '⚡'),
-                  _buildWeatherOption(ctx, 'fog', '多雾', '🌫️'),
-                ],
-              ),
-            );
-          },
-        );
-        if (value != null) {
-          setState(() {
-            _selectedWeather = value;
-          });
-        }
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.orange.withOpacity(0.06),
-          border: Border.all(color: Colors.orange.withOpacity(0.2)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _weatherEmoji(_selectedWeather),
-              style: const TextStyle(fontSize: 18),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWeatherOption(BuildContext context, String value, String label, String emoji) {
-    return ListTile(
-      leading: Text(emoji, style: const TextStyle(fontSize: 18)),
-      title: Text(label),
-      onTap: () => Navigator.of(context).pop(value),
-    );
-  }
-
-  String _weatherEmoji(String value) {
-    switch (value) {
-      case 'sunny':
-        return '☀️';
-      case 'cloudy':
-        return '⛅';
-      case 'light_rain':
-        return '🌧️';
-      case 'heavy_rain':
-        return '⛈️';
-      case 'snow':
-        return '❄️';
-      case 'storm':
-        return '⚡';
-      case 'fog':
-        return '🌫️';
-      default:
-        return '☀️';
-    }
-  }
-
-  Widget _buildKeywordsInputArea() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _keywordInputController,
-                decoration: InputDecoration(
-                  labelText: _keywords.length < 3 ? '添加关键词' : null,
-                  hintText: _keywords.length >= 3 ? '够了够了 三个能概括' : null,
-                  border: const OutlineInputBorder(),
-                ),
-                onSubmitted: (_) => _addKeyword(),
-                enabled: _keywords.length < 3,
-              ),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: _addKeyword,
-              child: const Text('添加'),
-            )
-          ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          children: _keywords
-              .map((k) => Chip(
-                    label: Text(k),
-                    onDeleted: () {
-                      setState(() {
-                        _keywords.remove(k);
-                      });
-                    },
-                  ))
-              .toList(),
-        ),
-      ],
-    );
-  }
-
-  void _addKeyword() {
-    final value = _keywordInputController.text.trim();
-    if (value.isEmpty) return;
-    if (_keywords.length >= 3) return;
-    if (_keywords.contains(value)) return;
-    setState(() {
-      _keywords.add(value);
-      _keywordInputController.clear();
-    });
-  }
-
-  Widget _buildAssociateTaskSelector(BuildContext context) {
-    final taskItems = widget.tasks
-        .where((t) => t.status == 'in_progress' || t.status == 'completed')
-        .toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.link, size: 18),
-            const SizedBox(width: 6),
-            const Text('关联任务'),
-            const Spacer(),
-            Text('${_selectedTaskEdits.length} 已关联'),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Autocomplete<Task>(
-          optionsBuilder: (textEditingValue) {
-            final q = textEditingValue.text.toLowerCase();
-            return taskItems.where((t) => t.title.toLowerCase().contains(q));
-          },
-          displayStringForOption: (t) => t.title,
-          onSelected: (task) {
-            setState(() {
-              _selectedTaskEdits.putIfAbsent(
-                task.id,
-                () => _AssociatedTaskEdit(
-                  taskId: task.id,
-                  title: task.title,
-                  priority: task.priority,
-                  deadline: task.deadline,
-                  progress: 0,
-                  status: task.status,
-                ),
-              );
-            });
-          },
-          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-            return TextField(
-              controller: controller,
-              focusNode: focusNode,
-              decoration: const InputDecoration(
-                hintText: '搜索任务标题...',
-                border: OutlineInputBorder(),
-              ),
-            );
-          },
-          optionsViewBuilder: (context, onSelected, options) {
-            return Align(
-              alignment: Alignment.topLeft,
-              child: Material(
-                elevation: 4,
-                child: SizedBox(
-                  height: 200,
-                  child: ListView.builder(
-                    padding: EdgeInsets.zero,
-                    itemCount: options.length,
-                    itemBuilder: (context, index) {
-                      final t = options.elementAt(index);
-                      return ListTile(
-                        title: Text(t.title),
-                        subtitle: Text('优先级: ${t.priority}  截止: ${t.deadline != null ? _fmtDate(t.deadline!) : '无'}'),
-                        onTap: () => onSelected(t),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAssociatedTaskList() {
-    if (_selectedTaskEdits.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.grey.withOpacity(0.05),
-          border: Border.all(color: Colors.grey.withOpacity(0.2)),
-        ),
-        child: const Align(
-          alignment: Alignment.centerLeft,
-          child: Text('尚未关联任务'),
-        ),
-      );
-    }
-    final edits = _selectedTaskEdits.values.toList();
-    return Column(
-      children: edits.map((e) => _buildTaskEditCard(e)).toList(),
-    );
-  }
-
-  Widget _buildTaskEditCard(_AssociatedTaskEdit edit) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(edit.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                IconButton(
-                  tooltip: '移除',
-                  onPressed: () {
-                    setState(() {
-                      _selectedTaskEdits.remove(edit.taskId);
-                    });
-                  },
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                _buildTag('优先级: ${edit.priority.toUpperCase()}'),
-                const SizedBox(width: 8),
-                _buildTag('截止: ${edit.deadline != null ? _fmtDate(edit.deadline!) : '无'}'),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Text('完成进度'),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Slider(
-                    value: (edit.progress ?? 0).toDouble(),
-                    min: 0,
-                    max: 100,
-                    divisions: 20,
-                    label: '${edit.progress ?? 0}%',
-                    onChanged: (v) {
-                      setState(() {
-                        edit.progress = v.round();
-                      });
-                    },
-                  ),
-                ),
-                SizedBox(
-                  width: 48,
-                  child: Text('${edit.progress ?? 0}%'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Text('任务状态'),
-                const SizedBox(width: 12),
-                DropdownButton<String>(
-                  value: edit.status,
-                  items: const [
-                    DropdownMenuItem(value: 'in_progress', child: Text('进行中')),
-                    DropdownMenuItem(value: 'completed', child: Text('已完成')),
-                    DropdownMenuItem(value: 'cancelled', child: Text('已中断')),
-                  ],
-                  onChanged: (v) {
-                    if (v == null) return;
-                    setState(() {
-                      edit.status = v;
-                      if (v == 'completed') {
-                        edit.progress = 100;
-                      }
-                    });
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTag(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(text, style: const TextStyle(fontSize: 12)),
-    );
-  }
-
-  String _fmtDate(DateTime d) {
-    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-  }
-}
-
-class _AssociatedTaskEdit {
-  final String taskId;
-  final String title;
-  final String priority;
-  final DateTime? deadline;
-  int? progress;
-  String status;
-
-  _AssociatedTaskEdit({
-    required this.taskId,
-    required this.title,
-    required this.priority,
-    required this.deadline,
-    required this.progress,
-    required this.status,
-  });
 }

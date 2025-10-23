@@ -6,24 +6,30 @@ import '../widgets/calendar_widget.dart';
 import '../utils/test_data_generator.dart';
 import 'task_edit_screen.dart';
 import 'api_test_screen.dart';
+import 'log_edit_screen.dart';
 
 class ViewScreen extends StatefulWidget {
-  final User? user;
+  final User user;
   
-  const ViewScreen({super.key, this.user});
+  const ViewScreen({super.key, required this.user});
 
   @override
   State<ViewScreen> createState() => _ViewScreenState();
 }
 
 class _ViewScreenState extends State<ViewScreen> {
-  final List<Task> _tasks = [];
+  List<Task> _tasks = [];
   DateTime _currentDate = DateTime.now();
+  bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     // 月视图现在使用新的API，不需要在这里加载任务数据
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   void _onDateSelected(DateTime date) {
@@ -223,6 +229,17 @@ class _ViewScreenState extends State<ViewScreen> {
         builder: (context) => TaskEditScreen(
           initialDate: date,
           onSave: _saveTask,
+        ),
+      ),
+    );
+  }
+
+  void _onLogAdd(DateTime date) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => LogEditScreen(
+          user: widget.user,
+          initialDate: date,
         ),
       ),
     );
@@ -436,15 +453,15 @@ class _ViewScreenState extends State<ViewScreen> {
   String _getPriorityText(String priority) {
     switch (priority) {
       case 'important_urgent':
-        return '重要且紧急';
+        return '工作';
       case 'important_not_urgent':
-        return '重要不紧急';
+        return '学习';
       case 'not_important_urgent':
-        return '紧急不重要';
+        return '生活';
       case 'not_important_not_urgent':
-        return '不重要不紧急';
+        return '其他';
       default:
-        return '重要不紧急';
+        return '学习';
     }
   }
 
@@ -508,11 +525,11 @@ class _ViewScreenState extends State<ViewScreen> {
   Widget _buildBody() {
     return CalendarWidget(
       tasks: _tasks, // 保留兼容性，但月视图不再使用这个数据
-      user: widget.user,
       currentDate: _currentDate,
       onDateSelected: _onDateSelected,
       onTaskSelected: _onTaskSelected,
       onTaskAdd: _onTaskAdd,
+      onLogAdd: _onLogAdd,
     );
   }
 }
