@@ -4,6 +4,8 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
+const { useDefault, Segment } = require('segmentit');
+const segmenter = useDefault(new Segment());
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -853,3 +855,93 @@ async function startServer() {
 }
 
 startServer().catch(console.error);
+
+// ================= AI 文本分析（基础版） =================
+// 提取关键词和词频统计
+app.post('/api/ai/analyze-log', async (req, res) => {
+  try {
+    const { text, topK = 20 } = req.body || {};
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ error: 'text 不能为空' });
+    }
+
+    // 使用 segmentit 分词（纯JS实现，无需编译）
+    const tokens = segmenter.doSegment(text, { simple: true })
+      .filter(w => w && w.trim().length > 1);
+    const freqMap = {};
+    for (const w of tokens) {
+      freqMap[w] = (freqMap[w] || 0) + 1;
+    }
+    const wordFrequencies = Object.entries(freqMap)
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, topK);
+
+    // 用频次代替简易“权重”，并归一化一个权重字段
+    const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
+    const keywords = wordFrequencies.map(x => ({ word: x.word, weight: x.count / (maxCount || 1) }));
+
+    return res.json({
+      keywords,
+      wordFrequencies
+    });
+  } catch (e) {
+    console.error('AI分析失败:', e);
+    return res.status(500).json({ error: 'AI分析失败' });
+  }
+});
+
+// 基于当天个人日志的一键分析（需登录）
+app.get('/api/ai/analyze-today', authenticateToken, async (req, res) => {
+  try {
+    const { topK = 20 } = req.query;
+    const userId = req.user.id;
+
+    // 查询当天该用户的个人日志（title+content）
+    let [rows] = await db.execute(
+      `SELECT title, content
+       FROM personal_logs
+       WHERE user_id = ?
+         AND DATE(created_at) = CURDATE()`,
+      [userId]
+    );
+    let usedRange = 'today';
+
+    if (!rows || rows.length === 0) {
+      const [rows7] = await db.execute(
+        `SELECT title, content
+         FROM personal_logs
+         WHERE user_id = ?
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`,
+        [userId]
+      );
+      rows = rows7 || [];
+      usedRange = 'last7days';
+    }
+
+    if (!rows || rows.length === 0) {
+      return res.json({ keywords: [], wordFrequencies: [], range: usedRange });
+    }
+
+    const combined = rows.map(r => `${r.title || ''} ${r.content || ''}`).join(' \n ');
+    const tokens = segmenter.doSegment(combined, { simple: true })
+      .filter(w => w && w.trim().length > 1);
+
+    const freqMap = {};
+    for (const w of tokens) {
+      freqMap[w] = (freqMap[w] || 0) + 1;
+    }
+    const wordFrequencies = Object.entries(freqMap)
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, Number(topK));
+
+    const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
+    const keywords = wordFrequencies.map(x => ({ word: x.word, weight: x.count / (maxCount || 1) }));
+
+    return res.json({ keywords, wordFrequencies, range: usedRange });
+  } catch (e) {
+    console.error('AI当天日志分析失败:', e);
+    return res.status(500).json({ error: 'AI当天日志分析失败' });
+  }
+});

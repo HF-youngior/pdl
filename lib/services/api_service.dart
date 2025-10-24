@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/important_item.dart';
@@ -8,7 +10,19 @@ import '../models/log.dart';
 import 'task_service.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.0.2.2:8080/api';
+  // Dynamically resolve host/port for different platforms
+  static String get _host {
+    if (kIsWeb) return '127.0.0.1';
+    try {
+      if (Platform.isAndroid) return '10.0.2.2';
+    } catch (_) {
+      // Platform not available (e.g., web); fall through
+    }
+    return '127.0.0.1';
+  }
+
+  static const int _port = 8080; // Align with backend currently running on 8080
+  static String get baseUrl => 'http://'+_host+':'+_port.toString()+'/api';
   static String? _authToken;
   
   // 设置认证token
@@ -28,6 +42,11 @@ class ApiService {
       headers['Authorization'] = 'Bearer $_authToken';
     }
     return headers;
+  }
+
+  // 暴露公共方法给其他服务复用鉴权头
+  static Map<String, String> getAuthHeaders() {
+    return _getAuthHeaders();
   }
   
   // 用户认证
