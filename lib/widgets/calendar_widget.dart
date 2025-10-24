@@ -1,22 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/task.dart';
-
-enum CalendarView { month, week, day }
 
 class CalendarWidget extends StatefulWidget {
   final List<Task> tasks;
-  final DateTime currentDate;
   final Function(DateTime) onDateSelected;
   final Function(Task) onTaskSelected;
-  final Function(DateTime) onTaskAdd;
+  final DateTime? selectedDate;
 
   const CalendarWidget({
     super.key,
     required this.tasks,
-    required this.currentDate,
     required this.onDateSelected,
     required this.onTaskSelected,
-    required this.onTaskAdd,
+    this.selectedDate,
   });
 
   @override
@@ -24,478 +21,357 @@ class CalendarWidget extends StatefulWidget {
 }
 
 class _CalendarWidgetState extends State<CalendarWidget> {
-  CalendarView _currentView = CalendarView.month;
-  DateTime _currentDate = DateTime.now();
+  late DateTime _currentMonth;
+  late DateTime _selectedDate;
 
   @override
   void initState() {
     super.initState();
-    _currentDate = widget.currentDate;
+    _currentMonth = DateTime.now();
+    _selectedDate = widget.selectedDate ?? DateTime.now();
   }
 
   @override
   void didUpdateWidget(CalendarWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.currentDate != widget.currentDate) {
-      _currentDate = widget.currentDate;
+    if (widget.selectedDate != oldWidget.selectedDate) {
+      _selectedDate = widget.selectedDate ?? DateTime.now();
     }
   }
 
-  void _changeView(CalendarView view) {
-    setState(() {
-      _currentView = view;
-    });
+  // 获取指定日期的任务
+  List<Task> _getTasksForDate(DateTime date) {
+    return widget.tasks.where((task) {
+      final taskDate = DateTime(task.startTime.year, task.startTime.month, task.startTime.day);
+      final targetDate = DateTime(date.year, date.month, date.day);
+      return taskDate.isAtSameMomentAs(targetDate);
+    }).toList();
   }
 
-  void _navigateDate(int days) {
-    setState(() {
-      switch (_currentView) {
-        case CalendarView.month:
-          _currentDate = DateTime(_currentDate.year, _currentDate.month + days);
-          break;
-        case CalendarView.week:
-          _currentDate = _currentDate.add(Duration(days: days * 7));
-          break;
-        case CalendarView.day:
-          _currentDate = _currentDate.add(Duration(days: days));
-          break;
-      }
-    });
-    widget.onDateSelected(_currentDate);
-  }
+  // 构建日历网格
+  Widget _buildCalendarGrid() {
+    final firstDayOfMonth = DateTime(_currentMonth.year, _currentMonth.month, 1);
+    final lastDayOfMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0);
+    final firstWeekday = firstDayOfMonth.weekday;
+    final daysInMonth = lastDayOfMonth.day;
 
-  Widget _buildViewSelector() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        _buildViewButton('月', CalendarView.month),
-        const SizedBox(width: 8),
-        _buildViewButton('周', CalendarView.week),
-        const SizedBox(width: 8),
-        _buildViewButton('日', CalendarView.day),
-      ],
+    // 生成日历数据
+    List<Widget> calendarDays = [];
+
+    // 添加星期标题
+    final weekDays = ['一', '二', '三', '四', '五', '六', '日'];
+    for (int i = 0; i < 7; i++) {
+      calendarDays.add(
+        Container(
+          height: 40,
+          alignment: Alignment.center,
+          child: Text(
+            weekDays[i],
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 添加空白日期（上个月的末尾日期）
+    for (int i = 1; i < firstWeekday; i++) {
+      calendarDays.add(Container());
+    }
+
+    // 添加当月的日期
+    for (int day = 1; day <= daysInMonth; day++) {
+      final date = DateTime(_currentMonth.year, _currentMonth.month, day);
+      final tasksForDate = _getTasksForDate(date);
+      final isSelected = date.year == _selectedDate.year &&
+                        date.month == _selectedDate.month &&
+                        date.day == _selectedDate.day;
+      final isToday = date.year == DateTime.now().year &&
+                     date.month == DateTime.now().month &&
+                     date.day == DateTime.now().day;
+
+      calendarDays.add(_buildDayCell(date, tasksForDate, isSelected, isToday));
+    }
+
+    return GridView.count(
+      crossAxisCount: 7,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: calendarDays,
     );
   }
 
-  Widget _buildViewButton(String label, CalendarView view) {
-    final isSelected = _currentView == view;
+  // 构建日期单元格
+  Widget _buildDayCell(DateTime date, List<Task> tasks, bool isSelected, bool isToday) {
     return GestureDetector(
-      onTap: () => _changeView(view),
+      onTap: () {
+        setState(() {
+          _selectedDate = date;
+        });
+        widget.onDateSelected(date);
+      },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        margin: const EdgeInsets.all(2),
         decoration: BoxDecoration(
-          color: isSelected ? Theme.of(context).primaryColor : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Theme.of(context).primaryColor,
-            width: 1,
-          ),
+          color: isSelected
+              ? Theme.of(context).primaryColor
+              : isToday
+                  ? Theme.of(context).primaryColor.withOpacity(0.2)
+                  : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: isToday && !isSelected
+              ? Border.all(color: Theme.of(context).primaryColor, width: 2)
+              : null,
         ),
-        child: Text(
-          label,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              date.day.toString(),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: isSelected || isToday ? FontWeight.bold : FontWeight.normal,
+                color: isSelected
+                    ? Colors.white
+                    : isToday
+                        ? Theme.of(context).primaryColor
+                        : Colors.black87,
+              ),
+            ),
+            if (tasks.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              // 任务指示点
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: tasks.take(3).map((task) {
+                  return Container(
+                    width: 4,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(horizontal: 1),
+                    decoration: BoxDecoration(
+                      color: task.getPriorityColor(),
+                      shape: BoxShape.circle,
+                    ),
+                  );
+                }).toList(),
+              ),
+              if (tasks.length > 3)
+                Text(
+                  '+${tasks.length - 3}',
           style: TextStyle(
-            color: isSelected ? Colors.white : Theme.of(context).primaryColor,
-            fontWeight: FontWeight.w500,
+                    fontSize: 8,
+                    color: isSelected ? Colors.white : Colors.grey,
+                  ),
           ),
+            ],
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildNavigationBar() {
-    String title;
-    switch (_currentView) {
-      case CalendarView.month:
-        title = '${_currentDate.year}年${_currentDate.month}月';
-        break;
-      case CalendarView.week:
-        final weekStart = _getWeekStart(_currentDate);
-        final weekEnd = weekStart.add(const Duration(days: 6));
-        title = '${weekStart.month}/${weekStart.day} - ${weekEnd.month}/${weekEnd.day}';
-        break;
-      case CalendarView.day:
-        title = '${_currentDate.year}年${_currentDate.month}月${_currentDate.day}日';
-        break;
-    }
-
+  // 构建月份导航
+  Widget _buildMonthNavigation() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         IconButton(
-          onPressed: () => _navigateDate(-1),
+          onPressed: () {
+            setState(() {
+              _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1);
+            });
+          },
           icon: const Icon(Icons.chevron_left),
         ),
         Text(
-          title,
+          DateFormat('yyyy年MM月').format(_currentMonth),
           style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
         ),
         IconButton(
-          onPressed: () => _navigateDate(1),
+          onPressed: () {
+            setState(() {
+              _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1);
+            });
+          },
           icon: const Icon(Icons.chevron_right),
         ),
       ],
     );
   }
 
-  DateTime _getWeekStart(DateTime date) {
-    final weekday = date.weekday;
-    return date.subtract(Duration(days: weekday - 1));
+  // 构建选中日期的任务列表
+  Widget _buildSelectedDateTasks() {
+    final selectedTasks = _getTasksForDate(_selectedDate);
+    
+    if (selectedTasks.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12), // 减少内边距
+        child: Center(
+          child: Text(
+            '${DateFormat('MM月dd日').format(_selectedDate)} 暂无任务',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 14, // 稍微减小字体
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12), // 减少内边距
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${DateFormat('MM月dd日').format(_selectedDate)} 的任务',
+            style: const TextStyle(
+              fontSize: 14, // 稍微减小字体
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 15), // 减少间距
+          // 使用Expanded包装任务列表，让它在固定高度容器内滚动
+          Expanded(
+            child: ListView.builder(
+              itemCount: selectedTasks.length,
+              itemBuilder: (context, index) {
+                final task = selectedTasks[index];
+                return _buildTaskItem(task);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 构建任务项
+  Widget _buildTaskItem(Task task) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 4), // 减少间距
+      elevation: 1, // 减少阴影
+      child: ListTile(
+        dense: true, // 使用紧凑模式
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), // 减少内边距
+        leading: Container(
+          width: 6, // 减小指示点大小
+          height: 6,
+          decoration: BoxDecoration(
+            color: task.getPriorityColor(),
+            shape: BoxShape.circle,
+          ),
+        ),
+        title: Text(
+          task.title,
+          style: const TextStyle(fontSize: 12), // 减小字体
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (task.description.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                task.description,
+                style: TextStyle(
+                  fontSize: 10, // 减小字体
+                  color: Colors.grey[600],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1), // 减少内边距
+                  decoration: BoxDecoration(
+                    color: task.getStatusColor().withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    task.getStatusText(),
+                    style: TextStyle(
+                      fontSize: 8, // 减小字体
+                      color: task.getStatusColor(),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  task.getPriorityLabel(),
+                  style: TextStyle(
+                    fontSize: 8, // 减小字体
+                    color: task.getPriorityColor(),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        onTap: () => widget.onTaskSelected(task),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // 视图选择器
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: _buildViewSelector(),
-        ),
-        // 导航栏
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: _buildNavigationBar(),
-        ),
-        const SizedBox(height: 16),
-        // 日历内容
-        Expanded(
-          child: _buildCalendarContent(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCalendarContent() {
-    switch (_currentView) {
-      case CalendarView.month:
-        return _buildMonthView();
-      case CalendarView.week:
-        return _buildWeekView();
-      case CalendarView.day:
-        return _buildDayView();
-    }
-  }
-
-  Widget _buildMonthView() {
-    final firstDayOfMonth = DateTime(_currentDate.year, _currentDate.month, 1);
-    final lastDayOfMonth = DateTime(_currentDate.year, _currentDate.month + 1, 0);
-    final firstDayOfWeek = firstDayOfMonth.subtract(Duration(days: firstDayOfMonth.weekday - 1));
-    final lastDayOfWeek = lastDayOfMonth.add(Duration(days: 7 - lastDayOfMonth.weekday));
-
-    final days = <DateTime>[];
-    for (var day = firstDayOfWeek; day.isBefore(lastDayOfWeek.add(const Duration(days: 1))); day = day.add(const Duration(days: 1))) {
-      days.add(day);
-    }
-
-    return Column(
-      children: [
-        // 星期标题
+        // 月份导航
+        _buildMonthNavigation(),
+        
+        const SizedBox(height: 12), // 减少间距
+        
+        // 日历网格
         Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            children: ['一', '二', '三', '四', '五', '六', '日']
-                .map((day) => Expanded(
-                      child: Center(
-                        child: Text(
-                          day,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ))
-                .toList(),
-          ),
-        ),
-        // 日期网格
-        Expanded(
-          child: GridView.builder(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              childAspectRatio: 1.2,
-            ),
-            itemCount: days.length,
-            itemBuilder: (context, index) {
-              final day = days[index];
-              final isCurrentMonth = day.month == _currentDate.month;
-              final isToday = _isSameDay(day, DateTime.now());
-              final dayTasks = _getTasksForDay(day);
-
-              return GestureDetector(
-                onTap: () {
-                  widget.onDateSelected(day);
-                },
-                onLongPress: () => widget.onTaskAdd(day),
-                child: Container(
-                  margin: const EdgeInsets.all(1),
-                  decoration: BoxDecoration(
-                    color: isToday ? Theme.of(context).primaryColor.withOpacity(0.1) : null,
-                    border: isToday ? Border.all(color: Theme.of(context).primaryColor, width: 2) : null,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        '${day.day}',
-                        style: TextStyle(
-                          color: isCurrentMonth ? Colors.black87 : Colors.grey,
-                          fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
-                      Expanded(
-                        child: ListView.builder(
-                          itemCount: dayTasks.length > 3 ? 3 : dayTasks.length,
-                          itemBuilder: (context, taskIndex) {
-                            final task = dayTasks[taskIndex];
-                            return GestureDetector(
-                              onTap: () => widget.onTaskSelected(task),
-                              child: Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: task.status == 'completed' ? Colors.grey : _parseColor(task.color),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  task.title,
-                                  style: TextStyle(
-                                    color: task.status == 'completed' ? Colors.white70 : Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w500,
-                                    decoration: task.status == 'completed' ? TextDecoration.lineThrough : null,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      if (dayTasks.length > 3)
-                        Text(
-                          '+${dayTasks.length - 3}',
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 10,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWeekView() {
-    final weekStart = _getWeekStart(_currentDate);
-    final weekDays = List.generate(7, (index) => weekStart.add(Duration(days: index)));
-
-    return Column(
-      children: [
-        // 星期标题
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            children: weekDays.map((day) {
-              final isToday = _isSameDay(day, DateTime.now());
-              return Expanded(
-                child: Column(
-                  children: [
-                    Text(
-                      '${day.month}/${day.day}',
-                      style: TextStyle(
-                        fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                        color: isToday ? Theme.of(context).primaryColor : Colors.black87,
-                      ),
-                    ),
-                    Text(
-                      ['一', '二', '三', '四', '五', '六', '日'][day.weekday - 1],
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        // 周视图内容
-        Expanded(
-          child: Row(
-            children: weekDays.map((day) {
-              final dayTasks = _getTasksForDay(day);
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => widget.onDateSelected(day),
-                  onLongPress: () => widget.onTaskAdd(day),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 1),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: ListView.builder(
-                      itemCount: dayTasks.length,
-                      itemBuilder: (context, index) {
-                        final task = dayTasks[index];
-                        return GestureDetector(
-                          onTap: () => widget.onTaskSelected(task),
-                          child: Container(
-                            margin: const EdgeInsets.all(2),
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: task.status == 'completed' ? Colors.grey : _parseColor(task.color),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              task.title,
-                              style: TextStyle(
-                                color: task.status == 'completed' ? Colors.white70 : Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                decoration: task.status == 'completed' ? TextDecoration.lineThrough : null,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDayView() {
-    final dayTasks = _getTasksForDay(_currentDate);
-    final hours = List.generate(24, (index) => index);
-
-    return Row(
-      children: [
-        // 时间轴
-        SizedBox(
-          width: 60,
-          child: Column(
-            children: hours.map((hour) {
-              return Container(
-                height: 60,
-                alignment: Alignment.topCenter,
-                child: Text(
-                  '$hour:00',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        // 任务区域
-        Expanded(
-          child: Stack(
-            children: [
-              // 时间网格
-              Column(
-                children: hours.map((hour) {
-                  return Container(
-                    height: 60,
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey.shade200),
-                      ),
-                    ),
-                  );
-                }).toList(),
+          padding: const EdgeInsets.all(12), // 减少内边距
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                spreadRadius: 1,
+                blurRadius: 5,
+                offset: const Offset(0, 2),
               ),
-              // 任务
-              ...dayTasks.map((task) => _buildTaskInDayView(task)),
             ],
           ),
+          child: _buildCalendarGrid(),
+        ),
+        
+        const SizedBox(height: 12), // 减少间距
+        
+        // 选中日期的任务列表 - 增加高度，确保标签完全显示
+        Container(
+          height: 200, // 增加高度，确保选中日期任务标签完全显示
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                spreadRadius: 1,
+                blurRadius: 5,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: _buildSelectedDateTasks(),
         ),
       ],
     );
-  }
-
-  Widget _buildTaskInDayView(Task task) {
-    final startHour = task.startTime.hour + task.startTime.minute / 60.0;
-    final endHour = task.endTime.hour + task.endTime.minute / 60.0;
-    final duration = endHour - startHour;
-
-    return Positioned(
-      top: startHour * 60,
-      left: 0,
-      right: 0,
-      child: GestureDetector(
-        onTap: () => widget.onTaskSelected(task),
-        child: Container(
-          height: duration * 60,
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          decoration: BoxDecoration(
-            color: task.status == 'completed' ? Colors.grey : _parseColor(task.color),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task.title,
-                  style: TextStyle(
-                    color: task.status == 'completed' ? Colors.white70 : Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    decoration: task.status == 'completed' ? TextDecoration.lineThrough : null,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (task.location != null)
-                  Text(
-                    task.location!,
-                    style: TextStyle(
-                      color: task.status == 'completed' ? Colors.white60 : Colors.white70,
-                      fontSize: 10,
-                      decoration: task.status == 'completed' ? TextDecoration.lineThrough : null,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  List<Task> _getTasksForDay(DateTime day) {
-    return widget.tasks.where((task) {
-      return _isSameDay(task.startTime, day) || 
-             _isSameDay(task.endTime, day) ||
-             (task.startTime.isBefore(day) && task.endTime.isAfter(day));
-    }).toList();
-  }
-
-  bool _isSameDay(DateTime date1, DateTime date2) {
-    return date1.year == date2.year &&
-           date1.month == date2.month &&
-           date1.day == date2.day;
-  }
-
-  Color _parseColor(String colorString) {
-    try {
-      return Color(int.parse(colorString.replaceFirst('#', '0xff')));
-    } catch (e) {
-      return Colors.blue; // 默认颜色
-    }
   }
 }
