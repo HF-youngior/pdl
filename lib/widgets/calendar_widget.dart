@@ -31,6 +31,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   DateTime _currentDate = DateTime.now();
   MonthViewData? _monthViewData;
   Map<String, DayDetailData> _weekViewData = {}; // 周视图数据
+  DayDetailData? _dayViewData; // 日视图数据
   bool _isLoading = false;
   String? _error;
 
@@ -59,6 +60,8 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       _loadMonthViewData();
     } else if (view == CalendarView.week) {
       _loadWeekViewData();
+    } else if (view == CalendarView.day) {
+      _loadDayViewData();
     }
   }
 
@@ -77,15 +80,15 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       }
     });
     
-    // 如果是月视图，重新加载数据并显示提示
-    if (_currentView == CalendarView.month) {
+    // 重新加载数据
+    if (_currentView == CalendarView.day) {
+      _loadDayViewData();
+      // 日视图切换日期时不弹出浮窗，只重新加载数据
+    } else if (_currentView == CalendarView.month) {
       _loadMonthViewData(showToast: true);
       // 月视图切换时不触发日期选择事件，避免弹出浮窗
     } else if (_currentView == CalendarView.week) {
       _loadWeekViewData();
-    } else {
-      // 日视图切换时才触发日期选择事件
-      widget.onDateSelected(_currentDate);
     }
   }
 
@@ -168,6 +171,28 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       
       setState(() {
         _weekViewData = dataMap;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  // 加载日视图数据
+  Future<void> _loadDayViewData() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final dayData = await CalendarService.getDayDetail(_currentDate);
+      
+      setState(() {
+        _dayViewData = dayData;
         _isLoading = false;
       });
     } catch (e) {
@@ -523,110 +548,784 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   }
 
   Widget _buildDayView() {
-    final dayTasks = _getTasksForDay(_currentDate);
-    final hours = List.generate(24, (index) => index);
+    // 显示加载状态
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
 
-    return Row(
-      children: [
-        // 时间轴
-        SizedBox(
-          width: 60,
-          child: Column(
-            children: hours.map((hour) {
-              return Container(
-                height: 60,
-                alignment: Alignment.topCenter,
-                child: Text(
-                  '$hour:00',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              );
-            }).toList(),
-          ),
+    // 显示错误状态
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text('加载失败', style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 8),
+            Text(_error!, style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadDayViewData,
+              child: const Text('重试'),
+            ),
+          ],
         ),
-        // 任务区域
-        Expanded(
-          child: Stack(
-            children: [
-              // 时间网格
-              Column(
-                children: hours.map((hour) {
-                  return Container(
-                    height: 60,
+      );
+    }
+
+    // 如果没有数据
+    if (_dayViewData == null) {
+      return const Center(
+        child: Text('暂无数据'),
+      );
+    }
+
+    final dayData = _dayViewData!;
+    
+    // 分离有时间段和无时间段的任务和日志
+    final tasksWithTime = <CalendarTask>[];
+    final tasksWithoutTime = <CalendarTask>[];
+    final logsWithTime = <CalendarLog>[];
+    final logsWithoutTime = <CalendarLog>[];
+    
+    for (final task in dayData.tasks) {
+      // 只有非全天任务且有具体开始和结束时间的才显示在时间轴
+      // 全天任务或没有时间的任务显示在"无具体时间段"区域
+      if (task.startTime != null && task.endTime != null && task.isAllDay == false) {
+        tasksWithTime.add(task);
+      } else {
+        tasksWithoutTime.add(task);
+      }
+    }
+    
+    // 注意：日志当前没有时间字段，所以都算作无时间段
+    logsWithoutTime.addAll(dayData.logs);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. 顶部信息框 - 显示所有任务和日志列表
+          _buildDayInfoCard(dayData),
+          const SizedBox(height: 16),
+          
+          // 2. 今日数据总结框
+          _buildDaySummaryCard(dayData),
+          const SizedBox(height: 16),
+          
+          // 3. 时间轴视图
+          if (tasksWithTime.isNotEmpty || logsWithTime.isNotEmpty) ...[
+            _buildSectionTitle('有具体时间段'),
+            const SizedBox(height: 12),
+            _buildTimelineView(tasksWithTime, logsWithTime),
+            const SizedBox(height: 24),
+          ],
+          
+          // 4. 无时间段区域
+          if (tasksWithoutTime.isNotEmpty || logsWithoutTime.isNotEmpty) ...[
+            _buildSectionTitle('无具体时间段'),
+            const SizedBox(height: 12),
+            _buildNoTimeSection(tasksWithoutTime, logsWithoutTime),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // 顶部信息框 - 显示当天所有任务和日志
+  Widget _buildDayInfoCard(DayDetailData dayData) {
+    return GestureDetector(
+      onTap: () {
+        // 点击信息框弹出详细浮窗
+        _showDayDetail(_currentDate);
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.calendar_today, color: Theme.of(context).primaryColor, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  '${_currentDate.year}年${_currentDate.month}月${_currentDate.day}日',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                if (dayData.tasks.isNotEmpty || dayData.logs.isNotEmpty)
+                  Icon(Icons.touch_app, size: 16, color: Colors.grey[400]),
+              ],
+            ),
+            const Divider(height: 24),
+            
+            // 任务列表 - 显示所有任务
+            if (dayData.tasks.isNotEmpty) ...[
+              Row(
+                children: [
+                  Container(
+                    width: 4,
+                    height: 16,
                     decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey.shade200),
+                      color: Colors.red.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '任务',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${dayData.tasks.length}个',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // 显示所有任务，不省略
+              ...dayData.tasks.map((task) => Padding(
+                padding: const EdgeInsets.only(left: 12, bottom: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      task.status == 'completed' 
+                          ? Icons.check_circle 
+                          : Icons.radio_button_unchecked,
+                      size: 16,
+                      color: task.status == 'completed' 
+                          ? Colors.green 
+                          : Colors.grey,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        task.title,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[800],
+                          decoration: task.status == 'completed' 
+                              ? TextDecoration.lineThrough 
+                              : null,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  );
-                }).toList(),
-              ),
-              // 任务
-              ...dayTasks.map((task) => _buildTaskInDayView(task)),
+                  ],
+                ),
+              )),
+              const SizedBox(height: 12),
             ],
+            
+            // 日志列表 - 显示所有日志
+            if (dayData.logs.isNotEmpty) ...[
+              Row(
+                children: [
+                  Container(
+                    width: 4,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '日志',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${dayData.logs.length}条',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // 显示所有日志，不省略
+              ...dayData.logs.map((log) => Padding(
+                padding: const EdgeInsets.only(left: 12, bottom: 4),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: _getLogColor(log),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        log.title,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[800],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+            ],
+            
+            if (dayData.tasks.isEmpty && dayData.logs.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Text(
+                    '今日暂无任务和日志',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 今日数据总结框
+  Widget _buildDaySummaryCard(DayDetailData dayData) {
+    final completedTasks = dayData.tasks.where((t) => t.status == 'completed').length;
+    final totalTasks = dayData.tasks.length;
+    final completionRate = totalTasks > 0 ? (completedTasks / totalTasks * 100).toStringAsFixed(0) : '0';
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue.shade50, Colors.blue.shade100],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildSummaryItem(
+              icon: Icons.assignment,
+              label: '任务总数',
+              value: totalTasks.toString(),
+              color: Colors.red.shade300,
+            ),
+          ),
+          Container(
+            width: 1,
+            height: 40,
+            color: Colors.grey.shade300,
+          ),
+          Expanded(
+            child: _buildSummaryItem(
+              icon: Icons.check_circle,
+              label: '已完成',
+              value: completedTasks.toString(),
+              color: Colors.green,
+            ),
+          ),
+          Container(
+            width: 1,
+            height: 40,
+            color: Colors.grey.shade300,
+          ),
+          Expanded(
+            child: _buildSummaryItem(
+              icon: Icons.description,
+              label: '日志数',
+              value: dayData.logs.length.toString(),
+              color: Colors.blue,
+            ),
+          ),
+          Container(
+            width: 1,
+            height: 40,
+            color: Colors.grey.shade300,
+          ),
+          Expanded(
+            child: _buildSummaryItem(
+              icon: Icons.trending_up,
+              label: '完成率',
+              value: '$completionRate%',
+              color: Colors.orange,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryItem({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 24),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[800],
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey[600],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildTaskInDayView(Task task) {
-    final startHour = task.startTime.hour + task.startTime.minute / 60.0;
-    final endHour = task.endTime.hour + task.endTime.minute / 60.0;
-    final duration = endHour - startHour;
-
-    return Positioned(
-      top: startHour * 60,
-      left: 0,
-      right: 0,
-      child: GestureDetector(
-        onTap: () => widget.onTaskSelected(task),
-        child: Container(
-          height: duration * 60,
-          margin: const EdgeInsets.symmetric(horizontal: 4),
+  // 区域标题
+  Widget _buildSectionTitle(String title) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 20,
           decoration: BoxDecoration(
-            color: task.status == 'completed' ? Colors.grey : Colors.red.shade300,
-            borderRadius: BorderRadius.circular(4),
+            color: Theme.of(context).primaryColor,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 时间轴视图
+  Widget _buildTimelineView(List<CalendarTask> tasks, List<CalendarLog> logs) {
+    final hours = List.generate(24, (index) => index);
+    
+    return Container(
+      height: 60.0 * 24, // 每小时60像素高度
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // 时间轴
+          Container(
+            width: 60,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              border: Border(
+                right: BorderSide(color: Colors.grey.shade200),
+              ),
+            ),
+            child: Column(
+              children: hours.map((hour) {
+                return Container(
+                  height: 60,
+                  alignment: Alignment.topCenter,
+                  padding: const EdgeInsets.only(top: 4),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey.shade200),
+                    ),
+                  ),
+                  child: Text(
+                    '${hour.toString().padLeft(2, '0')}:00',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          // 任务和日志区域
+          Expanded(
+            child: Stack(
+              children: [
+                // 时间网格背景
+                Column(
+                  children: hours.map((hour) {
+                    return Container(
+                      height: 60,
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Colors.grey.shade200),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                // 任务和日志
+                ...tasks.map((task) => _buildTaskInTimeline(task)),
+                ...logs.map((log) => _buildLogInTimeline(log)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 在时间轴中显示任务
+  Widget _buildTaskInTimeline(CalendarTask task) {
+    if (task.startTime == null || task.endTime == null) {
+      return const SizedBox.shrink();
+    }
+    
+    try {
+      final startTime = DateTime.parse(task.startTime!);
+      final endTime = DateTime.parse(task.endTime!);
+      
+      final startHour = startTime.hour + startTime.minute / 60.0;
+      final endHour = endTime.hour + endTime.minute / 60.0;
+      final duration = endHour - startHour;
+      
+      if (duration <= 0) return const SizedBox.shrink();
+
+      return Positioned(
+        top: startHour * 60,
+        left: 4,
+        right: 4,
+        child: Container(
+          height: duration * 60 - 4,
+          margin: const EdgeInsets.only(bottom: 4),
+          decoration: BoxDecoration(
+            color: task.status == 'completed' 
+                ? Colors.grey.shade300 
+                : Colors.red.shade300,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: task.status == 'completed' 
+                  ? Colors.grey.shade400 
+                  : Colors.red.shade400,
+              width: 1,
+            ),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.all(6),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  task.title,
-                  style: TextStyle(
-                    color: task.status == 'completed' ? Colors.white70 : Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    decoration: task.status == 'completed' ? TextDecoration.lineThrough : null,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (task.location != null)
-                  Text(
-                    task.location!,
-                    style: TextStyle(
-                      color: task.status == 'completed' ? Colors.white60 : Colors.white70,
-                      fontSize: 10,
-                      decoration: task.status == 'completed' ? TextDecoration.lineThrough : null,
+                Row(
+                  children: [
+                    Icon(
+                      task.status == 'completed' 
+                          ? Icons.check_circle 
+                          : Icons.assignment,
+                      size: 12,
+                      color: Colors.white,
                     ),
-                    overflow: TextOverflow.ellipsis,
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        task.title,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          decoration: task.status == 'completed' 
+                              ? TextDecoration.lineThrough 
+                              : null,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')} - ${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 10,
+                  ),
+                ),
+                if (duration * 60 > 50 && task.description.isNotEmpty)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        task.description,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 10,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
               ],
             ),
           ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      return const SizedBox.shrink();
+    }
   }
 
-  List<Task> _getTasksForDay(DateTime day) {
-    return widget.tasks.where((task) {
-      return _isSameDay(task.startTime, day) || 
-             _isSameDay(task.endTime, day) ||
-             (task.startTime.isBefore(day) && task.endTime.isAfter(day));
-    }).toList();
+  // 在时间轴中显示日志
+  Widget _buildLogInTimeline(CalendarLog log) {
+    // 日志当前没有时间字段，所以不在时间轴中显示
+    return const SizedBox.shrink();
+  }
+
+  // 无时间段区域
+  Widget _buildNoTimeSection(List<CalendarTask> tasks, List<CalendarLog> logs) {
+    return Column(
+      children: [
+        // 无时间段的任务
+        if (tasks.isNotEmpty) ...[
+          ...tasks.map((task) => Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: task.status == 'completed' 
+                    ? Colors.grey.shade300 
+                    : Colors.red.shade200,
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.05),
+                  spreadRadius: 1,
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: task.status == 'completed' 
+                        ? Colors.grey.shade300 
+                        : Colors.red.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            task.status == 'completed' 
+                                ? Icons.check_circle 
+                                : Icons.radio_button_unchecked,
+                            size: 16,
+                            color: task.status == 'completed' 
+                                ? Colors.green 
+                                : Colors.grey,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              task.title,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[800],
+                                decoration: task.status == 'completed' 
+                                    ? TextDecoration.lineThrough 
+                                    : null,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (task.description.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          task.description,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )),
+        ],
+        
+        // 无时间段的日志
+        if (logs.isNotEmpty) ...[
+          ...logs.map((log) => Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: _getLogColor(log).withOpacity(0.3),
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.05),
+                  spreadRadius: 1,
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: _getLogColor(log),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _getLogColor(log).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              _getCategoryLabel(log.category),
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: _getLogColor(log),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              log.title,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[800],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (log.content.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          log.content,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )),
+        ],
+      ],
+    );
   }
 
   bool _isSameDay(DateTime date1, DateTime date2) {
@@ -1116,7 +1815,23 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       case 'personal':
         return Colors.orange; // 个人 - 橙色
       default:
-        return Colors.grey;
+        return Colors.lightGreen; // 其他 - 浅绿色
+    }
+  }
+
+  // 获取分类标签
+  String _getCategoryLabel(String category) {
+    switch (category.toLowerCase()) {
+      case 'work':
+        return '工作';
+      case 'meeting':
+        return '会议';
+      case 'learning':
+        return '学习';
+      case 'personal':
+        return '个人';
+      default:
+        return '其他';
     }
   }
 
