@@ -162,6 +162,7 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => TaskEditScreen(
+                      currentUser: widget.user,
                       onSave: _saveTask,
                     ),
                   ),
