@@ -63,7 +63,7 @@ class ApiService {
     }
   }
 
-  // 获取公司重要事项
+  // 获取公司重要事项（已选择的）
   static Future<List<ImportantItem>> getImportantItems() async {
     try {
       final response = await http.get(
@@ -78,6 +78,108 @@ class ApiService {
     } catch (e) {
       print('获取重要事项错误: $e');
       return [];
+    }
+  }
+
+  // 获取所有重要事项（用于编辑）
+  static Future<List<ImportantItem>> getAllImportantItems() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/company-important-items/all'),
+        headers: _getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((item) => ImportantItem.fromJson(item)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('获取所有重要事项错误: $e');
+      return [];
+    }
+  }
+
+  // 批量更新重要事项选择状态
+  static Future<bool> batchUpdateImportantItemsSelection(List<String> selectedIds) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/company-important-items/batch-select'),
+        headers: _getAuthHeaders(),
+        body: jsonEncode({
+          'selectedIds': selectedIds,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('批量更新重要事项选择状态错误: $e');
+      return false;
+    }
+  }
+
+  // 创建重要事项
+  static Future<bool> createImportantItem({
+    required String title,
+    required String description,
+    required String priority,
+    DateTime? deadline,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/company-important-items'),
+        headers: _getAuthHeaders(),
+        body: jsonEncode({
+          'title': title,
+          'description': description,
+          'priority': priority,
+          'deadline': deadline?.toIso8601String(),
+        }),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      print('创建重要事项错误: $e');
+      return false;
+    }
+  }
+
+  // 更新重要事项
+  static Future<bool> updateImportantItem({
+    required String id,
+    required String title,
+    required String description,
+    required String priority,
+    required String status,
+    DateTime? deadline,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/company-important-items/$id'),
+        headers: _getAuthHeaders(),
+        body: jsonEncode({
+          'title': title,
+          'description': description,
+          'priority': priority,
+          'status': status,
+          'deadline': deadline?.toIso8601String(),
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('更新重要事项错误: $e');
+      return false;
+    }
+  }
+
+  // 删除重要事项
+  static Future<bool> deleteImportantItem(String id) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/company-important-items/$id'),
+        headers: _getAuthHeaders(),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('删除重要事项错误: $e');
+      return false;
     }
   }
 

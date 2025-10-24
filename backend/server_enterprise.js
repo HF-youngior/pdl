@@ -1013,6 +1013,88 @@ app.post('/api/company-important-items', authenticateToken, checkPermission(['ad
   }
 });
 
+// 批量更新重要事项选择状态（用于编辑十大事项）
+app.put('/api/company-important-items/batch-select', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { selectedIds } = req.body;
+    
+    if (!Array.isArray(selectedIds)) {
+      return res.status(400).json({ error: 'selectedIds 必须是数组' });
+    }
+
+    // 开始事务
+    await db.query('START TRANSACTION');
+    
+    try {
+      // 首先将所有事项设为未选择
+      await db.execute(
+        'UPDATE company_important_items SET is_selected = FALSE, updated_by = ?',
+        [req.user.id]
+      );
+      
+      // 然后设置选中的事项
+      if (selectedIds.length > 0) {
+        const placeholders = selectedIds.map(() => '?').join(',');
+        await db.execute(
+          `UPDATE company_important_items SET is_selected = TRUE, updated_by = ? WHERE id IN (${placeholders})`,
+          [req.user.id, ...selectedIds]
+        );
+      }
+      
+      // 提交事务
+      await db.query('COMMIT');
+      
+      res.json({ 
+        message: '批量更新成功', 
+        selectedCount: selectedIds.length,
+        totalCount: selectedIds.length
+      });
+    } catch (error) {
+      // 回滚事务
+      await db.query('ROLLBACK');
+      throw error;
+    }
+  } catch (error) {
+    console.error('批量更新重要事项选择状态错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 更新重要事项（编辑内容）
+app.put('/api/company-important-items/:id', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, priority, status, deadline } = req.body;
+
+    await db.execute(
+      'UPDATE company_important_items SET title = ?, description = ?, priority = ?, status = ?, deadline = ?, updated_by = ? WHERE id = ?',
+      [title, description, priority, status, deadline, req.user.id, id]
+    );
+
+    res.json({ message: '更新成功' });
+  } catch (error) {
+    console.error('更新重要事项错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 删除重要事项
+app.delete('/api/company-important-items/:id', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await db.execute(
+      'DELETE FROM company_important_items WHERE id = ?',
+      [id]
+    );
+
+    res.json({ message: '删除成功' });
+  } catch (error) {
+    console.error('删除重要事项错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 获取任务列表（根据权限）
 app.get('/api/tasks', authenticateToken, async (req, res) => {
   try {
