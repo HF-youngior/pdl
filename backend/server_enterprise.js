@@ -3,7 +3,10 @@ const cors = require('cors');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const path = require('path');
 require('dotenv').config();
+const { useDefault, Segment } = require('segmentit');
+const segmenter = useDefault(new Segment());
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -15,6 +18,9 @@ app.use(express.json());
 // 静态文件服务 - 提供Web管理端
 app.use('/web_admin', express.static('../web_admin'));
 
+// 静态文件服务 - 提供公共资源
+app.use('/public', express.static(path.join(__dirname, 'public')));
+
 // 数据库连接
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
@@ -22,7 +28,8 @@ const dbConfig = {
   password: process.env.DB_PASSWORD || 'asdfgh0625YYH',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
-  charset: 'utf8mb4'
+  charset: 'utf8mb4',
+  multipleStatements: true
 };
 
 let db;
@@ -31,6 +38,12 @@ let db;
 async function initDatabase() {
   try {
     db = await mysql.createConnection(dbConfig);
+    
+    // 设置连接字符集
+    await db.query("SET NAMES 'utf8mb4'");
+    await db.query("SET CHARACTER SET utf8mb4");
+    await db.query("SET character_set_connection=utf8mb4");
+    
     console.log('数据库连接成功');
     
     // 创建表
@@ -253,7 +266,175 @@ async function insertSampleData() {
       );
     }
 
-    console.log('示例数据插入成功');
+    // 插入任务数据（2025年10月的测试数据）
+    const tasks = [
+      { 
+        id: 'task-001', 
+        title: '完成Q4季度报告', 
+        description: '整理并提交Q4季度工作总结报告', 
+        assignee_id: 'employee-001',
+        assignee_name: '陈人事专员',
+        department_id: 'dept-001',
+        priority: 'p0',
+        status: 'in_progress',
+        progress_percentage: 60,
+        start_time: '2025-10-15 09:00:00',
+        end_time: '2025-10-15 18:00:00',
+        deadline: '2025-10-20 18:00:00',
+        color: '#FF5722',
+        is_all_day: false,
+        created_by: 'dept-head-001'
+      },
+      { 
+        id: 'task-002', 
+        title: '团队会议准备', 
+        description: '准备下周团队会议的议程和材料', 
+        assignee_id: 'employee-001',
+        assignee_name: '陈人事专员',
+        department_id: 'dept-001',
+        priority: 'p1',
+        status: 'pending',
+        progress_percentage: 0,
+        start_time: '2025-10-18 10:00:00',
+        end_time: '2025-10-18 12:00:00',
+        deadline: '2025-10-18 12:00:00',
+        color: '#2196F3',
+        is_all_day: false,
+        created_by: 'team-leader-001'
+      },
+      { 
+        id: 'task-003', 
+        title: '新员工入职培训', 
+        description: '组织新员工入职培训活动', 
+        assignee_id: 'employee-001',
+        assignee_name: '陈人事专员',
+        department_id: 'dept-001',
+        priority: 'p1',
+        status: 'completed',
+        progress_percentage: 100,
+        start_time: '2025-10-16 14:00:00',
+        end_time: '2025-10-16 17:00:00',
+        deadline: '2025-10-16 17:00:00',
+        color: '#4CAF50',
+        is_all_day: false,
+        created_by: 'dept-head-001',
+        completed_at: '2025-10-16 16:45:00'
+      },
+      { 
+        id: 'task-004', 
+        title: '整理人事档案', 
+        description: '整理和归档本月人事档案', 
+        assignee_id: 'employee-001',
+        assignee_name: '陈人事专员',
+        department_id: 'dept-001',
+        priority: 'p2',
+        status: 'in_progress',
+        progress_percentage: 30,
+        start_time: '2025-10-19 09:00:00',
+        end_time: '2025-10-19 17:00:00',
+        deadline: '2025-10-25 18:00:00',
+        color: '#FFC107',
+        is_all_day: false,
+        created_by: 'team-leader-001'
+      },
+      { 
+        id: 'task-005', 
+        title: '月度考勤统计', 
+        description: '统计本月员工考勤数据', 
+        assignee_id: 'employee-001',
+        assignee_name: '陈人事专员',
+        department_id: 'dept-001',
+        priority: 'p1',
+        status: 'pending',
+        progress_percentage: 0,
+        start_time: '2025-10-25 09:00:00',
+        end_time: '2025-10-25 17:00:00',
+        deadline: '2025-10-31 18:00:00',
+        color: '#9C27B0',
+        is_all_day: false,
+        created_by: 'dept-head-001'
+      }
+    ];
+
+    for (const task of tasks) {
+      await db.execute(
+        `INSERT INTO tasks (id, title, description, assignee_id, assignee_name, department_id, priority, status, 
+         progress_percentage, start_time, end_time, deadline, color, is_all_day, created_by, completed_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [task.id, task.title, task.description, task.assignee_id, task.assignee_name, task.department_id, 
+         task.priority, task.status, task.progress_percentage, task.start_time, task.end_time, task.deadline, 
+         task.color, task.is_all_day, task.created_by, task.completed_at || null]
+      );
+    }
+
+    // 插入个人日志数据（2025年10月的测试数据）
+    const logs = [
+      {
+        id: 'log-001',
+        user_id: 'employee-001',
+        title: '完成新员工培训',
+        content: '今天成功组织了新员工入职培训，培训效果良好，新员工反馈积极。',
+        category: '工作总结',
+        quadrant: 'important_urgent',
+        is_completed: true,
+        created_at: '2025-10-16 17:30:00',
+        related_task_id: 'task-003'
+      },
+      {
+        id: 'log-002',
+        user_id: 'employee-001',
+        title: '季度报告进度更新',
+        content: '完成了季度报告的数据收集工作，正在进行数据分析和报告撰写。预计明天可以完成初稿。',
+        category: '工作进展',
+        quadrant: 'important_urgent',
+        is_completed: false,
+        created_at: '2025-10-15 18:00:00',
+        related_task_id: 'task-001'
+      },
+      {
+        id: 'log-003',
+        user_id: 'employee-001',
+        title: '团队沟通会议',
+        content: '参加了部门团队沟通会议，讨论了本月工作重点和下月计划。',
+        category: '会议记录',
+        quadrant: 'important_not_urgent',
+        is_completed: true,
+        created_at: '2025-10-18 11:30:00',
+        related_task_id: null
+      },
+      {
+        id: 'log-004',
+        user_id: 'employee-001',
+        title: '档案整理工作开始',
+        content: '开始整理本月人事档案，完成了大约30%的工作量。',
+        category: '工作记录',
+        quadrant: 'not_important_urgent',
+        is_completed: false,
+        created_at: '2025-10-19 16:00:00',
+        related_task_id: 'task-004'
+      },
+      {
+        id: 'log-005',
+        user_id: 'employee-001',
+        title: '学习新的HR系统',
+        content: '花时间学习了新的人力资源管理系统，掌握了基本操作。',
+        category: '学习笔记',
+        quadrant: 'important_not_urgent',
+        is_completed: true,
+        created_at: '2025-10-17 15:00:00',
+        related_task_id: null
+      }
+    ];
+
+    for (const log of logs) {
+      await db.execute(
+        `INSERT INTO personal_logs (id, user_id, title, content, category, quadrant, is_completed, created_at, related_task_id) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [log.id, log.user_id, log.title, log.content, log.category, log.quadrant, log.is_completed, log.created_at, log.related_task_id]
+      );
+    }
+
+    console.log('示例数据插入成功（包含任务和日志）');
   } catch (error) {
     console.error('插入示例数据失败:', error);
   }
@@ -288,6 +469,328 @@ function checkPermission(requiredRoles) {
 }
 
 // 路由
+
+// API 根路径 - 返回 API 文档页面
+app.get('/api', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'api-docs.html'));
+});
+
+// API 根路径（旧版本 - 保留以防需要）
+app.get('/api/old', (req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>企业管理系统 API 文档与测试</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+    .header .status {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 0.9em;
+      margin-top: 10px;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #4ade80;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .content {
+      padding: 40px;
+    }
+    .section {
+      margin-bottom: 40px;
+    }
+    .section-title {
+      font-size: 1.8em;
+      color: #333;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 3px solid #667eea;
+    }
+    .endpoint-group {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .endpoint-group h3 {
+      color: #667eea;
+      font-size: 1.3em;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+    }
+    .endpoint-group h3:before {
+      content: "📁";
+      margin-right: 10px;
+    }
+    .endpoint {
+      background: white;
+      padding: 15px 20px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+      display: flex;
+      align-items: center;
+      transition: all 0.3s;
+    }
+    .endpoint:hover {
+      transform: translateX(5px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .method {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-weight: bold;
+      font-size: 0.85em;
+      margin-right: 15px;
+      min-width: 60px;
+      text-align: center;
+    }
+    .method.get { background: #10b981; color: white; }
+    .method.post { background: #3b82f6; color: white; }
+    .method.put { background: #f59e0b; color: white; }
+    .method.delete { background: #ef4444; color: white; }
+    .endpoint-path {
+      flex: 1;
+      font-family: 'Courier New', monospace;
+      color: #333;
+      font-size: 1em;
+    }
+    .quick-links {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .quick-link {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 25px;
+      border-radius: 10px;
+      text-decoration: none;
+      text-align: center;
+      transition: all 0.3s;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .quick-link:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+    .quick-link h3 {
+      font-size: 1.2em;
+      margin-bottom: 8px;
+    }
+    .quick-link p {
+      font-size: 0.9em;
+      opacity: 0.9;
+    }
+    .footer {
+      text-align: center;
+      padding: 30px;
+      background: #f8f9fa;
+      color: #666;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🚀 企业管理系统 API</h1>
+      <div class="status">
+        <span class="status-dot"></span>
+        <span>服务运行中 · v1.0.0</span>
+      </div>
+    </div>
+    
+    <div class="content">
+      <div class="section">
+        <h2 class="section-title">🔗 快速访问</h2>
+        <div class="quick-links">
+          <a href="/web_admin" class="quick-link">
+            <h3>🖥️ Web 管理端</h3>
+            <p>访问 Web 管理界面</p>
+          </a>
+          <a href="http://localhost:8080" class="quick-link">
+            <h3>🏠 主页</h3>
+            <p>返回系统主页</p>
+          </a>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">📡 API 端点</h2>
+        
+        <div class="endpoint-group">
+          <h3>用户认证</h3>
+          <div class="endpoint">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/auth/login</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>用户管理</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/user/profile</span>
+          </div>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/users</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>部门管理</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/departments</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>公司重要事项</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/company-important-items</span>
+          </div>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/company-important-items/all</span>
+          </div>
+          <div class="endpoint">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/company-important-items</span>
+          </div>
+          <div class="endpoint">
+            <span class="method put">PUT</span>
+            <span class="endpoint-path">/api/company-important-items/:id/select</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>重要事项库</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/important-items</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>任务管理</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/tasks</span>
+          </div>
+          <div class="endpoint">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/tasks</span>
+          </div>
+          <div class="endpoint">
+            <span class="method put">PUT</span>
+            <span class="endpoint-path">/api/tasks/:id/status</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>通知管理</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/notifications</span>
+          </div>
+          <div class="endpoint">
+            <span class="method put">PUT</span>
+            <span class="endpoint-path">/api/notifications/:id/read</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>个人日志</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/personal-logs</span>
+          </div>
+          <div class="endpoint">
+            <span class="method post">POST</span>
+            <span class="endpoint-path">/api/personal-logs</span>
+          </div>
+          <div class="endpoint">
+            <span class="method put">PUT</span>
+            <span class="endpoint-path">/api/personal-logs/:id/complete</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>系统日志</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/logs</span>
+          </div>
+        </div>
+
+        <div class="endpoint-group">
+          <h3>个人信息</h3>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="endpoint-path">/api/personal-info/:userId</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="footer">
+      <p>© 2024 企业管理系统 · API v1.0.0 · 运行在 http://localhost:8080</p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+  res.send(html);
+});
 
 // 用户认证
 app.post('/api/auth/login', async (req, res) => {
@@ -512,6 +1015,88 @@ app.post('/api/company-important-items', authenticateToken, checkPermission(['ad
   }
 });
 
+// 批量更新重要事项选择状态（用于编辑十大事项）
+app.put('/api/company-important-items/batch-select', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { selectedIds } = req.body;
+    
+    if (!Array.isArray(selectedIds)) {
+      return res.status(400).json({ error: 'selectedIds 必须是数组' });
+    }
+
+    // 开始事务
+    await db.query('START TRANSACTION');
+    
+    try {
+      // 首先将所有事项设为未选择
+      await db.execute(
+        'UPDATE company_important_items SET is_selected = FALSE, updated_by = ?',
+        [req.user.id]
+      );
+      
+      // 然后设置选中的事项
+      if (selectedIds.length > 0) {
+        const placeholders = selectedIds.map(() => '?').join(',');
+        await db.execute(
+          `UPDATE company_important_items SET is_selected = TRUE, updated_by = ? WHERE id IN (${placeholders})`,
+          [req.user.id, ...selectedIds]
+        );
+      }
+      
+      // 提交事务
+      await db.query('COMMIT');
+      
+      res.json({ 
+        message: '批量更新成功', 
+        selectedCount: selectedIds.length,
+        totalCount: selectedIds.length
+      });
+    } catch (error) {
+      // 回滚事务
+      await db.query('ROLLBACK');
+      throw error;
+    }
+  } catch (error) {
+    console.error('批量更新重要事项选择状态错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 更新重要事项（编辑内容）
+app.put('/api/company-important-items/:id', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, priority, status, deadline } = req.body;
+
+    await db.execute(
+      'UPDATE company_important_items SET title = ?, description = ?, priority = ?, status = ?, deadline = ?, updated_by = ? WHERE id = ?',
+      [title, description, priority, status, deadline, req.user.id, id]
+    );
+
+    res.json({ message: '更新成功' });
+  } catch (error) {
+    console.error('更新重要事项错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 删除重要事项
+app.delete('/api/company-important-items/:id', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await db.execute(
+      'DELETE FROM company_important_items WHERE id = ?',
+      [id]
+    );
+
+    res.json({ message: '删除成功' });
+  } catch (error) {
+    console.error('删除重要事项错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 获取任务列表（根据权限）
 app.get('/api/tasks', authenticateToken, async (req, res) => {
   try {
@@ -671,6 +1256,109 @@ app.put('/api/tasks/:id/status', authenticateToken, async (req, res) => {
     res.json({ message: '任务状态更新成功' });
   } catch (error) {
     console.error('更新任务状态错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 更新任务（完整更新，用于日历编辑）
+app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, priority, status } = req.body;
+
+    // 获取任务信息
+    const [taskRows] = await db.execute(
+      'SELECT * FROM tasks WHERE id = ?',
+      [id]
+    );
+
+    if (taskRows.length === 0) {
+      return res.status(404).json({ error: '任务不存在' });
+    }
+
+    const task = taskRows[0];
+
+    // 权限检查：只有被分配人或创建者才能更新任务
+    if (task.assignee_id !== req.user.id && task.created_by !== req.user.id) {
+      return res.status(403).json({ error: '无权更新此任务' });
+    }
+
+    // 构建更新语句
+    const updates = [];
+    const values = [];
+    
+    if (title !== undefined) {
+      updates.push('title = ?');
+      values.push(title);
+    }
+    
+    if (description !== undefined) {
+      updates.push('description = ?');
+      values.push(description);
+    }
+    
+    if (priority !== undefined) {
+      updates.push('priority = ?');
+      values.push(priority);
+    }
+    
+    if (status !== undefined) {
+      updates.push('status = ?');
+      values.push(status);
+      
+      // 如果状态改为已完成，记录完成时间
+      if (status === 'completed') {
+        updates.push('completed_at = ?');
+        values.push(new Date());
+      }
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: '没有要更新的字段' });
+    }
+
+    values.push(id);
+    
+    await db.execute(
+      `UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    res.json({ message: '任务更新成功' });
+  } catch (error) {
+    console.error('更新任务错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 删除任务
+app.delete('/api/tasks/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 获取任务信息
+    const [taskRows] = await db.execute(
+      'SELECT * FROM tasks WHERE id = ?',
+      [id]
+    );
+
+    if (taskRows.length === 0) {
+      return res.status(404).json({ error: '任务不存在' });
+    }
+
+    const task = taskRows[0];
+
+    // 权限检查：只有创建者才能删除任务
+    if (task.created_by !== req.user.id) {
+      return res.status(403).json({ error: '无权删除此任务' });
+    }
+
+    // 删除任务
+    await db.execute('DELETE FROM tasks WHERE id = ?', [id]);
+
+    res.json({ message: '任务删除成功' });
+  } catch (error) {
+    console.error('删除任务错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
@@ -858,6 +1546,93 @@ app.put('/api/personal-logs/:id/complete', authenticateToken, async (req, res) =
   }
 });
 
+// 更新个人日志（完整更新，用于日历编辑）
+app.put('/api/logs/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content } = req.body;
+
+    // 获取日志信息
+    const [logRows] = await db.execute(
+      'SELECT * FROM personal_logs WHERE id = ?',
+      [id]
+    );
+
+    if (logRows.length === 0) {
+      return res.status(404).json({ error: '日志不存在' });
+    }
+
+    const log = logRows[0];
+
+    // 权限检查：只有创建者才能更新日志
+    if (log.user_id !== req.user.id) {
+      return res.status(403).json({ error: '无权更新此日志' });
+    }
+
+    // 构建更新语句
+    const updates = [];
+    const values = [];
+    
+    if (title !== undefined) {
+      updates.push('title = ?');
+      values.push(title);
+    }
+    
+    if (content !== undefined) {
+      updates.push('content = ?');
+      values.push(content);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: '没有要更新的字段' });
+    }
+
+    values.push(id);
+    
+    await db.execute(
+      `UPDATE personal_logs SET ${updates.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    res.json({ message: '日志更新成功' });
+  } catch (error) {
+    console.error('更新日志错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 删除个人日志
+app.delete('/api/logs/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 获取日志信息
+    const [logRows] = await db.execute(
+      'SELECT * FROM personal_logs WHERE id = ?',
+      [id]
+    );
+
+    if (logRows.length === 0) {
+      return res.status(404).json({ error: '日志不存在' });
+    }
+
+    const log = logRows[0];
+
+    // 权限检查：只有创建者才能删除日志
+    if (log.user_id !== req.user.id) {
+      return res.status(403).json({ error: '无权删除此日志' });
+    }
+
+    // 删除日志
+    await db.execute('DELETE FROM personal_logs WHERE id = ?', [id]);
+
+    res.json({ message: '日志删除成功' });
+  } catch (error) {
+    console.error('删除日志错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 辅助函数：创建通知
 async function createNotification(taskId, fromUserId, toUserId, type, message) {
   try {
@@ -870,6 +1645,382 @@ async function createNotification(taskId, fromUserId, toUserId, type, message) {
     console.error('创建通知失败:', error);
   }
 }
+
+// ==================== 月视图 API ====================
+
+// 获取指定月份的任务和日志（用于月视图日历）
+app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    
+    if (!year || !month) {
+      return res.status(400).json({ error: '请提供年份(year)和月份(month)参数' });
+    }
+    
+    // 计算月份的开始和结束日期
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay} 23:59:59`;
+    
+    // 获取任务
+    let taskQuery = `
+      SELECT DISTINCT
+        t.id,
+        t.title,
+        t.description,
+        t.status,
+        t.priority,
+        t.color,
+        t.start_time,
+        t.end_time,
+        t.deadline,
+        t.is_all_day,
+        t.assignee_name,
+        DATE_FORMAT(COALESCE(t.start_time, t.deadline), '%Y-%m-%d') as task_date
+      FROM tasks t
+      WHERE t.assignee_id = ?
+      AND (
+        DATE(t.start_time) BETWEEN ? AND ?
+        OR DATE(t.end_time) BETWEEN ? AND ?
+        OR DATE(t.deadline) BETWEEN ? AND ?
+      )
+      ORDER BY t.start_time, t.priority
+    `;
+    
+    const startDateOnly = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDateOnly = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+    
+    const [tasks] = await db.execute(taskQuery, [
+      req.user.id, 
+      startDateOnly, endDateOnly,
+      startDateOnly, endDateOnly,
+      startDateOnly, endDateOnly
+    ]);
+    
+    // 获取个人日志
+    let logQuery = `
+      SELECT 
+        pl.id,
+        pl.title,
+        pl.content,
+        pl.category,
+        pl.quadrant,
+        pl.is_completed,
+        pl.created_at,
+        DATE_FORMAT(pl.created_at, '%Y-%m-%d') as log_date
+      FROM personal_logs pl
+      WHERE pl.user_id = ?
+      AND pl.created_at >= ?
+      AND pl.created_at <= ?
+      ORDER BY pl.created_at DESC
+    `;
+    
+    const [logs] = await db.execute(logQuery, [
+      req.user.id,
+      startDate,
+      endDate
+    ]);
+    
+    console.log(`[月视图] 用户 ${req.user.id} (${req.user.username}) 请求 ${year}年${month}月 的数据: ${tasks.length} 个任务, ${logs.length} 个日志`);
+    
+    // 按日期分组
+    const calendar = {};
+    
+    // 初始化整个月的日期
+    for (let day = 1; day <= lastDay; day++) {
+      const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      calendar[dateKey] = {
+        date: dateKey,
+        tasks: [],
+        logs: [],
+        hasData: false
+      };
+    }
+    
+    // 填充任务数据
+    tasks.forEach(task => {
+      if (task.task_date) {
+        const dateKey = task.task_date;
+        console.log(`  任务 "${task.title}" 的日期: ${dateKey}, 日历中是否存在: ${!!calendar[dateKey]}`);
+        if (calendar[dateKey]) {
+          calendar[dateKey].tasks.push({
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            status: task.status,
+            priority: task.priority,
+            color: task.color,
+            start_time: task.start_time,
+            end_time: task.end_time,
+            deadline: task.deadline,
+            is_all_day: task.is_all_day,
+            assignee_name: task.assignee_name
+          });
+          calendar[dateKey].hasData = true;
+        }
+      }
+    });
+    
+    // 填充日志数据
+    logs.forEach(log => {
+      if (log.log_date) {
+        const dateKey = log.log_date;
+        console.log(`  日志 "${log.title}" 的日期: ${dateKey}, 日历中是否存在: ${!!calendar[dateKey]}`);
+        if (calendar[dateKey]) {
+          calendar[dateKey].logs.push({
+            id: log.id,
+            title: log.title,
+            content: log.content,
+            category: log.category,
+            quadrant: log.quadrant,
+            is_completed: log.is_completed,
+            created_at: log.created_at
+          });
+          calendar[dateKey].hasData = true;
+        }
+      }
+    });
+    
+    // 转换为数组格式
+    const calendarArray = Object.values(calendar);
+    
+    res.json({
+      year: parseInt(year),
+      month: parseInt(month),
+      days: calendarArray,
+      summary: {
+        totalTasks: tasks.length,
+        totalLogs: logs.length,
+        daysWithData: calendarArray.filter(d => d.hasData).length
+      }
+    });
+    
+  } catch (error) {
+    console.error('获取月视图数据错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 测试API: 获取指定用户和月份的任务和日志（无需认证，用于测试）
+app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
+  try {
+    const { userId, year, month } = req.params;
+    
+    if (!userId || !year || !month) {
+      return res.status(400).json({ error: '请提供userId、year和month参数' });
+    }
+    
+    // 计算月份的开始和结束日期
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay} 23:59:59`;
+    
+    // 获取任务
+    let taskQuery = `
+      SELECT DISTINCT
+        t.id,
+        t.title,
+        t.description,
+        t.status,
+        t.priority,
+        t.color,
+        t.start_time,
+        t.end_time,
+        t.deadline,
+        t.is_all_day,
+        t.assignee_name,
+        DATE_FORMAT(COALESCE(t.start_time, t.deadline), '%Y-%m-%d') as task_date
+      FROM tasks t
+      WHERE t.assignee_id = ?
+      AND (
+        DATE(t.start_time) BETWEEN ? AND ?
+        OR DATE(t.end_time) BETWEEN ? AND ?
+        OR DATE(t.deadline) BETWEEN ? AND ?
+      )
+      ORDER BY t.start_time, t.priority
+    `;
+    
+    const startDateOnly = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDateOnly = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+    
+    const [tasks] = await db.execute(taskQuery, [
+      userId, 
+      startDateOnly, endDateOnly,
+      startDateOnly, endDateOnly,
+      startDateOnly, endDateOnly
+    ]);
+    
+    // 获取个人日志
+    let logQuery = `
+      SELECT 
+        pl.id,
+        pl.title,
+        pl.content,
+        pl.category,
+        pl.quadrant,
+        pl.is_completed,
+        pl.created_at,
+        DATE_FORMAT(pl.created_at, '%Y-%m-%d') as log_date
+      FROM personal_logs pl
+      WHERE pl.user_id = ?
+      AND pl.created_at >= ?
+      AND pl.created_at <= ?
+      ORDER BY pl.created_at DESC
+    `;
+    
+    const [logs] = await db.execute(logQuery, [
+      userId,
+      startDate,
+      endDate
+    ]);
+    
+    console.log(`[测试-月视图] 用户 ${userId} 请求 ${year}年${month}月 的数据: ${tasks.length} 个任务, ${logs.length} 个日志`);
+    
+    // 统计信息
+    const completedTasks = tasks.filter(t => t.status === 'completed').length;
+    const inProgressTasks = tasks.filter(t => t.status === 'in_progress').length;
+    const pendingTasks = tasks.filter(t => t.status === 'pending').length;
+    const completedLogs = logs.filter(l => l.is_completed === 1).length;
+    
+    // 返回简化的数据格式
+    res.json({
+      month: `${year}-${String(month).padStart(2, '0')}`,
+      userId: userId,
+      logs: logs.map(log => ({
+        id: log.id,
+        title: log.title,
+        content: log.content,
+        category: log.category,
+        quadrant: log.quadrant,
+        isCompleted: log.is_completed === 1,
+        date: log.log_date,
+        createdAt: log.created_at
+      })),
+      tasks: tasks.map(task => ({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        color: task.color,
+        startTime: task.start_time,
+        endTime: task.end_time,
+        deadline: task.deadline,
+        isAllDay: task.is_all_day === 1,
+        assigneeName: task.assignee_name,
+        date: task.task_date
+      })),
+      statistics: {
+        totalTasks: tasks.length,
+        completedTasks: completedTasks,
+        inProgressTasks: inProgressTasks,
+        pendingTasks: pendingTasks,
+        totalLogs: logs.length,
+        completedLogs: completedLogs
+      }
+    });
+    
+  } catch (error) {
+    console.error('获取月视图数据错误:', error);
+    res.status(500).json({ error: '服务器内部错误', message: error.message });
+  }
+});
+
+// 获取指定日期的详细任务和日志（用于点击日期时弹窗显示）
+app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
+  try {
+    const { date } = req.query; // 格式: YYYY-MM-DD
+    
+    if (!date) {
+      return res.status(400).json({ error: '请提供日期(date)参数，格式: YYYY-MM-DD' });
+    }
+    
+    const startDate = `${date} 00:00:00`;
+    const endDate = `${date} 23:59:59`;
+    
+    // 获取该日期的所有任务
+    let taskQuery = `
+      SELECT 
+        t.*,
+        d.name as department_name,
+        u.name as creator_name
+      FROM tasks t
+      LEFT JOIN departments d ON t.department_id = d.id
+      LEFT JOIN users u ON t.created_by = u.id
+      WHERE t.assignee_id = ?
+      AND (
+        (t.start_time >= ? AND t.start_time <= ?)
+        OR (t.end_time >= ? AND t.end_time <= ?)
+        OR (t.deadline >= ? AND t.deadline <= ?)
+        OR (DATE(t.start_time) = ? OR DATE(t.end_time) = ? OR DATE(t.deadline) = ?)
+      )
+      ORDER BY t.start_time, t.priority
+    `;
+    
+    const [tasks] = await db.execute(taskQuery, [
+      req.user.id,
+      startDate, endDate,
+      startDate, endDate,
+      startDate, endDate,
+      date, date, date
+    ]);
+    
+    // 获取该日期的所有日志
+    let logQuery = `
+      SELECT 
+        pl.*,
+        t.title as task_title
+      FROM personal_logs pl
+      LEFT JOIN tasks t ON pl.related_task_id = t.id
+      WHERE pl.user_id = ?
+      AND DATE(pl.created_at) = ?
+      ORDER BY pl.created_at DESC
+    `;
+    
+    const [logs] = await db.execute(logQuery, [
+      req.user.id,
+      date
+    ]);
+    
+    console.log(`[日期详情] 用户 ${req.user.id} 请求 ${date} 的数据: ${tasks.length} 个任务, ${logs.length} 个日志`);
+    
+    res.json({
+      date: date,
+      tasks: tasks.map(t => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        priority: t.priority,
+        color: t.color,
+        start_time: t.start_time,
+        end_time: t.end_time,
+        deadline: t.deadline,
+        is_all_day: t.is_all_day,
+        assignee_name: t.assignee_name
+      })),
+      logs: logs.map(l => ({
+        id: l.id,
+        title: l.title,
+        content: l.content,
+        category: l.category,
+        quadrant: l.quadrant,
+        is_completed: l.is_completed,
+        created_at: l.created_at
+      })),
+      summary: {
+        totalTasks: tasks.length,
+        totalLogs: logs.length,
+        completedTasks: tasks.filter(t => t.status === 'completed').length,
+        completedLogs: logs.filter(l => l.is_completed).length
+      }
+    });
+    
+  } catch (error) {
+    console.error('获取日期详情错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
 
 // 启动服务器
 async function startServer() {
@@ -894,3 +2045,93 @@ async function startServer() {
 }
 
 startServer().catch(console.error);
+
+// ================= AI 文本分析（基础版） =================
+// 提取关键词和词频统计
+app.post('/api/ai/analyze-log', async (req, res) => {
+  try {
+    const { text, topK = 20 } = req.body || {};
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ error: 'text 不能为空' });
+    }
+
+    // 使用 segmentit 分词（纯JS实现，无需编译）
+    const tokens = segmenter.doSegment(text, { simple: true })
+      .filter(w => w && w.trim().length > 1);
+    const freqMap = {};
+    for (const w of tokens) {
+      freqMap[w] = (freqMap[w] || 0) + 1;
+    }
+    const wordFrequencies = Object.entries(freqMap)
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, topK);
+
+    // 用频次代替简易“权重”，并归一化一个权重字段
+    const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
+    const keywords = wordFrequencies.map(x => ({ word: x.word, weight: x.count / (maxCount || 1) }));
+
+    return res.json({
+      keywords,
+      wordFrequencies
+    });
+  } catch (e) {
+    console.error('AI分析失败:', e);
+    return res.status(500).json({ error: 'AI分析失败' });
+  }
+});
+
+// 基于当天个人日志的一键分析（需登录）
+app.get('/api/ai/analyze-today', authenticateToken, async (req, res) => {
+  try {
+    const { topK = 20 } = req.query;
+    const userId = req.user.id;
+
+    // 查询当天该用户的个人日志（title+content）
+    let [rows] = await db.execute(
+      `SELECT title, content
+       FROM personal_logs
+       WHERE user_id = ?
+         AND DATE(created_at) = CURDATE()`,
+      [userId]
+    );
+    let usedRange = 'today';
+
+    if (!rows || rows.length === 0) {
+      const [rows7] = await db.execute(
+        `SELECT title, content
+         FROM personal_logs
+         WHERE user_id = ?
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`,
+        [userId]
+      );
+      rows = rows7 || [];
+      usedRange = 'last7days';
+    }
+
+    if (!rows || rows.length === 0) {
+      return res.json({ keywords: [], wordFrequencies: [], range: usedRange });
+    }
+
+    const combined = rows.map(r => `${r.title || ''} ${r.content || ''}`).join(' \n ');
+    const tokens = segmenter.doSegment(combined, { simple: true })
+      .filter(w => w && w.trim().length > 1);
+
+    const freqMap = {};
+    for (const w of tokens) {
+      freqMap[w] = (freqMap[w] || 0) + 1;
+    }
+    const wordFrequencies = Object.entries(freqMap)
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, Number(topK));
+
+    const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
+    const keywords = wordFrequencies.map(x => ({ word: x.word, weight: x.count / (maxCount || 1) }));
+
+    return res.json({ keywords, wordFrequencies, range: usedRange });
+  } catch (e) {
+    console.error('AI当天日志分析失败:', e);
+    return res.status(500).json({ error: 'AI当天日志分析失败' });
+  }
+});

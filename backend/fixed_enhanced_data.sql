@@ -29,18 +29,18 @@ INSERT IGNORE INTO tasks (id, title, description, parent_task_id, assignee_id, a
 ('task-034', '财务数据分析', '分析Q1财务数据并生成报告', 'task-014', 'employee-005', 'Shen Finance Specialist', 'dept-002', 'p1', 'in_progress', 'employee-005', '2024-03-11 17:00:00', '2024-03-09 09:00:00', '2024-03-11 17:00:00'),
 ('task-035', '社交媒体内容发布', '发布本周的社交媒体内容', 'task-018', 'employee-009', 'Qin Marketing Specialist', 'dept-003', 'p1', 'completed', 'employee-009', '2024-03-06 18:00:00', '2024-03-06 14:00:00', '2024-03-06 18:00:00');
 
--- 添加更多个人日志（确保所有必需字段都有值）
-INSERT IGNORE INTO personal_logs (id, user_id, title, content, category, quadrant, related_task_id, is_completed) VALUES
-('log-005', 'founder-001', 'Q1季度总结', '完成了Q1季度的业务总结，各部门表现良好', 'work', 'important_urgent', 'task-022', 1),
-('log-006', 'founder-002', '产品发布会策划', '制定了新产品发布会的详细策划方案', 'work', 'important_not_urgent', 'task-023', 0),
-('log-007', 'dept-head-001', '绩效考核方案', '制定了新的员工绩效考核方案', 'work', 'important_urgent', 'task-025', 1),
-('log-008', 'dept-head-002', '审计材料整理', '整理了财务审计所需的所有材料', 'work', 'important_urgent', 'task-026', 0),
-('log-009', 'team-leader-001', '招聘渠道分析', '分析了各招聘渠道的效果，优化了招聘策略', 'work', 'important_not_urgent', 'task-028', 1),
-('log-010', 'team-leader-002', '培训课程设计', '设计了新的员工培训课程大纲', 'work', 'important_not_urgent', 'task-029', 0),
-('log-011', 'employee-001', '面试总结', '完成了Java开发岗位的面试，筛选出3名候选人', 'work', 'important_urgent', 'task-031', 1),
-('log-012', 'employee-002', '培训材料制作', '制作了销售培训的PPT和手册', 'work', 'important_not_urgent', 'task-032', 0),
-('log-013', 'employee-005', '财务数据分析', '分析了Q1的财务数据，发现成本控制需要加强', 'work', 'important_urgent', 'task-034', 0),
-('log-014', 'employee-009', '社交媒体运营', '发布了本周的社交媒体内容，互动率提升了20%', 'work', 'not_important_urgent', 'task-035', 1);
+-- 添加更多个人日志（确保所有必需字段都有值，包括指定创建时间）
+INSERT IGNORE INTO personal_logs (id, user_id, title, content, category, quadrant, related_task_id, is_completed, created_at) VALUES
+('log-005', 'founder-001', 'Q1季度总结', '完成了Q1季度的业务总结，各部门表现良好', 'work', 'important_urgent', 'task-022', 1, '2025-10-01 10:30:00'),
+('log-006', 'founder-002', '产品发布会策划', '制定了新产品发布会的详细策划方案', 'work', 'important_not_urgent', 'task-023', 0, '2025-10-02 14:15:00'),
+('log-007', 'dept-head-001', '绩效考核方案', '制定了新的员工绩效考核方案', 'work', 'important_urgent', 'task-025', 1, '2025-10-03 09:45:00'),
+('log-008', 'dept-head-002', '审计材料整理', '整理了财务审计所需的所有材料', 'work', 'important_urgent', 'task-026', 0, '2025-10-05 11:20:00'),
+('log-009', 'team-leader-001', '招聘渠道分析', '分析了各招聘渠道的效果，优化了招聘策略', 'work', 'important_not_urgent', 'task-028', 1, '2025-10-08 16:30:00'),
+('log-010', 'team-leader-002', '培训课程设计', '设计了新的员工培训课程大纲', 'work', 'important_not_urgent', 'task-029', 0, '2025-10-10 13:45:00'),
+('log-011', 'employee-001', '面试总结', '完成了Java开发岗位的面试，筛选出3名候选人', 'work', 'important_urgent', 'task-031', 1, '2025-10-12 15:00:00'),
+('log-012', 'employee-002', '培训材料制作', '制作了销售培训的PPT和手册', 'work', 'important_not_urgent', 'task-032', 0, '2025-10-14 10:10:00'),
+('log-013', 'employee-005', '财务数据分析', '分析了Q1的财务数据，发现成本控制需要加强', 'work', 'important_urgent', 'task-034', 0, '2025-10-16 14:30:00'),
+('log-014', 'employee-009', '社交媒体运营', '发布了本周的社交媒体内容，互动率提升了20%', 'work', 'not_important_urgent', 'task-035', 1, '2025-10-18 11:50:00');
 
 -- 添加更多系统日志
 INSERT IGNORE INTO system_logs (id, user_id, user_name, action, description, category) VALUES
