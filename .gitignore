@@ -47,3 +47,51 @@ app.*.map.json
 # Generated files in Windows
 windows/flutter/generated_plugin_registrant.*
 windows/flutter/generated_plugins.*
+
+# Node.js related (backend)
+backend/node_modules/
+backend/.env
+backend/.env.local
+backend/.env.production
+backend/npm-debug.log*
+backend/yarn-debug.log*
+backend/yarn-error.log*
+backend/dist/
+backend/build/
+
+# Flutter build outputs
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+
+# Environment files
+.env
+.env.example
+.env.local
+.env.production
+
+# IDE files
+.vscode/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# System files
+Thumbs.db
+*.DS_Store
+
+# Test files
+test/
+temp_test/
+
+# Documentation files that might be generated
+*.docx
+
+# Cleanup scripts
+clean_cache_files.bat
