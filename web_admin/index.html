@@ -223,10 +223,20 @@
                 <div id="important-items-section" class="content-section" style="display: none;">
                     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                         <h1 class="h2">重要事项管理</h1>
-                        <button type="button" class="btn btn-primary" onclick="showAddImportantItemModal()">
-                            <i class="bi bi-plus"></i>
-                            添加重要事项
-                        </button>
+                        <div class="btn-toolbar mb-2 mb-md-0">
+                            <button type="button" class="btn btn-primary" onclick="showAddImportantItemModal()">
+                                <i class="bi bi-plus"></i>
+                                添加重要事项
+                            </button>
+                            <button type="button" class="btn btn-success ms-2" onclick="batchSelectImportantItems()">
+                                <i class="bi bi-check-square"></i>
+                                编辑十大事项
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary ms-2" onclick="loadImportantItems()">
+                                <i class="bi bi-arrow-clockwise"></i>
+                                刷新
+                            </button>
+                        </div>
                     </div>
                     <div class="card">
                         <div class="card-body">
@@ -689,6 +699,123 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加重要事项模态框 -->
+    <div class="modal fade" id="addImportantItemModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加重要事项</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addImportantItemForm">
+                        <div class="mb-3">
+                            <label for="importantItemTitle" class="form-label">事项标题 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="importantItemTitle" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="importantItemDescription" class="form-label">事项描述</label>
+                            <textarea class="form-control" id="importantItemDescription" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="importantItemPriority" class="form-label">优先级</label>
+                            <select class="form-select" id="importantItemPriority">
+                                <option value="p0">P0 - 最高优先级</option>
+                                <option value="p1" selected>P1 - 高优先级</option>
+                                <option value="p2">P2 - 中优先级</option>
+                                <option value="p3">P3 - 低优先级</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="importantItemDeadline" class="form-label">截止时间</label>
+                            <input type="datetime-local" class="form-control" id="importantItemDeadline">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="addImportantItem()">添加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑重要事项模态框 -->
+    <div class="modal fade" id="editImportantItemModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">编辑重要事项</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editImportantItemForm">
+                        <input type="hidden" id="editImportantItemId">
+                        <div class="mb-3">
+                            <label for="editImportantItemTitle" class="form-label">事项标题 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="editImportantItemTitle" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editImportantItemDescription" class="form-label">事项描述</label>
+                            <textarea class="form-control" id="editImportantItemDescription" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editImportantItemPriority" class="form-label">优先级</label>
+                            <select class="form-select" id="editImportantItemPriority">
+                                <option value="p0">P0 - 最高优先级</option>
+                                <option value="p1">P1 - 高优先级</option>
+                                <option value="p2">P2 - 中优先级</option>
+                                <option value="p3">P3 - 低优先级</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editImportantItemStatus" class="form-label">状态</label>
+                            <select class="form-select" id="editImportantItemStatus">
+                                <option value="pending">待处理</option>
+                                <option value="in_progress">进行中</option>
+                                <option value="completed">已完成</option>
+                                <option value="cancelled">已取消</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editImportantItemDeadline" class="form-label">截止时间</label>
+                            <input type="datetime-local" class="form-control" id="editImportantItemDeadline">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="updateImportantItem()">更新</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批量选择重要事项模态框 -->
+    <div class="modal fade" id="batchSelectModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">编辑十大重要事项</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        请选择最多10个重要事项作为公司十大重要事项展示
+                    </div>
+                    <div id="batchSelectList" class="list-group">
+                        <!-- 事项列表将通过JavaScript动态加载 -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-success" onclick="saveBatchSelection()">保存选择</button>
                 </div>
             </div>
         </div>
