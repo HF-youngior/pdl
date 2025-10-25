@@ -311,9 +311,11 @@ class _CompanyImportantScreenState extends State<CompanyImportantScreen> {
       MaterialPageRoute(
         builder: (context) => CompanyImportantEditScreen(user: widget.user),
       ),
-    ).then((_) {
+    ).then((result) {
       // 编辑完成后刷新数据
-      _loadImportantItems();
+      if (result == true) {
+        _loadImportantItems();
+      }
     });
   }
 }

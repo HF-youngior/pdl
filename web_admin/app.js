@@ -459,8 +459,228 @@ async function addUser() {
 
 // 显示添加重要事项模态框
 function showAddImportantItemModal() {
-    // 实现添加重要事项模态框
-    showAlert('添加重要事项功能开发中', 'info');
+    // 清空表单
+    document.getElementById('importantItemTitle').value = '';
+    document.getElementById('importantItemDescription').value = '';
+    document.getElementById('importantItemPriority').value = 'p1';
+    document.getElementById('importantItemDeadline').value = '';
+    
+    const modal = new bootstrap.Modal(document.getElementById('addImportantItemModal'));
+    modal.show();
+}
+
+// 添加重要事项
+async function addImportantItem() {
+    const title = document.getElementById('importantItemTitle').value;
+    const description = document.getElementById('importantItemDescription').value;
+    const priority = document.getElementById('importantItemPriority').value;
+    const deadline = document.getElementById('importantItemDeadline').value;
+    
+    if (!title.trim()) {
+        showAlert('请输入事项标题', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/company-important-items`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                title: title.trim(),
+                description: description.trim(),
+                priority: priority,
+                deadline: deadline || null
+            })
+        });
+        
+        if (response.ok) {
+            showAlert('重要事项添加成功', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('addImportantItemModal')).hide();
+            loadImportantItems();
+        } else {
+            const error = await response.json();
+            showAlert(error.message || '添加重要事项失败', 'danger');
+        }
+    } catch (error) {
+        console.error('添加重要事项失败:', error);
+        showAlert('添加重要事项失败', 'danger');
+    }
+}
+
+// 编辑重要事项
+async function editImportantItem(itemId) {
+    try {
+        // 获取事项详情
+        const response = await fetch(`${API_BASE_URL}/company-important-items/all`, {
+            headers: getAuthHeaders()
+        });
+        
+        if (!response.ok) {
+            throw new Error('获取事项详情失败');
+        }
+        
+        const items = await response.json();
+        const item = items.find(i => i.id === itemId);
+        
+        if (!item) {
+            showAlert('未找到该事项', 'warning');
+            return;
+        }
+        
+        // 填充编辑表单
+        document.getElementById('editImportantItemId').value = item.id;
+        document.getElementById('editImportantItemTitle').value = item.title;
+        document.getElementById('editImportantItemDescription').value = item.description || '';
+        document.getElementById('editImportantItemPriority').value = item.priority;
+        document.getElementById('editImportantItemStatus').value = item.status;
+        document.getElementById('editImportantItemDeadline').value = item.deadline ? new Date(item.deadline).toISOString().slice(0, 16) : '';
+        
+        const modal = new bootstrap.Modal(document.getElementById('editImportantItemModal'));
+        modal.show();
+    } catch (error) {
+        console.error('获取事项详情失败:', error);
+        showAlert('获取事项详情失败', 'danger');
+    }
+}
+
+// 更新重要事项
+async function updateImportantItem() {
+    const id = document.getElementById('editImportantItemId').value;
+    const title = document.getElementById('editImportantItemTitle').value;
+    const description = document.getElementById('editImportantItemDescription').value;
+    const priority = document.getElementById('editImportantItemPriority').value;
+    const status = document.getElementById('editImportantItemStatus').value;
+    const deadline = document.getElementById('editImportantItemDeadline').value;
+    
+    if (!title.trim()) {
+        showAlert('请输入事项标题', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/company-important-items/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                title: title.trim(),
+                description: description.trim(),
+                priority: priority,
+                status: status,
+                deadline: deadline || null
+            })
+        });
+        
+        if (response.ok) {
+            showAlert('重要事项更新成功', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('editImportantItemModal')).hide();
+            loadImportantItems();
+        } else {
+            const error = await response.json();
+            showAlert(error.message || '更新重要事项失败', 'danger');
+        }
+    } catch (error) {
+        console.error('更新重要事项失败:', error);
+        showAlert('更新重要事项失败', 'danger');
+    }
+}
+
+// 删除重要事项
+async function deleteImportantItem(itemId) {
+    if (!confirm('确定要删除这个重要事项吗？此操作不可撤销！')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/company-important-items/${itemId}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        
+        if (response.ok) {
+            showAlert('重要事项已删除', 'success');
+            loadImportantItems();
+        } else {
+            const error = await response.json();
+            showAlert(error.message || '删除重要事项失败', 'danger');
+        }
+    } catch (error) {
+        console.error('删除重要事项失败:', error);
+        showAlert('删除重要事项失败', 'danger');
+    }
+}
+
+// 批量选择重要事项（十大事项编辑）
+async function batchSelectImportantItems() {
+    try {
+        // 获取所有事项
+        const response = await fetch(`${API_BASE_URL}/company-important-items/all`, {
+            headers: getAuthHeaders()
+        });
+        
+        if (!response.ok) {
+            throw new Error('获取事项列表失败');
+        }
+        
+        const items = await response.json();
+        
+        // 创建选择界面
+        const modal = new bootstrap.Modal(document.getElementById('batchSelectModal'));
+        
+        // 填充选择列表
+        const selectList = document.getElementById('batchSelectList');
+        selectList.innerHTML = '';
+        
+        items.forEach(item => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'form-check';
+            itemDiv.innerHTML = `
+                <input class="form-check-input" type="checkbox" value="${item.id}" id="select-${item.id}" ${item.is_selected ? 'checked' : ''}>
+                <label class="form-check-label" for="select-${item.id}">
+                    <strong>${item.title}</strong>
+                    <br><small class="text-muted">${item.description || '无描述'}</small>
+                </label>
+            `;
+            selectList.appendChild(itemDiv);
+        });
+        
+        modal.show();
+    } catch (error) {
+        console.error('获取事项列表失败:', error);
+        showAlert('获取事项列表失败', 'danger');
+    }
+}
+
+// 保存批量选择
+async function saveBatchSelection() {
+    const checkboxes = document.querySelectorAll('#batchSelectList input[type="checkbox"]:checked');
+    const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (selectedIds.length > 10) {
+        showAlert('最多只能选择10个重要事项', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/company-important-items/batch-select`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                selectedIds: selectedIds
+            })
+        });
+        
+        if (response.ok) {
+            showAlert(`已成功选择 ${selectedIds.length} 个重要事项`, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('batchSelectModal')).hide();
+            loadImportantItems();
+        } else {
+            const error = await response.json();
+            showAlert(error.message || '保存选择失败', 'danger');
+        }
+    } catch (error) {
+        console.error('保存批量选择失败:', error);
+        showAlert('保存选择失败', 'danger');
+    }
 }
 
 // 显示添加任务模态框
