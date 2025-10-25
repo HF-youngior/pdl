@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/log.dart';
+import '../models/personal_log.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
 import '../services/task_service.dart';
@@ -15,7 +15,7 @@ class LogEnhancedScreen extends StatefulWidget {
 }
 
 class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
-  List<Log> _logs = [];
+  List<PersonalLog> _logs = [];
   List<Task> _tasks = [];
   bool _isLoading = true;
   String? _error;
@@ -35,12 +35,12 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
       });
 
       final futures = await Future.wait([
-        ApiService.getLogs(),
+        ApiService.getPersonalLogs(),
         ApiService.getTasks(),
       ]);
 
       setState(() {
-        _logs = futures[0] as List<Log>;
+        _logs = futures[0] as List<PersonalLog>;
         _tasks = futures[1] as List<Task>;
         _isLoading = false;
       });
@@ -52,7 +52,7 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
     }
   }
 
-  List<Log> get _filteredLogs {
+  List<PersonalLog> get _filteredLogs {
     if (_filterCategory == 'all') {
       return _logs;
     }
@@ -292,7 +292,7 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
     );
   }
 
-  Widget _buildLogCard(Log log) {
+  Widget _buildLogCard(PersonalLog log) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 4,
@@ -315,7 +315,7 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    log.action,
+                    log.logTitle,
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -345,16 +345,50 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
             const SizedBox(height: 8),
             
             // 描述
-            Text(
-              log.description,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
+            if (log.logContent != null && log.logContent!.isNotEmpty)
+              Text(
+                log.logContent!,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
               ),
+            // 天气和关键词信息
+            Row(
+              children: [
+                // 天气emoji
+                Text(
+                  _getWeatherEmoji(log.weather),
+                  style: const TextStyle(fontSize: 20),
+                ),
+                const SizedBox(width: 8),
+                
+                // 关键词
+                if (log.keywords.isNotEmpty) ...[
+                  Expanded(
+                    child: Wrap(
+                      spacing: 4,
+                      children: log.keywords.take(3).map((keyword) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          keyword,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.orange[700],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                  ),
+                ],
+              ],
             ),
             const SizedBox(height: 8),
-            
-            // 象限和用户信息
             Row(
               children: [
                 if (log.quadrant.isNotEmpty) ...[
@@ -384,7 +418,7 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
                 ],
                 const Spacer(),
                 Text(
-                  '${log.userName} • ${_formatDateTime(log.createdAt)}',
+                  '${widget.user.name} • ${_formatDateTime(log.createdAt)}',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey[600],
@@ -394,9 +428,10 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
             ),
             
             // 关联任务
-            if (log.relatedTaskId != null) ...[
+            if (log.linkages.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Container(
+              ...log.linkages.map((linkage) => Container(
+                margin: const EdgeInsets.only(bottom: 4),
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.blue.withOpacity(0.1),
@@ -410,17 +445,27 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
                       color: Colors.blue[700],
                     ),
                     const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '关联任务: ${_getTaskTitle(linkage.taskId)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
                     Text(
-                      '关联任务: ${_getTaskTitle(log.relatedTaskId!)}',
+                      '${linkage.progressPercentage}%',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.blue[700],
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
                 ),
-              ),
+              )).toList(),
             ],
           ],
         ),
@@ -452,6 +497,28 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
            '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  // 天气emoji映射方法
+  String _getWeatherEmoji(String weather) {
+    switch (weather) {
+      case 'sunny':
+        return '☀️';
+      case 'cloudy':
+        return '⛅';
+      case 'light_rain':
+        return '🌧️';
+      case 'heavy_rain':
+        return '⛈️';
+      case 'snow':
+        return '❄️';
+      case 'storm':
+        return '⚡';
+      case 'fog':
+        return '🌫️';
+      default:
+        return '☀️';
+    }
   }
 
   void _showAddLogDialog() {
@@ -515,31 +582,31 @@ class _AddLogDialogState extends State<_AddLogDialog> {
     if (!_formKey.currentState!.validate()) return;
 
     try {
-      // 2) 组装日志对象：日期、天气、关键词、正文、关联任务（取第一个以兼容旧字段）
-      final log = Log(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      // 2) 组装个人日志对象：日期、天气、关键词、正文、关联任务
+      final log = PersonalLog(
+        logId: DateTime.now().millisecondsSinceEpoch.toString(),
         userId: widget.user.id,
-        userName: widget.user.name,
-        action: _actionController.text.trim().isEmpty ? '个人日志' : _actionController.text.trim(),
-        description: _buildLogDescription(),
-        category: _selectedCategory,
-        quadrant: _selectedQuadrant,
-        createdAt: DateTime(
+        logDate: DateTime(
           _selectedDate.year,
           _selectedDate.month,
           _selectedDate.day,
-          DateTime.now().hour,
-          DateTime.now().minute,
         ),
-        relatedTaskId: _selectedTaskEdits.isNotEmpty ? _selectedTaskEdits.keys.first : _selectedTaskId,
-        metadata: {
-          'weather': _selectedWeather,
-          'keywords': _keywords,
-        },
+        weather: _selectedWeather,
+        keywords: _keywords,
+        logTitle: _actionController.text.trim().isEmpty ? '个人日志' : _actionController.text.trim(),
+        logContent: _buildLogDescription(),
+        category: _selectedCategory,
+        quadrant: _selectedQuadrant,
+        createdAt: DateTime.now(),
+        linkages: _selectedTaskEdits.values.map((edit) => LogTaskLinkage(
+          taskId: edit.taskId,
+          progressPercentage: edit.progress ?? 0,
+          taskStatus: edit.status,
+        )).toList(),
       );
 
-      // 3) 调用日志创建接口
-      final success = await ApiService.createLog(log);
+      // 3) 调用个人日志创建接口
+      final success = await ApiService.createPersonalLog(log);
       
       if (success) {
         // 4) 同步更新每个已关联任务的进度/状态（逐条尝试，失败不阻断整体）

@@ -141,6 +141,7 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => TaskEditScreen(
+                      currentUser: widget.user,
                       onSave: _saveTask,
                     ),
                   ),
@@ -422,6 +423,7 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
                             Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (context) => TaskEditScreen(
+                                  currentUser: widget.user,
                                   task: task,
                                   onSave: _saveTask,
                                 ),

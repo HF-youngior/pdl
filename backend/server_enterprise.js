@@ -5,6 +5,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 require('dotenv').config();
+// const { useDefault, Segment } = require('segmentit');
+// const segmenter = useDefault(new Segment());
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -23,7 +25,7 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'asdfgh0625YYH',
+  password: process.env.DB_PASSWORD || 'Zs462581379',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
   charset: 'utf8mb4',
@@ -1013,6 +1015,88 @@ app.post('/api/company-important-items', authenticateToken, checkPermission(['ad
   }
 });
 
+// 批量更新重要事项选择状态（用于编辑十大事项）
+app.put('/api/company-important-items/batch-select', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { selectedIds } = req.body;
+    
+    if (!Array.isArray(selectedIds)) {
+      return res.status(400).json({ error: 'selectedIds 必须是数组' });
+    }
+
+    // 开始事务
+    await db.query('START TRANSACTION');
+    
+    try {
+      // 首先将所有事项设为未选择
+      await db.execute(
+        'UPDATE company_important_items SET is_selected = FALSE, updated_by = ?',
+        [req.user.id]
+      );
+      
+      // 然后设置选中的事项
+      if (selectedIds.length > 0) {
+        const placeholders = selectedIds.map(() => '?').join(',');
+        await db.execute(
+          `UPDATE company_important_items SET is_selected = TRUE, updated_by = ? WHERE id IN (${placeholders})`,
+          [req.user.id, ...selectedIds]
+        );
+      }
+      
+      // 提交事务
+      await db.query('COMMIT');
+      
+      res.json({ 
+        message: '批量更新成功', 
+        selectedCount: selectedIds.length,
+        totalCount: selectedIds.length
+      });
+    } catch (error) {
+      // 回滚事务
+      await db.query('ROLLBACK');
+      throw error;
+    }
+  } catch (error) {
+    console.error('批量更新重要事项选择状态错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 更新重要事项（编辑内容）
+app.put('/api/company-important-items/:id', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, priority, status, deadline } = req.body;
+
+    await db.execute(
+      'UPDATE company_important_items SET title = ?, description = ?, priority = ?, status = ?, deadline = ?, updated_by = ? WHERE id = ?',
+      [title, description, priority, status, deadline, req.user.id, id]
+    );
+
+    res.json({ message: '更新成功' });
+  } catch (error) {
+    console.error('更新重要事项错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 删除重要事项
+app.delete('/api/company-important-items/:id', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await db.execute(
+      'DELETE FROM company_important_items WHERE id = ?',
+      [id]
+    );
+
+    res.json({ message: '删除成功' });
+  } catch (error) {
+    console.error('删除重要事项错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 获取任务列表（根据权限）
 app.get('/api/tasks', authenticateToken, async (req, res) => {
   try {
@@ -1961,3 +2045,94 @@ async function startServer() {
 }
 
 startServer().catch(console.error);
+
+// ================= AI 文本分析（基础版） =================
+// 提取关键词和词频统计
+app.post('/api/ai/analyze-log', async (req, res) => {
+  try {
+    const { text, topK = 20 } = req.body || {};
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ error: 'text 不能为空' });
+    }
+
+    // 临时使用简单分词（等segmentit安装后恢复）
+    const tokens = text.split(/[\s\n\r\t,，。！？；：""''（）()【】\[\]{}]+/)
+      .filter(w => w && w.trim().length > 1);
+    const freqMap = {};
+    for (const w of tokens) {
+      freqMap[w] = (freqMap[w] || 0) + 1;
+    }
+    const wordFrequencies = Object.entries(freqMap)
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, topK);
+
+    // 用频次代替简易“权重”，并归一化一个权重字段
+    const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
+    const keywords = wordFrequencies.map(x => ({ word: x.word, weight: x.count / (maxCount || 1) }));
+
+    return res.json({
+      keywords,
+      wordFrequencies
+    });
+  } catch (e) {
+    console.error('AI分析失败:', e);
+    return res.status(500).json({ error: 'AI分析失败' });
+  }
+});
+
+// 基于当天个人日志的一键分析（需登录）
+app.get('/api/ai/analyze-today', authenticateToken, async (req, res) => {
+  try {
+    const { topK = 20 } = req.query;
+    const userId = req.user.id;
+
+    // 查询当天该用户的个人日志（title+content）
+    let [rows] = await db.execute(
+      `SELECT title, content
+       FROM personal_logs
+       WHERE user_id = ?
+         AND DATE(created_at) = CURDATE()`,
+      [userId]
+    );
+    let usedRange = 'today';
+
+    if (!rows || rows.length === 0) {
+      const [rows7] = await db.execute(
+        `SELECT title, content
+         FROM personal_logs
+         WHERE user_id = ?
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`,
+        [userId]
+      );
+      rows = rows7 || [];
+      usedRange = 'last7days';
+    }
+
+    if (!rows || rows.length === 0) {
+      return res.json({ keywords: [], wordFrequencies: [], range: usedRange });
+    }
+
+    const combined = rows.map(r => `${r.title || ''} ${r.content || ''}`).join(' \n ');
+    // 临时使用简单分词（等segmentit安装后恢复）
+    const tokens = combined.split(/[\s\n\r\t,，。！？；：""''（）()【】\[\]{}]+/)
+      .filter(w => w && w.trim().length > 1);
+
+    const freqMap = {};
+    for (const w of tokens) {
+      freqMap[w] = (freqMap[w] || 0) + 1;
+    }
+    const wordFrequencies = Object.entries(freqMap)
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, Number(topK));
+
+    const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
+    const keywords = wordFrequencies.map(x => ({ word: x.word, weight: x.count / (maxCount || 1) }));
+
+    return res.json({ keywords, wordFrequencies, range: usedRange });
+  } catch (e) {
+    console.error('AI当天日志分析失败:', e);
+    return res.status(500).json({ error: 'AI当天日志分析失败' });
+  }
+});

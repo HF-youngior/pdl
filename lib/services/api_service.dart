@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/important_item.dart';
@@ -9,7 +11,19 @@ import '../models/personal_log.dart';
 import 'task_service.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.0.2.2:8080/api';
+  // Dynamically resolve host/port for different platforms
+  static String get _host {
+    if (kIsWeb) return '127.0.0.1';
+    try {
+      if (Platform.isAndroid) return '10.0.2.2';
+    } catch (_) {
+      // Platform not available (e.g., web); fall through
+    }
+    return '127.0.0.1';
+  }
+
+  static const int _port = 8080; // Align with backend currently running on 8080
+  static String get baseUrl => 'http://'+_host+':'+_port.toString()+'/api';
   static String? _authToken;
   
   // 设置认证token
@@ -30,9 +44,6 @@ class ApiService {
     }
     return headers;
   }
-  
-  // 私有方法保持向后兼容
-  static Map<String, String> _getAuthHeaders() => getAuthHeaders();
   
   // 用户认证
   static Future<User?> login(String username, String password) async {
@@ -63,12 +74,12 @@ class ApiService {
     }
   }
 
-  // 获取公司重要事项
+  // 获取公司重要事项（已选择的）
   static Future<List<ImportantItem>> getImportantItems() async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/important-items'),
-        headers: _getAuthHeaders(),
+        headers: getAuthHeaders(),
       );
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
@@ -81,12 +92,114 @@ class ApiService {
     }
   }
 
+  // 获取所有重要事项（用于编辑）
+  static Future<List<ImportantItem>> getAllImportantItems() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/company-important-items/all'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((item) => ImportantItem.fromJson(item)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('获取所有重要事项错误: $e');
+      return [];
+    }
+  }
+
+  // 批量更新重要事项选择状态
+  static Future<bool> batchUpdateImportantItemsSelection(List<String> selectedIds) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/company-important-items/batch-select'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'selectedIds': selectedIds,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('批量更新重要事项选择状态错误: $e');
+      return false;
+    }
+  }
+
+  // 创建重要事项
+  static Future<bool> createImportantItem({
+    required String title,
+    required String description,
+    required String priority,
+    DateTime? deadline,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/company-important-items'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'title': title,
+          'description': description,
+          'priority': priority,
+          'deadline': deadline?.toIso8601String(),
+        }),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      print('创建重要事项错误: $e');
+      return false;
+    }
+  }
+
+  // 更新重要事项
+  static Future<bool> updateImportantItem({
+    required String id,
+    required String title,
+    required String description,
+    required String priority,
+    required String status,
+    DateTime? deadline,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/company-important-items/$id'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'title': title,
+          'description': description,
+          'priority': priority,
+          'status': status,
+          'deadline': deadline?.toIso8601String(),
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('更新重要事项错误: $e');
+      return false;
+    }
+  }
+
+  // 删除重要事项
+  static Future<bool> deleteImportantItem(String id) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/company-important-items/$id'),
+        headers: getAuthHeaders(),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('删除重要事项错误: $e');
+      return false;
+    }
+  }
+
   // 获取任务派发
   static Future<List<Task>> getTasks() async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/tasks'),
-        headers: _getAuthHeaders(),
+        headers: getAuthHeaders(),
       );
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
@@ -104,7 +217,7 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/personal-info/$userId'),
-        headers: _getAuthHeaders(),
+        headers: getAuthHeaders(),
       );
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
@@ -122,7 +235,7 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/logs'),
-        headers: _getAuthHeaders(),
+        headers: getAuthHeaders(),
       );
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
@@ -140,7 +253,7 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/logs'),
-        headers: _getAuthHeaders(),
+        headers: getAuthHeaders(),
         body: jsonEncode(log.toJson()),
       );
       return response.statusCode == 201;
@@ -161,7 +274,7 @@ class ApiService {
       };
       final response = await http.post(
         Uri.parse('$baseUrl/personal-logs'),
-        headers: _getAuthHeaders(),
+        headers: getAuthHeaders(),
         body: jsonEncode(payload),
       );
       return response.statusCode == 201;
@@ -176,7 +289,7 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/personal-logs'),
-        headers: _getAuthHeaders(),
+        headers: getAuthHeaders(),
       );
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
@@ -194,7 +307,7 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/calendar/month-view?year=$year&month=$month'),
-        headers: _getAuthHeaders(),
+        headers: getAuthHeaders(),
       );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -211,7 +324,7 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/calendar/day-detail?date=$date'),
-        headers: _getAuthHeaders(),
+        headers: getAuthHeaders(),
       );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
