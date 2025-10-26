@@ -110,6 +110,7 @@ class _LogEditScreenState extends State<LogEditScreen> {
         description: _descriptionController.text.trim(),
         category: _selectedCategory,
         quadrant: _selectedQuadrant,
+        isCompleted: 0, // 新创建的日志默认未完成
         createdAt: _selectedDate,
         metadata: metadata,
         relatedTaskId: _selectedTaskId,

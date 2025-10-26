@@ -357,77 +357,81 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       days.add(day);
     }
 
-    return Column(
-      children: [
-        // 星期标题
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            children: ['一', '二', '三', '四', '五', '六', '日']
-                .map((day) => Expanded(
-                      child: Center(
-                        child: Text(
-                          day,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          // 星期标题
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: ['一', '二', '三', '四', '五', '六', '日']
+                  .map((day) => Expanded(
+                        child: Center(
+                          child: Text(
+                            day,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
-                      ),
-                    ))
-                .toList(),
-          ),
-        ),
-        // 日期网格
-        Expanded(
-          child: GridView.builder(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              childAspectRatio: 1.2,
+                      ))
+                  .toList(),
             ),
-            itemCount: days.length,
-            itemBuilder: (context, index) {
-              final day = days[index];
-              final isCurrentMonth = day.month == _currentDate.month;
-              final isToday = _isSameDay(day, DateTime.now());
-              
-              // 获取该日期的数据
-              final dayData = _getDayData(day);
-              final hasData = dayData != null && dayData.hasData;
-
-              return GestureDetector(
-                onTap: () => _onDateTapped(day),
-                onLongPress: () => widget.onTaskAdd(day),
-                child: Container(
-                  margin: const EdgeInsets.all(1),
-                  decoration: BoxDecoration(
-                    color: isToday ? Theme.of(context).primaryColor.withOpacity(0.1) : null,
-                    border: isToday ? Border.all(color: Theme.of(context).primaryColor, width: 2) : null,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        '${day.day}',
-                        style: TextStyle(
-                          color: isCurrentMonth ? Colors.black87 : Colors.grey,
-                          fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
-                      // 数据指示器
-                      if (hasData && dayData != null) ...[
-                        const SizedBox(height: 2),
-                        _buildDataIndicators(dayData),
-                      ],
-                      const Spacer(),
-                    ],
-                  ),
-                ),
-              );
-            },
           ),
-        ),
-      ],
+          // 日期网格
+          Expanded(
+            child: GridView.builder(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 7,
+                childAspectRatio: 1.2,
+              ),
+              itemCount: days.length,
+              itemBuilder: (context, index) {
+                final day = days[index];
+                final isCurrentMonth = day.month == _currentDate.month;
+                final isToday = _isSameDay(day, DateTime.now());
+                
+                // 获取该日期的数据
+                final dayData = _getDayData(day);
+                final hasData = dayData != null && dayData.hasData;
+
+                return GestureDetector(
+                  onTap: () => _onDateTapped(day),
+                  onLongPress: () => widget.onTaskAdd(day),
+                  child: Container(
+                    margin: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: isToday ? Theme.of(context).primaryColor.withOpacity(0.1) : null,
+                      border: isToday ? Border.all(color: Theme.of(context).primaryColor, width: 2) : null,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '${day.day}',
+                          style: TextStyle(
+                            color: isCurrentMonth ? Colors.black87 : Colors.grey,
+                            fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 16,
+                          ),
+                        ),
+                        // 数据指示器
+                        if (hasData && dayData != null) ...[
+                          const SizedBox(height: 4),
+                          _buildDataIndicators(dayData),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
