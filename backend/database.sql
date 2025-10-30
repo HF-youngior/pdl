@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deadline TIMESTAMP NULL,
     created_by VARCHAR(36),
+    updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE TABLE IF NOT EXISTS personal_info (
     id VARCHAR(36) PRIMARY KEY,
     user_id VARCHAR(36) NOT NULL,
+    log_date DATE NOT NULL,
     title VARCHAR(200) NOT NULL,
     content TEXT,
     category VARCHAR(50) NOT NULL,
@@ -73,6 +75,37 @@ CREATE TABLE IF NOT EXISTS logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     metadata JSON,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- 个人日志表（与运行时保持一致，支持新建个人日志接口）
+CREATE TABLE IF NOT EXISTS personal_logs (
+    id VARCHAR(36) PRIMARY KEY,
+    log_id VARCHAR(36) UNIQUE,
+    user_id VARCHAR(36),
+    content TEXT,
+    updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    -- 新版字段
+    log_date DATE NULL,
+    weather VARCHAR(50) NULL,
+    keywords TEXT,
+    log_title VARCHAR(200) NULL,
+    log_content TEXT NULL,
+    is_archived BOOLEAN DEFAULT FALSE,
+    related_task_id VARCHAR(36) NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (related_task_id) REFERENCES tasks(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS log_task_linkage (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      log_id VARCHAR(36) NOT NULL,
+      task_id VARCHAR(36) NOT NULL,
+      progress_percentage INT DEFAULT 0,
+      task_status VARCHAR(50) DEFAULT 'in_progress',
+      linkage_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY log_task_unique (log_id, task_id), -- 确保一条日志对一个任务只关联一次
+      FOREIGN KEY (log_id) REFERENCES personal_logs(id) ON DELETE CASCADE,
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
 -- 插入示例数据

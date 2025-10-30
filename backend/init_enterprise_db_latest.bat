@@ -14,7 +14,7 @@ set DB_HOST=localhost
 set DB_PORT=3306
 set DB_USER=root
 :: 从用户运行日志确认的密码（如需覆盖，可在运行前修改此变量）
-set DB_PASSWORD=Zs462581379
+set DB_PASSWORD=hyx123456
 
 :: MySQL 客户端命令（如未在 PATH 中，请写绝对路径，例如："C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysql.exe"）
 set MYSQL_CMD=mysql

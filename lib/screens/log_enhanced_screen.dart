@@ -4,6 +4,7 @@ import '../models/task.dart';
 import '../services/api_service.dart';
 import '../services/task_service.dart';
 import '../models/user.dart';
+import 'package:testflutterproject/models/log_task_update.dart';
 
 class LogEnhancedScreen extends StatefulWidget {
   final User user;
@@ -35,7 +36,7 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
       });
 
       final futures = await Future.wait([
-        ApiService.getPersonalLogs(),
+        ApiService.getPersonalLogs(widget.user.id),
         ApiService.getTasks(),
       ]);
 
@@ -56,7 +57,7 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
     if (_filterCategory == 'all') {
       return _logs;
     }
-    return _logs.where((log) => log.category.toLowerCase() == _filterCategory).toList();
+    return _logs.where((log) => (log.category??'').toLowerCase() == _filterCategory).toList();
   }
 
   String _getCategoryText(String category) {
@@ -101,36 +102,6 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
         return Icons.meeting_room;
       default:
         return Icons.description;
-    }
-  }
-
-  String _getQuadrantText(String quadrant) {
-    switch (quadrant) {
-      case 'important_urgent':
-        return '重要且紧急';
-      case 'important_not_urgent':
-        return '重要不紧急';
-      case 'not_important_urgent':
-        return '紧急不重要';
-      case 'not_important_not_urgent':
-        return '不重要不紧急';
-      default:
-        return quadrant;
-    }
-  }
-
-  Color _getQuadrantColor(String quadrant) {
-    switch (quadrant) {
-      case 'important_urgent':
-        return Colors.red;
-      case 'important_not_urgent':
-        return Colors.orange;
-      case 'not_important_urgent':
-        return Colors.blue;
-      case 'not_important_not_urgent':
-        return Colors.green;
-      default:
-        return Colors.grey;
     }
   }
 
@@ -308,14 +279,14 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
             Row(
               children: [
                 Icon(
-                  _getCategoryIcon(log.category),
-                  color: _getCategoryColor(log.category),
+                  _getCategoryIcon(log.category??''),
+                  color: _getCategoryColor(log.category??''),
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    log.logTitle,
+                    log.logTitle ?? '无标题',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -328,13 +299,13 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: _getCategoryColor(log.category).withOpacity(0.1),
+                    color: _getCategoryColor(log.category??'').withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    _getCategoryText(log.category),
+                    _getCategoryText(log.category??''),
                     style: TextStyle(
-                      color: _getCategoryColor(log.category),
+                      color: _getCategoryColor(log.category??''),
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
@@ -345,9 +316,9 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
             const SizedBox(height: 8),
             
             // 描述
-            if (log.logContent != null && log.logContent!.isNotEmpty)
+            if (log.content != null && log.content!.isNotEmpty)
               Text(
-                log.logContent!,
+                log.content ?? '',
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.grey[600],
@@ -358,7 +329,7 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
               children: [
                 // 天气emoji
                 Text(
-                  _getWeatherEmoji(log.weather),
+                  _getWeatherEmoji(log.weather ?? 'sunny'),
                   style: const TextStyle(fontSize: 20),
                 ),
                 const SizedBox(width: 8),
@@ -391,34 +362,9 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                if (log.quadrant.isNotEmpty) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getQuadrantColor(log.quadrant).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _getQuadrantColor(log.quadrant),
-                        width: 1,
-                      ),
-                    ),
-                    child: Text(
-                      _getQuadrantText(log.quadrant),
-                      style: TextStyle(
-                        color: _getQuadrantColor(log.quadrant),
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
                 const Spacer(),
                 Text(
-                  '${widget.user.name} • ${_formatDateTime(log.createdAt)}',
+                  '${widget.user.name} • ${_formatDateTime(DateTime.parse(log.createdAt??''))}',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey[600],
@@ -559,7 +505,6 @@ class _AddLogDialogState extends State<_AddLogDialog> {
   // 旧版字段（分类/四象限/单任务关联）已废弃，不再在 UI 中展示
   // 如需兼容后端旧接口，内部将使用合理默认值
   String _selectedCategory = 'work';
-  String _selectedQuadrant = 'important_not_urgent';
   String? _selectedTaskId; // 仅用于兼容字段（选择的第一个关联任务）
 
   // 新增：日期、天气、关键词、关联任务编辑状态
@@ -568,6 +513,9 @@ class _AddLogDialogState extends State<_AddLogDialog> {
   final List<String> _keywords = [];
   final TextEditingController _keywordInputController = TextEditingController();
   final Map<String, _AssociatedTaskEdit> _selectedTaskEdits = {}; // taskId -> edit state
+  // 任务搜索输入与焦点（用于清空与收起下拉）
+  TextEditingController? _taskSearchController;
+  FocusNode? _taskSearchFocusNode;
 
   @override
   void dispose() {
@@ -582,58 +530,57 @@ class _AddLogDialogState extends State<_AddLogDialog> {
     if (!_formKey.currentState!.validate()) return;
 
     try {
-      // 2) 组装个人日志对象：日期、天气、关键词、正文、关联任务
+      // 1) 组装一个匹配当前模型的对象
       final log = PersonalLog(
-        logId: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
         userId: widget.user.id,
-        logDate: DateTime(
-          _selectedDate.year,
-          _selectedDate.month,
-          _selectedDate.day,
-        ),
+        title: _actionController.text.trim().isEmpty
+            ? '个人日志'
+            : _actionController.text.trim(),
+        content: _buildLogDescription(),
+        category: _selectedCategory,
+        isCompleted: false,
+        createdAt: DateTime.now().toIso8601String(),
         weather: _selectedWeather,
         keywords: _keywords,
-        logTitle: _actionController.text.trim().isEmpty ? '个人日志' : _actionController.text.trim(),
-        logContent: _buildLogDescription(),
-        category: _selectedCategory,
-        quadrant: _selectedQuadrant,
-        createdAt: DateTime.now(),
-        linkages: _selectedTaskEdits.values.map((edit) => LogTaskLinkage(
-          taskId: edit.taskId,
-          progressPercentage: edit.progress ?? 0,
-          taskStatus: edit.status,
-        )).toList(),
+        // 修复名称：用 taskUpdates
+        taskUpdates: _selectedTaskEdits.values
+            .map((edit) => LogTaskUpdate(
+                  taskId: edit.taskId,
+                  taskName: edit.title,
+                  progress_percentage: edit.progress ?? 0,
+                  task_status: edit.status,
+                ))
+            .toList(),
       );
 
-      // 3) 调用个人日志创建接口
-      final success = await ApiService.createPersonalLog(log);
-      
-      if (success) {
-        // 4) 同步更新每个已关联任务的进度/状态（逐条尝试，失败不阻断整体）
-        for (final edit in _selectedTaskEdits.values) {
-          try {
-            await TaskService.updateTaskStatus(
-              edit.taskId,
-              status: edit.status,
-              progressPercentage: edit.progress,
-              specialNotes: null,
-            );
-          } catch (e) {
-            // 单个任务失败不阻断整体，继续尝试后续任务
-          }
-        }
-        if (mounted) {
-          Navigator.of(context).pop();
-          widget.onLogAdded();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('日志添加成功'),
-              backgroundColor: Colors.green,
-            ),
+      // 2) 调用 API（传 JSON Map）
+      await ApiService.createPersonalLog(log.toJson());
+
+      // 3) 同步更新每个已关联任务的进度/状态（逐条尝试，失败不阻断整体）
+      for (final edit in _selectedTaskEdits.values) {
+        try {
+          await TaskService.updateTaskStatus(
+            edit.taskId,
+            status: edit.status,
+            progressPercentage: edit.progress,
+            specialNotes: null,
           );
+        } catch (e) {
+          // 单个任务失败不阻断整体
         }
-      } else {
-        throw Exception('保存失败');
+      }
+
+      // 4) 成功后的操作
+      if (mounted) {
+        Navigator.of(context).pop();
+        widget.onLogAdded();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('日志添加成功'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -988,8 +935,13 @@ class _AddLogDialogState extends State<_AddLogDialog> {
                 ),
               );
             });
+            // 选择后：清空输入并收起下拉
+            _taskSearchController?.clear();
+            _taskSearchFocusNode?.unfocus();
           },
           fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            _taskSearchController = controller;
+            _taskSearchFocusNode = focusNode;
             return TextField(
               controller: controller,
               focusNode: focusNode,

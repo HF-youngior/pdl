@@ -123,7 +123,7 @@ class LogsScreenExample extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PersonalLogsScreen(user: user),
+        builder: (context) => PersonalLogsScreen(userId: user.id),
         settings: RouteSettings(name: '/personal-logs-${user.role}'),
       ),
     ).then((_) {

@@ -1,100 +1,106 @@
-class LogTaskLinkage {
-  final String taskId;
-  final int progressPercentage;
-  final String taskStatus;
-
-  LogTaskLinkage({
-    required this.taskId,
-    required this.progressPercentage,
-    required this.taskStatus,
-  });
-
-  factory LogTaskLinkage.fromJson(Map<String, dynamic> json) {
-    return LogTaskLinkage(
-      taskId: json['task_id'] ?? json['taskId'] ?? '',
-      progressPercentage: json['progress_percentage'] ?? json['progressPercentage'] ?? 0,
-      taskStatus: json['task_status'] ?? json['taskStatus'] ?? 'in_progress',
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'task_id': taskId,
-      'progress_percentage': progressPercentage,
-      'task_status': taskStatus,
-    };
-  }
-}
+// lib/models/personal_log.dart
+import 'package:testflutterproject/models/log_task_update.dart';
 
 class PersonalLog {
-  final String logId;
+  final String id;
   final String userId;
-  final DateTime logDate;
-  final String weather;
-  final List<String> keywords;
-  final String logTitle;
-  final String? logContent;
-  final String category;
-  final String quadrant;
-  final bool isArchived;
-  final DateTime createdAt;
-  final DateTime? updatedAt;
-  final List<LogTaskLinkage> linkages;
+  final String? title;
+  final String? content;
+  final String? category;
+  final bool isCompleted;
+  final String? createdAt; // 时间戳(字符串)
+  // 兼容增强视图所需的可选字段
+  final String? weather; // 天气（可能来自新版接口或留空）
+  final List<String> keywords; // 关键词列表（若无则为空）
+  final List<LogTaskUpdate> taskUpdates;
+
+  // 兼容增强视图：logTitle 映射到 title
+  String get logTitle => title ?? '';
+  // 兼容增强视图：将 createdAt 转为 DateTime
+  DateTime? get createdAtDate => _tryParseDateTime(createdAt);
+  // 兼容增强视图：将 taskUpdates 适配为 linkages 列表
+  List<LogTaskLinkage> get linkages => taskUpdates
+      .map((u) => LogTaskLinkage(
+            taskId: u.taskId,
+            progressPercentage: u.progress_percentage ?? 0,
+            taskStatus: u.task_status,
+          ))
+      .toList();
 
   PersonalLog({
-    required this.logId,
+    required this.id,
     required this.userId,
-    required this.logDate,
-    required this.weather,
-    required this.keywords,
-    required this.logTitle,
-    this.logContent,
+    required this.title,
+    this.content,
     required this.category,
-    required this.quadrant,
-    this.isArchived = false,
+    required this.isCompleted,
     required this.createdAt,
-    this.updatedAt,
-    this.linkages = const [],
-  });
+    this.weather,
+    List<String>? keywords,
+    required this.taskUpdates,
+  }) : keywords = keywords ?? const [];
 
   factory PersonalLog.fromJson(Map<String, dynamic> json) {
-    final rawKeywords = (json['keywords'] ?? json['keywordsCsv'])?.toString() ?? '';
+    final dynamic kw = json['keywords'];
+    final List<String> parsedKeywords =
+      kw is List ? kw.map((e) => e.toString()).toList()
+      : (kw is String && kw.trim().isNotEmpty)
+        ? kw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList()
+        : <String>[];
     return PersonalLog(
-      logId: json['log_id'] ?? json['logId'] ?? '',
-      userId: json['user_id'] ?? json['userId'] ?? '',
-      logDate: DateTime.parse(json['log_date'] ?? json['logDate'] ?? DateTime.now().toIso8601String()),
-      weather: json['weather'] ?? 'sunny',
-      keywords: rawKeywords.isEmpty ? [] : rawKeywords.split(',').map((e) => e.trim()).toList(),
-      logTitle: json['log_title'] ?? json['logTitle'] ?? '个人日志',
-      logContent: json['log_content'] ?? json['logContent'],
-      category: json['category'] ?? 'work',
-      quadrant: json['quadrant'] ?? 'important_not_urgent',
-      isArchived: (json['is_archived'] ?? json['isArchived'] ?? false) == true || (json['is_archived'] == 1),
-      createdAt: DateTime.parse(json['created_at'] ?? json['createdAt'] ?? DateTime.now().toIso8601String()),
-      updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at']) : null,
-      linkages: (json['linkages'] as List<dynamic>? ?? [])
-          .map((e) => LogTaskLinkage.fromJson(e as Map<String, dynamic>))
+      id: json['id']?.toString() ?? '',
+      userId: json['user_id']?.toString() ?? '',
+      title: json['title'] ?? json['log_title'] ?? '个人日志',
+      content: json['content'] ?? json['log_content'],
+      category: json['category']?.toString(),
+      isCompleted: (json['is_completed'] == 1 || json['is_completed'] == true),
+      createdAt: json['created_at']?.toString() ?? json['log_date']?.toString(),
+      weather: json['weather']?.toString(),
+      keywords: parsedKeywords, // 只取数据库/接口返回，不从 content 拆分
+      taskUpdates: (json['taskUpdates'] as List<dynamic>? ?? [])
+          .map((item) => LogTaskUpdate.fromJson(item as Map<String, dynamic>))
           .toList(),
     );
   }
 
+  // 将当前模型序列化为 API 需要的 JSON 结构
+  // 符合后端 /api/personal-logs 接口期望的 { log: {...}, linkages: [...] }
   Map<String, dynamic> toJson() {
     return {
-      'log_id': logId,
-      'user_id': userId,
-      'log_date': '${logDate.year}-${logDate.month.toString().padLeft(2, '0')}-${logDate.day.toString().padLeft(2, '0')}',
-      'weather': weather,
-      'keywords': keywords.join(','),
-      'log_title': logTitle,
-      'log_content': logContent,
-      'category': category,
-      'quadrant': quadrant,
-      'is_archived': isArchived,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt?.toIso8601String(),
-      'linkages': linkages.map((e) => e.toJson()).toList(),
+      'log': {
+        'log_date': createdAt,
+        'title': title,
+        'content': content,
+        'category': category,
+        'is_completed': isCompleted,
+        if (weather != null) 'weather': weather,
+        if (keywords.isNotEmpty) 'keywords': keywords.join(','),
+      },
+      'linkages': taskUpdates.map((e) => e.toJson()).toList(),
     };
   }
+
+  static DateTime? _tryParseDateTime(String? value) {
+    if (value == null || value.isEmpty) return null;
+    try {
+      return DateTime.parse(value);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+// 兼容增强视图使用的旧结构（linkages）
+class LogTaskLinkage {
+  final String taskId;
+  final int progressPercentage;
+  final String? taskStatus;
+
+  LogTaskLinkage({
+    required this.taskId,
+    required this.progressPercentage,
+    this.taskStatus,
+  });
 }
 
 
