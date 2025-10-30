@@ -77,19 +77,22 @@ CREATE TABLE IF NOT EXISTS logs (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- 个人日志表（与运行时保持一致，支持新建个人日志接口）
 CREATE TABLE IF NOT EXISTS personal_logs (
     id VARCHAR(36) PRIMARY KEY,
     log_id VARCHAR(36) UNIQUE,
-    user_id VARCHAR(36),
+    user_id VARCHAR(36) NOT NULL,
+    title VARCHAR(200) NOT NULL DEFAULT '个人日志',
     content TEXT,
+    is_completed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
-    -- 新版字段
     log_date DATE NULL,
     weather VARCHAR(50) NULL,
-    keywords TEXT,
+    keywords VARCHAR(255) NULL,
     log_title VARCHAR(200) NULL,
     log_content TEXT NULL,
+    category VARCHAR(50) NOT NULL DEFAULT 'work',
+    quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent',
     is_archived BOOLEAN DEFAULT FALSE,
     related_task_id VARCHAR(36) NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

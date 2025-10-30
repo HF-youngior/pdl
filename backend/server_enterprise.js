@@ -152,7 +152,9 @@ async function createTables() {
     `CREATE TABLE IF NOT EXISTS personal_logs (
       id VARCHAR(36) PRIMARY KEY,
       log_id VARCHAR(36) UNIQUE,
-      user_id VARCHAR(36),
+      user_id VARCHAR(36) NOT NULL,
+      title VARCHAR(200) NOT NULL DEFAULT '个人日志',
+      content TEXT,
       is_completed BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
@@ -161,6 +163,8 @@ async function createTables() {
       keywords VARCHAR(255) NULL,
       log_title VARCHAR(200) NULL,
       log_content TEXT NULL,
+      category VARCHAR(50) NOT NULL DEFAULT 'work',
+      quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent',
       is_archived BOOLEAN DEFAULT FALSE,
       related_task_id VARCHAR(36) NULL,
       FOREIGN KEY (user_id) REFERENCES users(id),
@@ -211,13 +215,20 @@ async function ensureSchemaCompatibility() {
 
     // 所有 ALTER TABLE ... IF NOT EXISTS 语句外包裹 try...catch，兼容老MySQL
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_id VARCHAR(36) UNIQUE"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS title VARCHAR(200) NOT NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS content TEXT"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_date DATE NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS weather VARCHAR(50) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS keywords VARCHAR(255) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_title VARCHAR(200) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_content TEXT NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent'"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS related_task_id VARCHAR(36) NULL"); } catch(e){}
+    // 设置默认值（兼容已有库）
+    try { await db.execute("ALTER TABLE personal_logs MODIFY title VARCHAR(200) NOT NULL DEFAULT '个人日志'"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs MODIFY category VARCHAR(50) NOT NULL DEFAULT 'work'"); } catch(e){}
     // 索引、关联关系等原有包裹不变
     try { await db.execute("CREATE INDEX IF NOT EXISTS idx_personal_logs_user_id ON personal_logs(user_id)"); } catch (_) {}
     try { await db.execute("CREATE INDEX IF NOT EXISTS idx_personal_logs_log_date ON personal_logs(log_date)"); } catch (_) {}
@@ -229,7 +240,7 @@ async function ensureSchemaCompatibility() {
       task_status VARCHAR(50) DEFAULT 'in_progress',
       linkage_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY log_task_unique (log_id, task_id),
-      FOREIGN KEY (log_id) REFERENCES personal_logs(log_id) ON DELETE CASCADE,
+      FOREIGN KEY (log_id) REFERENCES personal_logs(id) ON DELETE CASCADE,
       FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
     )`);
     try { await db.execute("CREATE INDEX IF NOT EXISTS idx_log_task_linkage_log_id ON log_task_linkage(log_id)"); } catch (_) {}
@@ -1529,60 +1540,80 @@ app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
 
 // 创建个人日志
 app.post('/api/personal-logs', authenticateToken, async (req, res) => {
-  // 您的旧 API 使用 { log, linkages } 结构，我们将遵循它
-  const { log, linkages } = req.body;
+  // 兼容旧形态：{ log, linkages }；也支持直接平铺字段
   const userId = req.user.id;
-  if (!log || !log.log_date || !log.content) {
-    return res.status(400).json({ error: '缺少必填字段 (log.log_date, log.content)' });
+  const payload = req.body && req.body.log ? req.body.log : req.body;
+  const linkages = Array.isArray(req.body && req.body.linkages) ? req.body.linkages : (payload.linkages || []);
+
+  // 校验必填字段
+  if (!payload || !payload.title || !payload.category) {
+    return res.status(400).json({ error: '缺少必填字段 (title, category)' });
   }
 
-  const logId = require('crypto').randomUUID();
-  // 使用用户在 FlutterDatePicker 中选择的日期
-  const logTimestamp = new Date(log.log_date); 
+  const id = require('crypto').randomUUID();
+  const businessLogId = require('crypto').randomUUID(); // 存入 personal_logs.log_id
+
+  // 归一化字段
+  function formatDateOnly(dateLike) {
+    if (!dateLike) return null;
+    const d = new Date(dateLike);
+    if (Number.isNaN(d.getTime())) return null;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  const title = payload.title;
+  const content = payload.content || null;
+  const is_completed = Boolean(payload.is_completed);
+  const created_at = payload.created_at ? new Date(payload.created_at) : (payload.log_date ? new Date(payload.log_date) : new Date());
+  const log_date = payload.log_date ? formatDateOnly(payload.log_date) : formatDateOnly(created_at);
+  const weather = payload.weather || null;
+  const keywords = Array.isArray(payload.keywords) ? payload.keywords.join(',') : (payload.keywords || null);
+  const log_title = payload.log_title || null;
+  const log_content = payload.log_content || null;
+  const category = payload.category;
+  const quadrant = payload.quadrant || 'important_not_urgent';
+  const is_archived = Boolean(payload.is_archived);
+  const related_task_id = payload.related_task_id || null;
 
   let connection;
   try {
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // 1. 插入主日志
-    const insertLogSql = `
-      INSERT INTO personal_logs (id, user_id, content, created_at, weather, keywords)
-      VALUES (?, ?, ?, ?, ?, ?)
+    // 1) 插入 personal_logs
+    const insertSql = `
+      INSERT INTO personal_logs (
+        id, log_id, user_id, title, content, is_completed, created_at, log_date, weather, keywords,
+        log_title, log_content, category, quadrant, is_archived, related_task_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    await connection.execute(insertLogSql, [
-      logId,
-      userId,
-      log.content,
-      new Date(log.log_date),
-      log.weather || null,  // 如果前端没传也没影响
-      Array.isArray(log.keywords) ? log.keywords.join(',') : (log.keywords || null)
+    await connection.execute(insertSql, [
+      id, businessLogId, userId, title, content, is_completed, created_at, log_date, weather, keywords,
+      log_title, log_content, category, quadrant, is_archived, related_task_id
     ]);
 
-    // 2. 插入任务关联并同步
-    if (linkages.length > 0) {
+    // 2) 插入任务关联并同步（可选）
+    if (Array.isArray(linkages) && linkages.length > 0) {
       const insertLinkSql = `
-        INSERT INTO log_task_linkage (log_id, task_id, progress_percentage, task_status, linkage_time) 
+        INSERT INTO log_task_linkage (log_id, task_id, progress_percentage, task_status, linkage_time)
         VALUES (?, ?, ?, ?, ?)
       `;
       for (const update of linkages) {
-        // 从 Flutter 接收 snake_case (task_id 等)
-        if (update.task_id) {
+        if (update && update.task_id) {
           const taskUpdateData = {
-              task_id: update.task_id,
-              progress_percentage: update.progress_percentage || 0,
-              task_status: update.task_status || 'in_progress'
+            task_id: update.task_id,
+            progress_percentage: update.progress_percentage || 0,
+            task_status: update.task_status || 'in_progress'
           };
-
           await connection.execute(insertLinkSql, [
-            logId,
+            id,
             taskUpdateData.task_id,
             taskUpdateData.progress_percentage,
             taskUpdateData.task_status,
-            logTimestamp
+            created_at
           ]);
-
-          // 同步任务状态
           await syncTaskStatusFromLog(connection, taskUpdateData);
         }
       }
@@ -1590,30 +1621,27 @@ app.post('/api/personal-logs', authenticateToken, async (req, res) => {
 
     await connection.commit();
 
-    // 3. 获取并返回新创建的数据
-    const [newLogRows] = await connection.execute('SELECT * FROM personal_logs WHERE id = ?', [logId]);
-    const [newLinks] = await connection.execute(
-        `SELECT l.task_id, t.title as task_name, l.progress_percentage, l.task_status 
-         FROM log_task_linkage l LEFT JOIN tasks t ON l.task_id = t.id 
-         WHERE l.log_id = ?`, 
-        [logId]
+    // 3) 查询并返回
+    const [rows] = await connection.execute('SELECT * FROM personal_logs WHERE id = ?', [id]);
+    const [links] = await connection.execute(
+      `SELECT l.task_id, t.title as task_name, l.progress_percentage, l.task_status 
+       FROM log_task_linkage l LEFT JOIN tasks t ON l.task_id = t.id 
+       WHERE l.log_id = ?`,
+      [id]
     );
 
-    const finalLog = newLogRows[0];
-    // 转换为 camelCase 以匹配 Flutter 模型
-    const finalLinks = newLinks.map(link => ({
-       taskId: link.task_id,
-       taskName: link.task_name,
-       progress_percentage: link.progress_percentage,
-       task_status: link.task_status
+    const taskUpdates = links.map(link => ({
+      taskId: link.task_id,
+      taskName: link.task_name,
+      progress_percentage: link.progress_percentage,
+      task_status: link.task_status
     }));
 
-    res.status(201).json({ ...finalLog, taskUpdates: finalLinks });
-
+    return res.status(201).json({ ...rows[0], taskUpdates });
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('创建个人日志错误:', error);
-    res.status(500).json({ error: '服务器内部错误', details: error.message });
+    return res.status(500).json({ error: '服务器内部错误', details: error.message });
   } finally {
     if (connection) connection.release();
   }
@@ -1687,12 +1715,25 @@ app.get('/api/logs', async (req, res) => {
 // [新] 更新个人日志 (Update)
 app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
   const { id: logId } = req.params;
-  const { log, linkages } = req.body;
   const userId = req.user.id;
-  if (!log || !log.content) {
-    return res.status(400).json({ error: '缺少必填字段 (log.content)' });
+  const payload = req.body && req.body.log ? req.body.log : req.body;
+  const linkages = Array.isArray(req.body && req.body.linkages) ? req.body.linkages : (payload.linkages || []);
+
+  if (!payload || !payload.title || !payload.category) {
+    return res.status(400).json({ error: '缺少必填字段 (title, category)' });
   }
-  const logTimestamp = new Date(log.log_date);
+
+  function formatDateOnly(dateLike) {
+    if (!dateLike) return null;
+    const d = new Date(dateLike);
+    if (Number.isNaN(d.getTime())) return null;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  const updatedCreatedAt = payload.created_at ? new Date(payload.created_at) : (payload.log_date ? new Date(payload.log_date) : null);
+  const dbKeywords = Array.isArray(payload.keywords) ? payload.keywords.join(',') : (payload.keywords || null);
 
   let connection;
   try {
@@ -1705,42 +1746,46 @@ app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
       throw new Error('Log not found or access denied.');
     }
 
-    // 关键词转英文逗号分隔字符串
-    const dbKeywords = Array.isArray(log.keywords) ? log.keywords.join(',') : (log.keywords || null);
+    // 更新主记录（仅设置提供的字段）
+    const updates = [];
+    const values = [];
+    const fields = {
+      title: payload.title,
+      content: payload.content ?? null,
+      category: payload.category,
+      is_completed: payload.is_completed ?? false,
+      log_date: payload.log_date ? formatDateOnly(payload.log_date) : null,
+      weather: payload.weather ?? null,
+      keywords: dbKeywords,
+      log_title: payload.log_title ?? null,
+      log_content: payload.log_content ?? null,
+      quadrant: payload.quadrant || 'important_not_urgent',
+      is_archived: payload.is_archived ? 1 : 0,
+      related_task_id: payload.related_task_id ?? null
+    };
+    if (updatedCreatedAt) {
+      fields.created_at = updatedCreatedAt;
+    }
+    for (const [k, v] of Object.entries(fields)) {
+      updates.push(`${k} = ?`);
+      values.push(v);
+    }
+    values.push(logId);
+    await connection.execute(`UPDATE personal_logs SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`, values);
 
-    await connection.execute(
-      `UPDATE personal_logs SET 
-        title = ?, 
-        content = ?, 
-        category = ?, 
-        is_completed = ?, 
-        created_at = ?, 
-        updated_at = NOW(), 
-        keywords = ?
-      WHERE id = ?`,
-      [
-        log.title,
-        log.content || null,
-        log.category,
-        log.is_completed || false,
-        logTimestamp,
-        dbKeywords,
-        logId
-      ]
-    );
-
-    // 清空并重新插入日志关联的任务
+    // 重新应用任务关联
     await connection.execute('DELETE FROM log_task_linkage WHERE log_id = ?', [logId]);
-    if (linkages.length > 0) {
+    if (Array.isArray(linkages) && linkages.length > 0) {
       const insertLinkSql = `INSERT INTO log_task_linkage (log_id, task_id, progress_percentage, task_status, linkage_time) VALUES (?, ?, ?, ?, ?)`;
+      const linkageTime = updatedCreatedAt || new Date();
       for (const update of linkages) {
-        if (update.task_id) {
+        if (update && update.task_id) {
           const taskUpdateData = {
             task_id: update.task_id,
             progress_percentage: update.progress_percentage || 0,
             task_status: update.task_status || 'in_progress'
           };
-          await connection.execute(insertLinkSql, [logId, taskUpdateData.task_id, taskUpdateData.progress_percentage, taskUpdateData.task_status, logTimestamp]);
+          await connection.execute(insertLinkSql, [logId, taskUpdateData.task_id, taskUpdateData.progress_percentage, taskUpdateData.task_status, linkageTime]);
           await syncTaskStatusFromLog(connection, taskUpdateData);
         }
       }
@@ -1748,7 +1793,6 @@ app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
 
     await connection.commit();
 
-    // 查询新的日志详情并返回
     const [newLogRows] = await connection.execute('SELECT * FROM personal_logs WHERE id = ?', [logId]);
     const [newLinks] = await connection.execute(
       `SELECT l.task_id, t.title as task_name, l.progress_percentage, l.task_status
@@ -1756,21 +1800,17 @@ app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
        WHERE l.log_id = ?`,
       [logId]
     );
-    const finalLog = newLogRows[0];
-    finalLog.keywords = typeof finalLog.keywords === 'string' && finalLog.keywords.trim() !== ''
-      ? finalLog.keywords.split(',').map(k => k.trim()).filter(Boolean)
-      : [];
     const finalLinks = newLinks.map(link => ({
       taskId: link.task_id,
       taskName: link.task_name,
       progress_percentage: link.progress_percentage,
       task_status: link.task_status
     }));
-    res.status(200).json({ ...finalLog, taskUpdates: finalLinks });
+    return res.status(200).json({ ...newLogRows[0], taskUpdates: finalLinks });
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('更新个人日志错误:', error);
-    res.status(500).json({ error: '服务器内部错误', details: error.message });
+    return res.status(500).json({ error: '服务器内部错误', details: error.message });
   } finally {
     if (connection) connection.release();
   }
