@@ -85,7 +85,7 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
     setState(() => _isLoadingTasks = true);
     try {
       // 假设 TaskService.getTasks(userId) 返回 Task 列表
-      _availableTasks = await TaskService.getTasks();
+      _availableTasks = (await TaskService.getTasks()).where((task) => task.assigneeId == widget.userId).toList();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('加载任务列表失败: $e'), backgroundColor: Colors.red),
@@ -208,7 +208,7 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
     // 匹配后端 API 的 {log, linkages} 结构
     final logData = {
       'log': {
-        'log_date': DateFormat('yyyy-MM-dd HH:mm:ss').format(_selectedDate), // 发送完整时间戳
+        'log_date': DateFormat('yyyy-MM-dd').format(_selectedDate), // 用log_date字段，格式2025-10-30这种
         'title': _titleController.text,
         'content': _contentController.text,
         'category': _selectedCategory,

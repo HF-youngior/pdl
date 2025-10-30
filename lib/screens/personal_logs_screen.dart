@@ -130,9 +130,10 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
                   final log = logs[index];
                   return Card(
                     margin: EdgeInsets.symmetric(vertical: 6),
-                    elevation: 2,
+                    elevation: 0, // 极简无阴影
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), // 圆角更大更现代
                     child: Padding(
-                      padding: const EdgeInsets.all(12.0),
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 8), // 更紧凑的内边距
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -142,7 +143,7 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                DateFormat('yyyy-MM-dd').format(DateTime.parse(log.createdAt??'')),
+                                DateFormat('yyyy-MM-dd').format(DateTime.parse(log.createdAt ?? '')),
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -159,28 +160,28 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
                                             padding: EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                             margin: EdgeInsets.only(left: 3, top: 2),
                                             decoration: BoxDecoration(
-                                              color: Colors.orange.withOpacity(0.17),
+                                              color: Colors.orange.withOpacity(0.13),
                                               borderRadius: BorderRadius.circular(12),
-                                              border: Border.all(color: Colors.orange.withOpacity(0.33)),
+                                              border: Border.all(color: Colors.orange.withOpacity(0.6)),
                                             ),
-                                            child: Text(kw, style: TextStyle(fontSize: 12, color: Colors.orange[800])))).toList(),
+                                            child: Text(kw, style: TextStyle(fontSize: 12, color: Colors.orange[800], fontWeight: FontWeight.w500)),)).toList(),
                                         )
-                                      : Text('无关键词', style: TextStyle(fontSize: 12, color: Colors.grey[400])),
+                                      : Text('无关键词', style: TextStyle(fontSize: 12, color: Colors.grey[400], fontWeight: FontWeight.w500)),
                                 ),
                               ),
                             ],
                           ),
-                          SizedBox(height: 6),
+                          SizedBox(height: 4),
                           // 内容区
                           Text(
                             log.content ?? '（无内容）',
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 15),
+                            style: TextStyle(fontSize: 15, color: Colors.grey[800]), // 内容用浅灰色
                           ),
                           // 任务标签区（如果有）
                           if (log.taskUpdates.isNotEmpty) ...[
-                            SizedBox(height: 8),
+                            SizedBox(height: 7),
                             Wrap(
                               spacing: 7,
                               children: log.taskUpdates.map((update) => Chip(
@@ -197,11 +198,19 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              IconButton(
-                                icon: Icon(Icons.delete_outline, color: Colors.red[300]),
+                              SizedBox(width: 8),
+                              ElevatedButton.icon(
                                 onPressed: () => _showDeleteConfirmation(log.id),
-                                tooltip: '删除日志',
-                              )
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red[400],
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                                  elevation: 0,
+                                ),
+                                icon: Icon(Icons.delete_outline, size: 18),
+                                label: Text('删除', style: TextStyle(fontWeight: FontWeight.w600)),
+                              ),
                             ],
                           ),
                         ],

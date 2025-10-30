@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../services/task_service.dart';
 import '../models/user.dart';
 import 'package:testflutterproject/models/log_task_update.dart';
+import 'package:intl/intl.dart';
 
 class LogEnhancedScreen extends StatefulWidget {
   final User user;
@@ -364,11 +365,10 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
               children: [
                 const Spacer(),
                 Text(
-                  '${widget.user.name} • ${_formatDateTime(DateTime.parse(log.createdAt??''))}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
+                  '${widget.user.name} • '
+                  // 检查 logDate 是否为 null。如果不为 null，则格式化日期。
+                      '${log.logDate != null ? DateFormat('yyyy-MM-dd').format(log.logDate!) : '-'}',
+                  style: const TextStyle(fontSize: 15, color: Colors.blue, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -544,6 +544,7 @@ class _AddLogDialogState extends State<_AddLogDialog> {
         weather: _selectedWeather,
         keywords: _keywords,
         // 修复名称：用 taskUpdates
+        logDate: _selectedDate,
         taskUpdates: _selectedTaskEdits.values
             .map((edit) => LogTaskUpdate(
                   taskId: edit.taskId,

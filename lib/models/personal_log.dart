@@ -9,6 +9,7 @@ class PersonalLog {
   final String? category;
   final bool isCompleted;
   final String? createdAt; // 时间戳(字符串)
+  final DateTime? logDate;
   // 兼容增强视图所需的可选字段
   final String? weather; // 天气（可能来自新版接口或留空）
   final List<String> keywords; // 关键词列表（若无则为空）
@@ -38,6 +39,7 @@ class PersonalLog {
     this.weather,
     List<String>? keywords,
     required this.taskUpdates,
+    this.logDate,
   }) : keywords = keywords ?? const [];
 
   factory PersonalLog.fromJson(Map<String, dynamic> json) {
@@ -60,6 +62,9 @@ class PersonalLog {
       taskUpdates: (json['taskUpdates'] as List<dynamic>? ?? [])
           .map((item) => LogTaskUpdate.fromJson(item as Map<String, dynamic>))
           .toList(),
+      logDate: (json['log_date'] != null) // <<< 确保在构造函数调用中传递 logDate
+          ? DateTime.parse(json['log_date'] as String)
+          : null,
     );
   }
 
