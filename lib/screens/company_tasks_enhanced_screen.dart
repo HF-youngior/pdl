@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+import '../services/task_service.dart';
 import 'task_edit_screen.dart';
+import 'task_detail_screen.dart';
 
 class CompanyTasksEnhancedScreen extends StatefulWidget {
   final User user;
@@ -65,10 +67,8 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
   }
 
   bool get _canCreateTask {
-    return widget.user.role == 'admin' || 
-           widget.user.role == 'founder' || 
-           widget.user.role == 'manager' ||
-           widget.user.role == 'team_leader';
+    // 除了员工，其他角色都可以创建任务
+    return widget.user.role != 'employee';
   }
 
   String _getPriorityText(String priority) {
@@ -132,9 +132,8 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
   }
 
   double _calculateProgress(Task task) {
-    // 这里应该根据子任务完成情况计算进度
-    // 暂时返回随机进度作为示例
-    return 0.6;
+    // 使用任务的真实进度
+    return task.progressPercentage / 100.0;
   }
 
   @override
@@ -155,6 +154,13 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
           ],
         ),
         actions: [
+          // 刷新按钮在最右边
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadTasks,
+            tooltip: '刷新',
+          ),
+          // 加号按钮在刷新按钮左边（仅非员工角色显示）
           if (_canCreateTask)
             IconButton(
               icon: const Icon(Icons.add),
@@ -168,13 +174,8 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
                   ),
                 );
               },
-              tooltip: '创建任务',
+              tooltip: '新建任务',
             ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadTasks,
-            tooltip: '刷新',
-          ),
         ],
       ),
       body: _buildBody(),
@@ -311,9 +312,25 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      child: InkWell(
+        onTap: () {
+          // 点击任务卡片进入详情页面
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => TaskDetailScreen(
+                task: task,
+                currentUser: widget.user,
+              ),
+            ),
+          ).then((_) {
+            // 从详情页返回后刷新任务列表
+            _loadTasks();
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 标题和优先级
@@ -476,11 +493,22 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
             ),
             
             // 操作按钮
-            if (isReceived && task.status != 'completed') ...[
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // 创建子任务按钮（仅当任务接收者可以派发任务时显示）
+                if (isReceived && _canCreateTask && task.status != 'completed')
+                  OutlinedButton.icon(
+                    onPressed: () => _createSubtask(task),
+                    icon: const Icon(Icons.add_task, size: 16),
+                    label: const Text('创建子任务'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).primaryColor,
+                    ),
+                  ),
+                // 完成任务按钮
+                if (isReceived && task.status != 'completed')
                   TextButton.icon(
                     onPressed: () => _completeTask(task),
                     icon: const Icon(Icons.check, size: 16),
@@ -489,10 +517,10 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
                       foregroundColor: Colors.green,
                     ),
                   ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ],
+        ),
         ),
       ),
     );
@@ -524,6 +552,30 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
           ),
         );
       }
+    }
+  }
+
+  // 创建子任务
+  Future<void> _createSubtask(Task parentTask) async {
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => TaskEditScreen(
+          currentUser: widget.user,
+          task: null, // 传 null 表示创建新任务
+          parentTaskId: parentTask.id, // 传入父任务ID
+          onSave: _saveTask,
+        ),
+      ),
+    );
+
+    if (result != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('子任务创建成功'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      await _loadTasks();
     }
   }
 

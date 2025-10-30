@@ -335,4 +335,22 @@ class ApiService {
       return null;
     }
   }
+
+  // 获取用户列表（根据权限）
+  static Future<List<User>> getUsers() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/users'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((json) => User.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('获取用户列表错误: $e');
+      return [];
+    }
+  }
 }

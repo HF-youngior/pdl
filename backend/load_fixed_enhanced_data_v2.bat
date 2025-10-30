@@ -6,7 +6,7 @@ echo.
 REM Set database connection parameters
 set DB_HOST=localhost
 set DB_USER=root
-set DB_PASSWORD=asdfgh0625YYH
+set DB_PASSWORD=Pyx_07091817
 set DB_NAME=enterprise_management
 set DB_PORT=3306
 

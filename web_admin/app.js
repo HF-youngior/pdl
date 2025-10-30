@@ -692,8 +692,9 @@ function showAddTaskModal() {
     users.forEach(user => {
         const option = document.createElement('option');
         option.value = user.id;
-        option.textContent = `${user.name} (${user.department})`;
-        option.dataset.department = user.department;
+        const departmentDisplay = user.department_name || user.department || '未知部门';
+        option.textContent = `${user.name} (${departmentDisplay})`;
+        option.dataset.department = departmentDisplay;
         assigneeSelect.appendChild(option);
     });
     
@@ -710,51 +711,105 @@ function showAddTaskModal() {
 // 创建任务
 async function createTask() {
     const form = document.getElementById('addTaskForm');
+    
+    // 检查表单验证
     if (!form.checkValidity()) {
         form.reportValidity();
         return;
     }
     
     const assigneeSelect = document.getElementById('taskAssignee');
-    const selectedUser = users.find(user => user.id === assigneeSelect.value);
+    const selectedUserId = assigneeSelect.value;
+    
+    if (!selectedUserId) {
+        showAlert('请选择责任人', 'warning');
+        return;
+    }
+    
+    const selectedUser = users.find(user => user.id === selectedUserId);
+    
+    if (!selectedUser) {
+        showAlert('未找到选中的用户', 'danger');
+        return;
+    }
+    
+    if (!selectedUser.department_id) {
+        showAlert('用户缺少部门信息', 'danger');
+        return;
+    }
+    
+    // 处理时间字段
+    const startTime = document.getElementById('taskStartTime').value;
+    const deadline = document.getElementById('taskDeadline').value;
+    const isAllDay = document.getElementById('taskIsAllDay').checked;
+    
+    // 格式化时间为后端期望的格式 (YYYY-MM-DD HH:MM:SS)
+    const formatDateTime = (datetimeLocal) => {
+        if (!datetimeLocal) return null;
+        return datetimeLocal.replace('T', ' ') + ':00';
+    };
+    
+    // 将前端优先级值转换为后端期望的格式
+    const priorityMapping = {
+        'important_urgent': 'p0',
+        'important_not_urgent': 'p1',
+        'not_important_urgent': 'p2',
+        'not_important_not_urgent': 'p3'
+    };
+    
+    const frontendPriority = document.getElementById('taskPriority').value;
+    const backendPriority = priorityMapping[frontendPriority] || 'p1';
     
     const taskData = {
         title: document.getElementById('taskTitle').value,
-        description: document.getElementById('taskDescription').value,
-        priority: document.getElementById('taskPriority').value,
-        assigneeId: assigneeSelect.value,
-        assigneeName: selectedUser.name,
-        department: selectedUser.department,
-        startTime: document.getElementById('taskStartTime').value,
-        deadline: document.getElementById('taskDeadline').value,
-        location: document.getElementById('taskLocation').value,
-        color: document.getElementById('taskColor').value,
-        isAllDay: document.getElementById('taskIsAllDay').checked,
-        status: 'pending',
-        createdBy: 'admin' // 假设当前用户是管理员
+        description: document.getElementById('taskDescription').value || '',
+        priority: backendPriority,
+        assignee_id: selectedUserId,
+        department_id: selectedUser.department_id,
+        start_time: startTime ? formatDateTime(startTime) : null,
+        end_time: deadline ? formatDateTime(deadline) : null,
+        deadline: deadline ? formatDateTime(deadline) : null,
+        location: document.getElementById('taskLocation').value || null,
+        is_all_day: isAllDay
     };
-
+    
     try {
         const response = await fetch(`${API_BASE_URL}/tasks`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify(taskData)
         });
 
-        if (response.ok) {
+        if (response.ok || response.status === 201) {
             showAlert('任务发布成功！', 'success');
+            
+            // 关闭模态框
             bootstrap.Modal.getInstance(document.getElementById('addTaskModal')).hide();
+            
+            // 重置表单
             form.reset();
+            
+            // 清除父任务ID（如果有）
+            const parentTaskIdField = document.getElementById('parentTaskId');
+            if (parentTaskIdField) {
+                parentTaskIdField.remove();
+            }
+            
+            // 恢复模态框标题
+            const modalTitle = document.querySelector('#addTaskModal .modal-title');
+            if (modalTitle) {
+                modalTitle.textContent = '新建任务';
+            }
+            
+            // 刷新任务列表
             loadTasks();
         } else {
             const error = await response.json();
-            showAlert(error.message || '发布任务失败', 'danger');
+            showAlert(error.error || error.message || '发布任务失败', 'danger');
         }
     } catch (error) {
         console.error('发布任务失败:', error);
-        showAlert('发布任务失败', 'danger');
+        showAlert('发布任务失败: ' + error.message, 'danger');
     }
 }
 
@@ -791,11 +846,12 @@ async function viewTaskDetail(taskId) {
         // 加载关联日志
         await loadTaskLogs(taskId);
         
+        // 显示模态框
         const modal = new bootstrap.Modal(document.getElementById('taskDetailModal'));
         modal.show();
     } catch (error) {
         console.error('获取任务详情失败:', error);
-        showAlert('获取任务详情失败', 'danger');
+        showAlert('获取任务详情失败: ' + (error.message || ''), 'danger');
     }
 }
 
@@ -845,28 +901,73 @@ async function completeTask() {
     
     if (confirm('确定要完成这个任务吗？')) {
         try {
-            const updatedTask = { ...currentTask, status: 'completed' };
-            
-            const response = await fetch(`${API_BASE_URL}/tasks/${currentTask.id}`, {
+            const response = await fetch(`${API_BASE_URL}/tasks/${currentTask.id}/status`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(updatedTask)
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    status: 'completed',
+                    progress_percentage: 100
+                })
             });
 
             if (response.ok) {
                 showAlert('任务已完成！', 'success');
-                bootstrap.Modal.getInstance(document.getElementById('taskDetailModal')).hide();
+                
+                // 刷新任务详情
+                await viewTaskDetail(currentTask.id);
+                
+                // 刷新任务列表
                 loadTasks();
             } else {
                 const error = await response.json();
-                showAlert(error.message || '完成任务失败', 'danger');
+                showAlert(error.error || error.message || '完成任务失败', 'danger');
             }
         } catch (error) {
             console.error('完成任务失败:', error);
-            showAlert('完成任务失败', 'danger');
+            showAlert('完成任务失败: ' + error.message, 'danger');
         }
+    }
+}
+
+// 更新任务进度
+async function updateTaskProgress() {
+    if (!currentTask) {
+        showAlert('请先选择一个任务', 'warning');
+        return;
+    }
+    
+    const progressInput = prompt('请输入新的进度百分比 (0-100):', currentTask.progress_percentage || 0);
+    if (progressInput === null) return; // 用户取消
+    
+    const progress = parseInt(progressInput);
+    if (isNaN(progress) || progress < 0 || progress > 100) {
+        showAlert('请输入有效的进度值 (0-100)', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/tasks/${currentTask.id}/status`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                progress_percentage: progress,
+                status: progress === 100 ? 'completed' : (progress > 0 ? 'in_progress' : 'pending')
+            })
+        });
+        
+        if (response.ok) {
+            showAlert('进度更新成功！', 'success');
+            // 刷新任务详情
+            await viewTaskDetail(currentTask.id);
+            // 刷新任务列表
+            loadTasks();
+        } else {
+            const error = await response.json();
+            showAlert(error.error || '更新进度失败', 'danger');
+        }
+    } catch (error) {
+        console.error('更新进度失败:', error);
+        showAlert('更新进度失败: ' + error.message, 'danger');
     }
 }
 
@@ -878,22 +979,31 @@ async function deleteTask(taskId) {
     if (confirm('确定要删除这个任务吗？此操作不可撤销！')) {
         try {
             const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: getAuthHeaders()
             });
 
             if (response.ok) {
                 showAlert('任务已删除！', 'success');
-                if (currentTask && currentTask.id === taskId) {
-                    bootstrap.Modal.getInstance(document.getElementById('taskDetailModal')).hide();
+                
+                // 关闭详情模态框（如果有）
+                const detailModalInstance = bootstrap.Modal.getInstance(document.getElementById('taskDetailModal'));
+                if (detailModalInstance) {
+                    detailModalInstance.hide();
                 }
+                
+                // 清除当前任务
+                currentTask = null;
+                
+                // 刷新任务列表
                 loadTasks();
             } else {
                 const error = await response.json();
-                showAlert(error.message || '删除任务失败', 'danger');
+                showAlert(error.error || error.message || '删除任务失败', 'danger');
             }
         } catch (error) {
             console.error('删除任务失败:', error);
-            showAlert('删除任务失败', 'danger');
+            showAlert('删除任务失败: ' + error.message, 'danger');
         }
     }
 }

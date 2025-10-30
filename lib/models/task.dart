@@ -19,6 +19,8 @@ class Task {
   final String? location;
   final bool isAllDay;
   final int progressPercentage;
+  final String? parentTaskId; // 父任务ID，支持分级派发
+  final List<Task>? subtasks; // 子任务列表
 
   Task({
     required this.id,
@@ -38,6 +40,8 @@ class Task {
     this.location,
     this.isAllDay = false,
     this.progressPercentage = 0,
+    this.parentTaskId,
+    this.subtasks,
   });
 
   factory Task.fromJson(Map<String, dynamic> json) {
@@ -65,37 +69,40 @@ class Task {
       location: json['location']?.toString(),
       isAllDay: (json['is_all_day'] ?? json['isAllDay'] ?? 0) == 1,
       progressPercentage: json['progress_percentage'] ?? json['progressPercentage'] ?? 0,
+      parentTaskId: json['parent_task_id'],
+      subtasks: json['subtasks'] != null 
+          ? (json['subtasks'] as List).map((e) => Task.fromJson(e)).toList()
+          : null,
     );
   }
 
   Map<String, dynamic> toJson() {
+    // 格式化时间，转换为后端期望的格式 YYYY-MM-DD HH:MM:SS
+    final formatDateTime = (DateTime dt) {
+      final year = dt.year.toString().padLeft(4, '0');
+      final month = dt.month.toString().padLeft(2, '0');
+      final day = dt.day.toString().padLeft(2, '0');
+      final hour = dt.hour.toString().padLeft(2, '0');
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final second = dt.second.toString().padLeft(2, '0');
+      return '$year-$month-$day $hour:$minute:$second';
+    };
+
     return {
-      'id': id,
+      // 后端期望的字段格式（下划线命名）
       'title': title,
-      'description': description,
-      'assigneeId': assigneeId,
-      'assigneeName': assigneeName,
-      'department': department,
+      'description': description.isEmpty ? null : description,
+      'assignee_id': assigneeId,
+      'department_id': department, // 注意：这里应该是 department_id，但为了兼容性先传递 department
       'priority': priority,
       'status': status,
-      'createdAt': createdAt.toIso8601String(),
-      'deadline': deadline?.toIso8601String(),
-      'createdBy': createdBy,
-      'startTime': startTime.toIso8601String(),
-      'endTime': endTime.toIso8601String(),
-      'color': color,
+      'deadline': deadline != null ? formatDateTime(deadline!) : null,
+      'start_time': formatDateTime(startTime),
+      'end_time': formatDateTime(endTime),
       'location': location,
-      'isAllDay': isAllDay,
-      'is_all_day': isAllDay, // 后端期望的字段名
-      'progressPercentage': progressPercentage,
-      'progress_percentage': progressPercentage, // 后端期望的字段名
-      // 添加更多后端可能期望的字段
-      'assignee_id': assigneeId,
-      'assignee_name': assigneeName,
-      'created_at': createdAt.toIso8601String(),
-      'start_time': startTime.toIso8601String(),
-      'end_time': endTime.toIso8601String(),
-      'created_by': createdBy,
+      'is_all_day': isAllDay,
+      'parent_task_id': parentTaskId, // 支持创建子任务
+      'progress_percentage': progressPercentage, // 添加进度字段
     };
   }
 
