@@ -6,7 +6,7 @@ echo ========================================
 echo.
 
 echo [1/2] 正在加载数据到数据库...
-mysql -h localhost -u root -pPyx_07091817 < create_rich_test_data.sql
+mysql -h localhost -u root -pasdfgh0625YYH < create_rich_test_data.sql
 
 if %ERRORLEVEL% EQU 0 (
     echo ✓ 数据加载成功！
