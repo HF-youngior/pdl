@@ -40,7 +40,7 @@ set DB_NAME=enterprise_management
 set DB_PORT=3306
 set JWT_SECRET=enterprise-management-secret-key-2024
 
-echo Environment Configuration:
+echo Environment Configuration:.
 echo   Port: %PORT%
 echo   Database: %DB_NAME%
 echo   Environment: %NODE_ENV%
