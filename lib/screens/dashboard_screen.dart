@@ -5,6 +5,7 @@ import 'company_important_screen.dart';
 import 'company_tasks_enhanced_screen.dart';
 import 'personal_resume_screen.dart';
 import 'log_enhanced_screen.dart';
+import 'task_edit_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final User user;

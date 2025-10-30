@@ -77,20 +77,34 @@ class TaskService {
   // 创建任务
   static Future<Task> createTask(Task task) async {
     try {
+      final taskJson = task.toJson();
+      print('发送任务数据: $taskJson'); // 调试信息
+      
       final response = await http.post(
         Uri.parse('$baseUrl/tasks'),
         headers: _getAuthHeaders(),
-        body: json.encode(task.toJson()),
+        body: json.encode(taskJson),
       );
+
+      print('响应状态码: ${response.statusCode}'); // 调试信息
+      print('响应内容: ${response.body}'); // 调试信息
 
       if (response.statusCode == 201) {
         final Map<String, dynamic> data = json.decode(response.body);
         return Task.fromJson(data);
       } else {
-        throw Exception('创建任务失败: ${response.statusCode}');
+        // 尝试解析错误信息
+        try {
+          final errorData = json.decode(response.body);
+          final errorMessage = errorData['error'] ?? errorData['message'] ?? '未知错误';
+          throw Exception('创建任务失败: $errorMessage (${response.statusCode})');
+        } catch (_) {
+          throw Exception('创建任务失败: HTTP ${response.statusCode} - ${response.body}');
+        }
       }
     } catch (e) {
-      throw Exception('创建任务失败: $e');
+      print('创建任务异常: $e'); // 调试信息
+      rethrow;
     }
   }
 

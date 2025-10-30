@@ -645,6 +645,21 @@
                                 </div>
                             </div>
                             
+                            <!-- 子任务列表 -->
+                            <div class="card mb-4">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0">子任务</h6>
+                                    <button class="btn btn-sm btn-primary" onclick="createSubtask(currentTask.id)" id="createSubtaskBtn" style="display: none;">
+                                        <i class="bi bi-plus"></i> 创建子任务
+                                    </button>
+                                </div>
+                                <div class="card-body">
+                                    <div id="taskSubtasksList">
+                                        <!-- 子任务列表将通过JavaScript动态加载 -->
+                                    </div>
+                                </div>
+                            </div>
+                            
                             <!-- 关联日志列表 -->
                             <div class="card">
                                 <div class="card-header">

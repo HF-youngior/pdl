@@ -5,7 +5,9 @@ class User {
   final String name;
   final String position;
   final String department;
+  final String? departmentId; // 添加 department_id 字段
   final String role;
+  final String? parentId; // 上级ID，用于判断层级关系
   final DateTime createdAt;
   final DateTime? lastLoginAt;
 
@@ -16,7 +18,9 @@ class User {
     required this.name,
     required this.position,
     required this.department,
+    this.departmentId,
     required this.role,
+    this.parentId,
     required this.createdAt,
     this.lastLoginAt,
   });
@@ -29,7 +33,9 @@ class User {
       name: json['name'] ?? '',
       position: json['position'] ?? '',
       department: json['department'] ?? json['department_name'] ?? '',
+      departmentId: json['department_id'],
       role: json['role'] ?? 'employee',
+      parentId: json['parent_id'],
       createdAt: json['created_at'] != null 
           ? DateTime.parse(json['created_at']) 
           : DateTime.now(),

@@ -25,7 +25,7 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '23301144',
+  password: process.env.DB_PASSWORD || 'Pyx_07091817',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
   charset: 'utf8mb4',
@@ -39,9 +39,9 @@ let db;
 // 将MySQL返回的Date对象或字符串转换为北京时间的ISO字符串
 function formatDateTimeForBeijing(dateTime) {
   if (!dateTime) return null;
-  
+
   let date;
-  
+
   // 如果已经是Date对象
   if (dateTime instanceof Date) {
     date = dateTime;
@@ -57,7 +57,7 @@ function formatDateTimeForBeijing(dateTime) {
   } else {
     return null;
   }
-  
+
   // MySQL返回的Date对象已经是本地时区（北京时间GMT+8）
   // 我们需要获取本地时间的各个部分，然后标记为+08:00
   const year = date.getFullYear();
@@ -66,7 +66,7 @@ function formatDateTimeForBeijing(dateTime) {
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
   const seconds = String(date.getSeconds()).padStart(2, '0');
-  
+
   // 组合成ISO 8601格式，明确标记为+08:00时区
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+08:00`;
 }
@@ -926,7 +926,7 @@ app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     let query = `
       SELECT u.id, u.username, u.name, u.position, u.role, u.is_active, u.created_at, u.last_login_at,
-             d.name as department_name, p.name as parent_name
+             u.department_id, d.name as department_name, p.name as parent_name
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN users p ON u.parent_id = p.id
@@ -1178,10 +1178,16 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
       params.push(status);
     }
 
+    // 父任务ID过滤（用于获取子任务）
+    if (req.query.parent_task_id) {
+      query += ' AND t.parent_task_id = ?';
+      params.push(req.query.parent_task_id);
+    }
+
     query += ' ORDER BY t.priority, t.created_at DESC';
 
     const [rows] = await db.execute(query, params);
-    
+
     // 处理时区 - 将所有时间字段转换为北京时间格式
     const tasksWithTimezone = rows.map(task => ({
       ...task,
@@ -1191,10 +1197,56 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
       created_at: formatDateTimeForBeijing(task.created_at),
       updated_at: formatDateTimeForBeijing(task.updated_at)
     }));
-    
+
     res.json(tasksWithTimezone);
   } catch (error) {
     console.error('获取任务列表错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取单个任务详情
+app.get('/api/tasks/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    let query = `
+      SELECT t.*, d.name as department_name, u.name as created_by_name
+      FROM tasks t
+      LEFT JOIN departments d ON t.department_id = d.id
+      LEFT JOIN users u ON t.created_by = u.id
+      WHERE t.id = ?
+    `;
+    let params = [id];
+
+    // 根据用户角色限制可见范围
+    if (req.user.role === 'admin') {
+      // 管理员可以看到所有任务
+    } else if (req.user.role === 'founder') {
+      // 创始人可以看到所有任务
+    } else if (req.user.role === 'department_head') {
+      // 部门老总只能看到本部门任务
+      query += ' AND t.department_id = ?';
+      params.push(req.user.department_id);
+    } else if (req.user.role === 'team_leader') {
+      // 团队长只能看到分配给自己的任务和分配给下属的任务
+      query += ' AND (t.assignee_id = ? OR t.assignee_id IN (SELECT id FROM users WHERE parent_id = ?))';
+      params.push(req.user.id, req.user.id);
+    } else if (req.user.role === 'employee') {
+      // 员工只能看到分配给自己的任务
+      query += ' AND t.assignee_id = ?';
+      params.push(req.user.id);
+    }
+
+    const [rows] = await db.execute(query, params);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: '任务不存在或无权限查看' });
+    }
+
+    res.json(rows[0]);
+  } catch (error) {
+    console.error('获取任务详情错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
@@ -1216,14 +1268,23 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       parent_task_id
     } = req.body;
 
+    // 参数验证
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: '任务名称不能为空' });
+    }
+    if (!assignee_id) {
+      return res.status(400).json({ error: '必须指定责任人' });
+    }
+    // department_id 可以为空，将从被分配人信息中获取
+
     // 权限检查
     if (req.user.role === 'employee') {
       return res.status(403).json({ error: '员工无权创建任务' });
     }
 
-    // 获取被分配人信息
+    // 获取被分配人信息（包括部门ID）
     const [assigneeRows] = await db.execute(
-      'SELECT name FROM users WHERE id = ?',
+      'SELECT name, department_id FROM users WHERE id = ?',
       [assignee_id]
     );
 
@@ -1232,23 +1293,58 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
     }
 
     const assignee_name = assigneeRows[0].name;
+    // 如果前端没有传递 department_id，从用户信息中获取
+    const final_department_id = department_id || assigneeRows[0].department_id;
+
+    if (!final_department_id) {
+      return res.status(400).json({ error: '无法确定任务部门，请确保用户有部门信息' });
+    }
+
     const taskId = require('crypto').randomUUID();
+
+    // 将 undefined 和空字符串转换为 null，确保数据库参数有效
+    const cleanValue = (value) => {
+      if (value === undefined || value === '') return null;
+      return value;
+    };
+
+    // 获取进度百分比和状态（如果前端传递了）
+    const progress_percentage = req.body.progress_percentage !== undefined ? req.body.progress_percentage : 0;
+    const status = req.body.status || 'pending';
 
     await db.execute(
       `INSERT INTO tasks (
         id, title, description, parent_task_id, assignee_id, assignee_name, 
         department_id, priority, deadline, created_by, start_time, end_time, 
-        location, is_all_day
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        location, is_all_day, progress_percentage, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        taskId, title, description, parent_task_id, assignee_id, assignee_name,
-        department_id, priority, deadline, req.user.id, start_time, end_time,
-        location, is_all_day
+        taskId,
+        title,
+        cleanValue(description),
+        cleanValue(parent_task_id),
+        assignee_id,
+        assignee_name,
+        final_department_id,
+        priority || 'p1',
+        cleanValue(deadline),
+        req.user.id,
+        cleanValue(start_time),
+        cleanValue(end_time),
+        cleanValue(location),
+        is_all_day || false,
+        progress_percentage,
+        status
       ]
     );
 
     // 创建任务分配通知
     await createNotification(taskId, req.user.id, assignee_id, 'task_assigned', `您收到了新任务：${title}`);
+
+    // 如果是子任务，需要更新父任务进度
+    if (cleanValue(parent_task_id)) {
+      await updateParentTaskProgress(parent_task_id);
+    }
 
     res.status(201).json({ message: '任务创建成功', id: taskId });
   } catch (error) {
@@ -1289,15 +1385,18 @@ app.put('/api/tasks/:id/status', authenticateToken, async (req, res) => {
       `UPDATE tasks SET 
        status = ?, progress_percentage = ?, special_notes = ?, completed_at = ?
        WHERE id = ?`,
-      [status, updateData.progress_percentage, updateData.special_notes, updateData.completed_at, id]
+      [status, updateData.progress_percentage ?? task.progress_percentage, updateData.special_notes, updateData.completed_at, id]
     );
 
-    // 创建进度更新通知
+    // 如果这个任务有父任务，更新父任务的进度
     if (task.parent_task_id) {
-      // 通知上级任务进度更新
-      const [parentTask] = await db.execute('SELECT created_by FROM tasks WHERE id = ?', [task.parent_task_id]);
-      if (parentTask.length > 0) {
-        await createNotification(id, req.user.id, parentTask[0].created_by, 'task_progress_update', `任务进度更新：${task.title}`);
+      await updateParentTaskProgress(task.parent_task_id);
+
+      // 创建进度更新通知
+      const [parentTaskRows] = await db.execute('SELECT created_by, title FROM tasks WHERE id = ?', [task.parent_task_id]);
+      if (parentTaskRows.length > 0) {
+        const parentTask = parentTaskRows[0];
+        await createNotification(id, req.user.id, parentTask.created_by, 'task_progress_update', `任务进度更新：${task.title}`);
       }
     }
 
@@ -1312,7 +1411,21 @@ app.put('/api/tasks/:id/status', authenticateToken, async (req, res) => {
 app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, priority, status } = req.body;
+    const {
+      title,
+      description,
+      priority,
+      status,
+      assignee_id,
+      department_id,
+      progress_percentage,
+      start_time,
+      end_time,
+      deadline,
+      location,
+      is_all_day,
+      parent_task_id
+    } = req.body;
 
     // 获取任务信息
     const [taskRows] = await db.execute(
@@ -1330,6 +1443,12 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
     if (task.assignee_id !== req.user.id && task.created_by !== req.user.id) {
       return res.status(403).json({ error: '无权更新此任务' });
     }
+
+    // 辅助函数：清理值（将undefined和空字符串转为null）
+    const cleanValue = (val) => {
+      if (val === undefined || val === '' || val === null) return null;
+      return val;
+    };
 
     // 构建更新语句
     const updates = [];
@@ -1361,6 +1480,51 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
       }
     }
 
+    if (assignee_id !== undefined) {
+      updates.push('assignee_id = ?');
+      values.push(assignee_id);
+    }
+
+    if (department_id !== undefined) {
+      updates.push('department_id = ?');
+      values.push(cleanValue(department_id));
+    }
+
+    if (progress_percentage !== undefined) {
+      updates.push('progress_percentage = ?');
+      values.push(progress_percentage);
+    }
+
+    if (start_time !== undefined) {
+      updates.push('start_time = ?');
+      values.push(cleanValue(start_time));
+    }
+
+    if (end_time !== undefined) {
+      updates.push('end_time = ?');
+      values.push(cleanValue(end_time));
+    }
+
+    if (deadline !== undefined) {
+      updates.push('deadline = ?');
+      values.push(cleanValue(deadline));
+    }
+
+    if (location !== undefined) {
+      updates.push('location = ?');
+      values.push(cleanValue(location));
+    }
+
+    if (is_all_day !== undefined) {
+      updates.push('is_all_day = ?');
+      values.push(is_all_day);
+    }
+
+    if (parent_task_id !== undefined) {
+      updates.push('parent_task_id = ?');
+      values.push(cleanValue(parent_task_id));
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({ error: '没有要更新的字段' });
     }
@@ -1372,7 +1536,23 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
       values
     );
 
-    res.json({ message: '任务更新成功' });
+    // 如果更新了progress_percentage或status，且该任务有父任务，更新父任务进度
+    if ((progress_percentage !== undefined || status !== undefined) && task.parent_task_id) {
+      await updateParentTaskProgress(task.parent_task_id);
+    }
+
+    // 如果更新了父任务ID或创建了子任务，更新父任务进度
+    if (parent_task_id !== undefined && cleanValue(parent_task_id)) {
+      await updateParentTaskProgress(parent_task_id);
+    }
+
+    // 返回更新后的任务信息
+    const [updatedRows] = await db.execute(
+      'SELECT * FROM tasks WHERE id = ?',
+      [id]
+    );
+
+    res.json(updatedRows.length > 0 ? updatedRows[0] : { message: '任务更新成功' });
   } catch (error) {
     console.error('更新任务错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
@@ -1681,7 +1861,67 @@ app.delete('/api/logs/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// 辅助函数：创建通知
+// 更新父任务进度（基于子任务进度）
+async function updateParentTaskProgress(parentTaskId) {
+  try {
+    // 获取所有子任务
+    const [subtasks] = await db.execute(
+      'SELECT id, progress_percentage, status FROM tasks WHERE parent_task_id = ?',
+      [parentTaskId]
+    );
+
+    if (subtasks.length === 0) {
+      // 没有子任务，不需要更新
+      return;
+    }
+
+    // 计算子任务的平均进度
+    let totalProgress = 0;
+    let completedCount = 0;
+
+    for (const subtask of subtasks) {
+      totalProgress += subtask.progress_percentage || 0;
+      if (subtask.status === 'completed') {
+        completedCount++;
+      }
+    }
+
+    const averageProgress = Math.round(totalProgress / subtasks.length);
+    const allCompleted = completedCount === subtasks.length;
+
+    // 更新父任务
+    if (allCompleted) {
+      // 所有子任务完成，父任务设为100%并标记为已完成
+      await db.execute(
+        `UPDATE tasks SET
+         progress_percentage = 100,
+         status = 'completed',
+         completed_at = ?
+         WHERE id = ?`,
+        [new Date(), parentTaskId]
+      );
+    } else {
+      // 更新父任务进度
+      await db.execute(
+        'UPDATE tasks SET progress_percentage = ? WHERE id = ?',
+        [averageProgress, parentTaskId]
+      );
+    }
+
+    // 如果父任务本身也有父任务，递归更新
+    const [parentTask] = await db.execute(
+      'SELECT parent_task_id FROM tasks WHERE id = ?',
+      [parentTaskId]
+    );
+
+    if (parentTask.length > 0 && parentTask[0].parent_task_id) {
+      await updateParentTaskProgress(parentTask[0].parent_task_id);
+    }
+  } catch (error) {
+    console.error('更新父任务进度错误:', error);
+  }
+}
+
 async function createNotification(taskId, fromUserId, toUserId, type, message) {
   try {
     const notificationId = require('crypto').randomUUID();
@@ -1710,9 +1950,9 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay} 23:59:59`;
     
-    // 获取任务（包括跨多天的任务）
+    // 获取任务
     let taskQuery = `
-      SELECT 
+      SELECT DISTINCT
         t.id,
         t.title,
         t.description,
@@ -1785,69 +2025,11 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
       };
     }
     
-    // 填充任务数据 - 对于跨多天的任务，在每一天都显示
+    // 填充任务数据
     tasks.forEach(task => {
-      // 确定任务的开始和结束日期
-      let taskStartDate = null;
-      let taskEndDate = null;
-      
-      if (task.start_time) {
-        taskStartDate = new Date(task.start_time);
-      }
-      
-      if (task.end_time) {
-        taskEndDate = new Date(task.end_time);
-      } else if (task.start_time) {
-        // 如果没有 end_time，使用 start_time 作为结束日期
-        taskEndDate = new Date(task.start_time);
-      }
-      
-      // 如果任务有时间范围，在每一天都显示该任务
-      if (taskStartDate && taskEndDate) {
-        // 提取日期部分（避免时区问题）
-        const startYear = taskStartDate.getFullYear();
-        const startMonth = taskStartDate.getMonth();
-        const startDay = taskStartDate.getDate();
-        const endYear = taskEndDate.getFullYear();
-        const endMonth = taskEndDate.getMonth();
-        const endDay = taskEndDate.getDate();
-        
-        // 使用本地时区的日期对象（仅包含日期，不含时间）
-        const currentDate = new Date(startYear, startMonth, startDay);
-        const endDate = new Date(endYear, endMonth, endDay);
-        
-        // 遍历任务跨越的每一天
-        while (currentDate <= endDate) {
-          const dateKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
-          
-          if (calendar[dateKey]) {
-            // 检查该任务是否已经添加到这一天（避免重复）
-            const existingTask = calendar[dateKey].tasks.find(t => t.id === task.id);
-            if (!existingTask) {
-              calendar[dateKey].tasks.push({
-                id: task.id,
-                title: task.title,
-                description: task.description,
-                status: task.status,
-                priority: task.priority,
-                color: task.color,
-                start_time: formatDateTimeForBeijing(task.start_time),
-                end_time: formatDateTimeForBeijing(task.end_time),
-                deadline: formatDateTimeForBeijing(task.deadline),
-                is_all_day: task.is_all_day,
-                assignee_name: task.assignee_name
-              });
-              calendar[dateKey].hasData = true;
-              console.log(`  任务 "${task.title}" 添加到日期: ${dateKey}`);
-            }
-          }
-          
-          // 移动到下一天
-          currentDate.setDate(currentDate.getDate() + 1);
-        }
-      } else if (task.task_date) {
-        // 如果没有时间范围但有 task_date，使用原来的逻辑
+      if (task.task_date) {
         const dateKey = task.task_date;
+        console.log(`  任务 "${task.title}" 的日期: ${dateKey}, 日历中是否存在: ${!!calendar[dateKey]}`);
         if (calendar[dateKey]) {
           calendar[dateKey].tasks.push({
             id: task.id,
@@ -1856,14 +2038,13 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
             status: task.status,
             priority: task.priority,
             color: task.color,
-            start_time: formatDateTimeForBeijing(task.start_time),
-            end_time: formatDateTimeForBeijing(task.end_time),
-            deadline: formatDateTimeForBeijing(task.deadline),
+            start_time: task.start_time,
+            end_time: task.end_time,
+            deadline: task.deadline,
             is_all_day: task.is_all_day,
             assignee_name: task.assignee_name
           });
           calendar[dateKey].hasData = true;
-          console.log(`  任务 "${task.title}" 添加到日期: ${dateKey} (仅开始日期)`);
         }
       }
     });
@@ -1922,9 +2103,9 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay} 23:59:59`;
     
-    // 获取任务（包括跨多天的任务）
+    // 获取任务
     let taskQuery = `
-      SELECT 
+      SELECT DISTINCT
         t.id,
         t.title,
         t.description,
@@ -2010,9 +2191,9 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         status: task.status,
         priority: task.priority,
         color: task.color,
-        startTime: formatDateTimeForBeijing(task.start_time),
-        endTime: formatDateTimeForBeijing(task.end_time),
-        deadline: formatDateTimeForBeijing(task.deadline),
+        startTime: task.start_time,
+        endTime: task.end_time,
+        deadline: task.deadline,
         isAllDay: task.is_all_day === 1,
         assigneeName: task.assignee_name,
         date: task.task_date
@@ -2045,7 +2226,7 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
     const startDate = `${date} 00:00:00`;
     const endDate = `${date} 23:59:59`;
     
-    // 获取该日期的所有任务（包括跨越该日期的任务）
+    // 获取该日期的所有任务
     let taskQuery = `
       SELECT 
         t.*,
@@ -2056,24 +2237,20 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
       LEFT JOIN users u ON t.created_by = u.id
       WHERE t.assignee_id = ?
       AND (
-        -- 任务的开始时间在该日期
-        (DATE(t.start_time) = ?)
-        -- 任务的结束时间在该日期
-        OR (DATE(t.end_time) = ?)
-        -- 任务跨越该日期（开始时间在之前，结束时间在之后）
-        OR (DATE(t.start_time) <= ? AND DATE(t.end_time) >= ?)
-        -- deadline 在该日期
-        OR (DATE(t.deadline) = ?)
+        (t.start_time >= ? AND t.start_time <= ?)
+        OR (t.end_time >= ? AND t.end_time <= ?)
+        OR (t.deadline >= ? AND t.deadline <= ?)
+        OR (DATE(t.start_time) = ? OR DATE(t.end_time) = ? OR DATE(t.deadline) = ?)
       )
       ORDER BY t.start_time, t.priority
     `;
     
     const [tasks] = await db.execute(taskQuery, [
       req.user.id,
-      date,
-      date,
-      date, date,
-      date
+      startDate, endDate,
+      startDate, endDate,
+      startDate, endDate,
+      date, date, date
     ]);
     
     // 获取该日期的所有日志
@@ -2104,9 +2281,9 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         status: t.status,
         priority: t.priority,
         color: t.color,
-        start_time: formatDateTimeForBeijing(t.start_time),
-        end_time: formatDateTimeForBeijing(t.end_time),
-        deadline: formatDateTimeForBeijing(t.deadline),
+        start_time: t.start_time,
+        end_time: t.end_time,
+        deadline: t.deadline,
         is_all_day: t.is_all_day,
         assignee_name: t.assignee_name
       })),
@@ -2117,7 +2294,7 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         category: l.category,
         quadrant: l.quadrant,
         is_completed: l.is_completed,
-        created_at: formatDateTimeForBeijing(l.created_at)
+        created_at: l.created_at
       })),
       summary: {
         totalTasks: tasks.length,
