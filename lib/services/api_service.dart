@@ -36,6 +36,11 @@ class ApiService {
     _authToken = null;
   }
   
+  // 获取认证token
+  static String? getToken() {
+    return _authToken;
+  }
+  
   // 获取认证头（公开方法，供其他服务使用）
   static Map<String, String> getAuthHeaders() {
     final headers = {'Content-Type': 'application/json'};

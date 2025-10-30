@@ -71,14 +71,3 @@ checkCurrentData();
 
 
 
-
-
-
-
-
-
-
-
-
-
-
