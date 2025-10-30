@@ -8,6 +8,7 @@ class PersonalityAnalysis {
   final Map<String, dynamic> personalityChart;
   final DateTime createdAt;
   final String? description;
+  final String? aiAnalysisText; // DeepSeek API返回的原始分析文本
 
   PersonalityAnalysis({
     required this.id,
@@ -19,6 +20,7 @@ class PersonalityAnalysis {
     required this.personalityChart,
     required this.createdAt,
     this.description,
+    this.aiAnalysisText,
   });
 
   factory PersonalityAnalysis.fromJson(Map<String, dynamic> json) {
@@ -32,6 +34,7 @@ class PersonalityAnalysis {
       personalityChart: Map<String, dynamic>.from(json['personality_chart'] ?? json['personalityChart'] ?? {}),
       createdAt: DateTime.parse(json['created_at'] ?? json['createdAt']),
       description: json['description'],
+      aiAnalysisText: json['ai_analysis_text'] ?? json['aiAnalysisText'],
     );
   }
 

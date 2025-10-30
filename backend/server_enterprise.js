@@ -4,12 +4,17 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const axios = require('axios');
 require('dotenv').config();
 // const { useDefault, Segment } = require('segmentit');
 // const segmenter = useDefault(new Segment());
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+
+// DeepSeek API 配置
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
 
 // 中间件
 app.use(cors());
@@ -20,6 +25,9 @@ app.use('/web_admin', express.static('../web_admin'));
 
 // 静态文件服务 - 提供公共资源
 app.use('/public', express.static(path.join(__dirname, 'public')));
+
+// 静态文件服务 - 根路径访问public目录
+app.use('/', express.static(path.join(__dirname, 'public')));
 
 // 数据库连接
 const dbConfig = {
@@ -168,7 +176,66 @@ async function createTables() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       metadata JSON,
       FOREIGN KEY (user_id) REFERENCES users(id)
-    )`
+    )`,
+    
+    // MBTI记录表 - 存储用户性格测试结果和AI分析建议
+    `CREATE TABLE IF NOT EXISTS mbti_records (
+      id VARCHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      test_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      mbti_type VARCHAR(4) NOT NULL,
+      test_scores JSON NOT NULL COMMENT 'MBTI各维度得分详情',
+      personality_traits JSON NOT NULL COMMENT '性格特质分析结果',
+      ai_analysis JSON NOT NULL COMMENT 'AI智能分析结果',
+      work_suggestions JSON NOT NULL COMMENT '工作建议和职业指导',
+      improvement_advice JSON COMMENT '个人改进建议',
+      personal_info JSON COMMENT '扩展个人信息（姓名、生日、地址等）',
+      test_version VARCHAR(20) DEFAULT 'v1.0' COMMENT '测试版本',
+      confidence_score DECIMAL(3,2) DEFAULT 0.00 COMMENT '测试可信度(0-1)',
+      is_active BOOLEAN DEFAULT TRUE COMMENT '记录是否有效',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_user_id (user_id),
+      INDEX idx_test_date (test_date),
+      INDEX idx_mbti_type (mbti_type),
+      INDEX idx_is_active (is_active),
+      INDEX idx_user_test_date (user_id, test_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MBTI测试记录表，存储用户性格测试结果和AI分析建议'`,
+    
+    // 词云分析表 - 存储用户日志的词云分析结果
+    `CREATE TABLE IF NOT EXISTS wordcloud_analysis (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      analysis_date TIMESTAMP NOT NULL,
+      keywords JSON NOT NULL COMMENT '关键词列表',
+      word_frequencies JSON NOT NULL COMMENT '词频统计',
+      description VARCHAR(500) COMMENT '分析描述',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_user_id (user_id),
+      INDEX idx_analysis_date (analysis_date),
+      INDEX idx_user_analysis_date (user_id, analysis_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='词云分析表，存储用户日志的词云分析结果'`,
+    
+    // 性格分析表 - 存储AI性格分析结果
+    `CREATE TABLE IF NOT EXISTS personality_analysis (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      analysis_date TIMESTAMP NOT NULL,
+      personality_traits JSON NOT NULL COMMENT '性格特质分析结果',
+      mbti_type VARCHAR(4) NOT NULL COMMENT 'MBTI类型',
+      work_suggestions JSON NOT NULL COMMENT '工作建议',
+      personality_chart JSON NOT NULL COMMENT '性格图表数据',
+      ai_analysis_text TEXT COMMENT 'DeepSeek API返回的原始分析文本',
+      description VARCHAR(500) COMMENT '分析描述',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_user_id (user_id),
+      INDEX idx_analysis_date (analysis_date),
+      INDEX idx_mbti_type (mbti_type),
+      INDEX idx_user_analysis_date (user_id, analysis_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='性格分析表，存储AI性格分析结果'`
   ];
 
   for (const table of tables) {
@@ -2022,6 +2089,515 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
   }
 });
 
+// ==================== MBTI记录管理API ====================
+
+// AI分析生成函数
+function generateAiAnalysis(mbtiType, testScores, personalityTraits) {
+  const analysisTemplates = {
+    'ENFP': {
+      strengths: ['创新思维', '团队合作', '沟通能力', '适应性强'],
+      weaknesses: ['细节处理', '时间管理', '决策果断性'],
+      career_suitability: ['市场营销', '人力资源', '创意设计', '教育培训'],
+      leadership_style: '民主型领导，善于激励团队',
+      work_environment: '适合开放、灵活的工作环境',
+      team_role: '团队协调者和创新推动者'
+    },
+    'INTJ': {
+      strengths: ['战略思维', '独立性强', '逻辑分析', '执行力强'],
+      weaknesses: ['人际交往', '情感表达', '灵活性'],
+      career_suitability: ['战略规划', '技术研发', '管理咨询', '投资分析'],
+      leadership_style: '愿景型领导，注重长远规划',
+      work_environment: '适合独立、安静的工作环境',
+      team_role: '战略规划者和技术专家'
+    },
+    'ISFJ': {
+      strengths: ['责任心强', '细心周到', '团队合作', '稳定性'],
+      weaknesses: ['创新思维', '决策果断性', '自我表达'],
+      career_suitability: ['行政管理', '客户服务', '医疗护理', '教育培训'],
+      leadership_style: '服务型领导，注重团队和谐',
+      work_environment: '适合稳定、有序的工作环境',
+      team_role: '支持者和协调者'
+    },
+    'ISTJ': {
+      strengths: ['责任心强', '逻辑思维', '执行力强', '稳定性'],
+      weaknesses: ['创新思维', '灵活性', '人际交往'],
+      career_suitability: ['财务管理', '审计', '法律', '工程'],
+      leadership_style: '任务型领导，注重效率和结果',
+      work_environment: '适合安静、有序的工作环境',
+      team_role: '执行者和监督者'
+    },
+    'ENFJ': {
+      strengths: ['领导能力', '沟通技巧', '同理心', '组织能力'],
+      weaknesses: ['批判思维', '独立性', '客观性'],
+      career_suitability: ['人力资源管理', '教育培训', '心理咨询', '市场营销'],
+      leadership_style: '变革型领导，善于激励和启发他人',
+      work_environment: '适合开放、协作的工作环境',
+      team_role: '领导者和激励者'
+    },
+    'INFP': {
+      strengths: ['深度思考', '价值观驱动', '创造力', '同理心'],
+      weaknesses: ['过度理想化', '避免冲突', '完美主义'],
+      career_suitability: ['心理咨询', '写作编辑', '艺术设计', '社会服务'],
+      leadership_style: '服务型领导，注重团队价值观和成长',
+      work_environment: '适合安静、有意义的独立工作环境',
+      team_role: '价值观守护者和创意贡献者'
+    },
+    'ESTJ': {
+      strengths: ['组织能力', '执行力强', '责任心强', '领导力'],
+      weaknesses: ['灵活性', '创新思维', '情感表达'],
+      career_suitability: ['管理岗位', '行政管理', '项目管理', '运营管理'],
+      leadership_style: '任务型领导，注重效率和结果',
+      work_environment: '适合结构化、目标导向的工作环境',
+      team_role: '组织者和执行者'
+    }
+  };
+
+  const template = analysisTemplates[mbtiType] || analysisTemplates['ENFP'];
+  
+  return {
+    strengths: template.strengths,
+    weaknesses: template.weaknesses,
+    career_suitability: template.career_suitability,
+    leadership_style: template.leadership_style,
+    work_environment: template.work_environment,
+    team_role: template.team_role,
+    development_focus: [
+      '提高专注力',
+      '加强时间规划',
+      '培养决策能力'
+    ],
+    learning_suggestions: [
+      '学习项目管理',
+      '培养批判性思维',
+      '提升执行力'
+    ],
+    career_advice: `基于您的${mbtiType}性格类型，建议考虑从事需要${template.strengths[0]}和${template.strengths[1]}的工作`
+  };
+}
+
+function generateWorkSuggestions(mbtiType, aiAnalysis) {
+  return {
+    work_environment: aiAnalysis?.work_environment || '适合开放、灵活的工作环境',
+    team_role: aiAnalysis?.team_role || '团队协调者和创新推动者',
+    development_focus: aiAnalysis?.development_focus || ['提高专注力', '加强时间规划', '培养决策能力'],
+    communication_style: '热情、富有感染力，善于激励他人',
+    career_path: aiAnalysis?.career_suitability || ['市场营销', '人力资源', '创意设计', '教育培训'],
+    leadership_style: aiAnalysis?.leadership_style || '民主型领导，善于激励团队'
+  };
+}
+
+function generateImprovementAdvice(mbtiType, aiAnalysis) {
+  return {
+    improvement_areas: aiAnalysis?.weaknesses || ['细节处理', '时间管理', '决策果断性'],
+    learning_suggestions: aiAnalysis?.learning_suggestions || ['学习项目管理', '培养批判性思维', '提升执行力'],
+    career_advice: aiAnalysis?.career_advice || `基于您的${mbtiType}性格类型，建议考虑从事需要创新和人际交往的工作`,
+    personal_development: '建议定期进行自我反思，持续提升个人能力',
+    team_work: '在团队中发挥优势，同时注意弥补不足'
+  };
+}
+
+// 创建MBTI记录
+app.post('/api/mbti-records', authenticateToken, async (req, res) => {
+  try {
+    const {
+      mbti_type,
+      test_scores,
+      personality_traits,
+      personal_info,
+      test_version = 'v1.0'
+    } = req.body;
+
+    // 验证必填字段
+    if (!mbti_type || !test_scores || !personality_traits) {
+      return res.status(400).json({ error: '缺少必填字段' });
+    }
+
+    // 确保所有参数都有默认值
+    const safeTestVersion = test_version || 'v1.0';
+    const safePersonalInfo = personal_info || null;
+
+    // 验证MBTI类型格式
+    if (!/^[EI][NS][TF][JP]$/.test(mbti_type)) {
+      return res.status(400).json({ error: 'MBTI类型格式不正确，应为4个字符的组合，如ENFP' });
+    }
+
+    // 验证测试分数
+    if (!test_scores || typeof test_scores !== 'object') {
+      return res.status(400).json({ error: '测试分数数据格式不正确' });
+    }
+
+    // 验证所有8个维度的分数都存在且为数字
+    const requiredScores = ['E', 'I', 'S', 'N', 'T', 'F', 'J', 'P'];
+    for (const scoreKey of requiredScores) {
+      if (typeof test_scores[scoreKey] !== 'number' || test_scores[scoreKey] < 0) {
+        return res.status(400).json({ error: `${scoreKey}维度分数必须是非负数` });
+      }
+    }
+
+    // 验证性格特质
+    if (!personality_traits || typeof personality_traits !== 'object') {
+      return res.status(400).json({ error: '性格特质数据格式不正确' });
+    }
+
+    const id = `mbti-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const userId = req.user?.id;
+    
+    // 验证userId存在
+    if (!userId) {
+      return res.status(401).json({ error: '用户未认证' });
+    }
+
+    // 计算置信度分数
+    const scores = Object.values(test_scores).filter(score => typeof score === 'number');
+    let confidence_score = 0.5; // 默认值
+    if (scores.length > 0) {
+      const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+      const variance = scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) / scores.length;
+      confidence_score = Math.max(0, Math.min(1, 1 - (variance / 2500)));
+    }
+    
+    // 确保confidence_score是有效数字
+    if (isNaN(confidence_score)) {
+      confidence_score = 0.5;
+    }
+
+    // 生成AI分析结果
+    const ai_analysis = generateAiAnalysis(mbti_type, test_scores, personality_traits);
+    const work_suggestions = generateWorkSuggestions(mbti_type, ai_analysis);
+    const improvement_advice = generateImprovementAdvice(mbti_type, ai_analysis);
+
+    // 确保所有生成的数据都不为undefined，且所有值都转换为null而不是undefined
+    const safeAiAnalysis = ai_analysis || {};
+    const safeWorkSuggestions = work_suggestions || {};
+    const safeImprovementAdvice = improvement_advice || {};
+
+    const [result] = await db.execute(
+      `INSERT INTO mbti_records (
+        id, user_id, mbti_type, test_scores, personality_traits, 
+        ai_analysis, work_suggestions, improvement_advice, 
+        personal_info, test_version, confidence_score
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id || null,
+        userId || null,
+        mbti_type || null,
+        JSON.stringify(test_scores || {}),
+        JSON.stringify(personality_traits || {}),
+        JSON.stringify(safeAiAnalysis || {}),
+        JSON.stringify(safeWorkSuggestions || {}),
+        safeImprovementAdvice ? JSON.stringify(safeImprovementAdvice) : null,
+        safePersonalInfo ? JSON.stringify(safePersonalInfo) : null,
+        safeTestVersion || 'v1.0',
+        confidence_score || 0.5
+      ].map(param => param === undefined ? null : param)
+    );
+
+    // 记录系统日志
+    await db.execute(
+      `INSERT INTO system_logs (id, user_id, user_name, action, description, category) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        `log-${Date.now()}`,
+        userId || null,
+        req.user?.name || '未知用户',
+        'create_mbti_record',
+        `创建MBTI记录: ${mbti_type || '未知类型'}`,
+        'mbti'
+      ].map(param => param === undefined ? null : param)
+    );
+
+    res.status(201).json({ 
+      message: 'MBTI记录创建成功', 
+      id: id,
+      mbti_type: mbti_type,
+      confidence_score: confidence_score
+    });
+  } catch (error) {
+    console.error('创建MBTI记录错误:', error);
+    console.error('错误堆栈:', error.stack);
+    console.error('请求数据:', JSON.stringify(req.body, null, 2));
+    res.status(500).json({ 
+      error: '服务器内部错误',
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// 获取用户的MBTI记录列表
+app.get('/api/mbti-records', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 10, mbti_type } = req.query;
+    const offset = (page - 1) * limit;
+
+    let query = `
+      SELECT id, mbti_type, test_date, confidence_score, created_at
+      FROM mbti_records 
+      WHERE user_id = ? AND is_active = TRUE
+    `;
+    let params = [userId];
+
+    if (mbti_type) {
+      query += ' AND mbti_type = ?';
+      params.push(mbti_type);
+    }
+
+    query += ' ORDER BY test_date DESC LIMIT ? OFFSET ?';
+    params.push(parseInt(limit) || 10, parseInt(offset) || 0);
+
+    const [records] = await db.execute(query, params);
+
+    // 获取总数
+    let countQuery = 'SELECT COUNT(*) as total FROM mbti_records WHERE user_id = ? AND is_active = TRUE';
+    let countParams = [userId];
+    if (mbti_type) {
+      countQuery += ' AND mbti_type = ?';
+      countParams.push(mbti_type);
+    }
+    const [countResult] = await db.execute(countQuery, countParams);
+
+    res.json({
+      records: records,
+      total: countResult[0].total,
+      page: parseInt(page),
+      limit: parseInt(limit)
+    });
+  } catch (error) {
+    console.error('获取MBTI记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取用户最新的MBTI记录
+app.get('/api/mbti-records/latest', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [rows] = await db.execute(
+      `SELECT * FROM mbti_records 
+       WHERE user_id = ? AND is_active = TRUE
+       ORDER BY test_date DESC 
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: '未找到MBTI记录' });
+    }
+
+    const record = rows[0];
+    
+    // 解析JSON字段
+    record.test_scores = JSON.parse(record.test_scores);
+    record.personality_traits = JSON.parse(record.personality_traits);
+    record.ai_analysis = JSON.parse(record.ai_analysis);
+    record.work_suggestions = JSON.parse(record.work_suggestions);
+    if (record.improvement_advice) {
+      record.improvement_advice = JSON.parse(record.improvement_advice);
+    }
+    if (record.personal_info) {
+      record.personal_info = JSON.parse(record.personal_info);
+    }
+
+    res.json(record);
+  } catch (error) {
+    console.error('获取最新MBTI记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取特定MBTI记录详情
+app.get('/api/mbti-records/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const [rows] = await db.execute(
+      `SELECT * FROM mbti_records 
+       WHERE id = ? AND user_id = ? AND is_active = TRUE`,
+      [id, userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'MBTI记录不存在' });
+    }
+
+    const record = rows[0];
+    
+    // 解析JSON字段
+    record.test_scores = JSON.parse(record.test_scores);
+    record.personality_traits = JSON.parse(record.personality_traits);
+    record.ai_analysis = JSON.parse(record.ai_analysis);
+    record.work_suggestions = JSON.parse(record.work_suggestions);
+    if (record.improvement_advice) {
+      record.improvement_advice = JSON.parse(record.improvement_advice);
+    }
+    if (record.personal_info) {
+      record.personal_info = JSON.parse(record.personal_info);
+    }
+
+    res.json(record);
+  } catch (error) {
+    console.error('获取MBTI记录详情错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 更新MBTI记录
+app.put('/api/mbti-records/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const updateData = req.body;
+
+    // 检查记录是否存在且属于当前用户
+    const [existing] = await db.execute(
+      `SELECT id FROM mbti_records 
+       WHERE id = ? AND user_id = ? AND is_active = TRUE`,
+      [id, userId]
+    );
+
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'MBTI记录不存在' });
+    }
+
+    // 构建更新字段
+    const updateFields = [];
+    const updateValues = [];
+
+    if (updateData.mbti_type) {
+      updateFields.push('mbti_type = ?');
+      updateValues.push(updateData.mbti_type);
+    }
+    if (updateData.test_scores) {
+      updateFields.push('test_scores = ?');
+      updateValues.push(JSON.stringify(updateData.test_scores));
+    }
+    if (updateData.personality_traits) {
+      updateFields.push('personality_traits = ?');
+      updateValues.push(JSON.stringify(updateData.personality_traits));
+    }
+    if (updateData.ai_analysis) {
+      updateFields.push('ai_analysis = ?');
+      updateValues.push(JSON.stringify(updateData.ai_analysis));
+    }
+    if (updateData.work_suggestions) {
+      updateFields.push('work_suggestions = ?');
+      updateValues.push(JSON.stringify(updateData.work_suggestions));
+    }
+    if (updateData.improvement_advice) {
+      updateFields.push('improvement_advice = ?');
+      updateValues.push(JSON.stringify(updateData.improvement_advice));
+    }
+    if (updateData.personal_info) {
+      updateFields.push('personal_info = ?');
+      updateValues.push(JSON.stringify(updateData.personal_info));
+    }
+    if (updateData.confidence_score !== undefined) {
+      updateFields.push('confidence_score = ?');
+      updateValues.push(updateData.confidence_score);
+    }
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({ error: '没有提供更新数据' });
+    }
+
+    updateFields.push('updated_at = CURRENT_TIMESTAMP');
+    updateValues.push(id, userId);
+
+    await db.execute(
+      `UPDATE mbti_records SET ${updateFields.join(', ')} 
+       WHERE id = ? AND user_id = ?`,
+      [...updateValues]
+    );
+
+    // 记录系统日志
+    await db.execute(
+      `INSERT INTO system_logs (id, user_id, user_name, action, description, category) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        `log-${Date.now()}`,
+        userId,
+        req.user.name,
+        'update_mbti_record',
+        `更新MBTI记录: ${id}`,
+        'mbti'
+      ]
+    );
+
+    res.json({ message: 'MBTI记录更新成功' });
+  } catch (error) {
+    console.error('更新MBTI记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 删除MBTI记录（软删除）
+app.delete('/api/mbti-records/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const [result] = await db.execute(
+      `UPDATE mbti_records SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ? AND user_id = ? AND is_active = TRUE`,
+      [id, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'MBTI记录不存在' });
+    }
+
+    // 记录系统日志
+    await db.execute(
+      `INSERT INTO system_logs (id, user_id, user_name, action, description, category) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        `log-${Date.now()}`,
+        userId,
+        req.user.name,
+        'delete_mbti_record',
+        `删除MBTI记录: ${id}`,
+        'mbti'
+      ]
+    );
+
+    res.json({ message: 'MBTI记录删除成功' });
+  } catch (error) {
+    console.error('删除MBTI记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取MBTI统计信息（管理员权限）
+app.get('/api/mbti-records/statistics', authenticateToken, async (req, res) => {
+  try {
+    // 检查管理员权限
+    if (!['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '权限不足' });
+    }
+
+    const [stats] = await db.execute(`
+      SELECT 
+        mbti_type,
+        COUNT(*) as total_count,
+        AVG(confidence_score) as avg_confidence,
+        COUNT(DISTINCT user_id) as unique_users,
+        MAX(test_date) as latest_test
+      FROM mbti_records 
+      WHERE is_active = TRUE 
+      GROUP BY mbti_type
+      ORDER BY total_count DESC
+    `);
+
+    res.json(stats);
+  } catch (error) {
+    console.error('获取MBTI统计错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 启动服务器
 async function startServer() {
   await initDatabase();
@@ -2136,3 +2712,407 @@ app.get('/api/ai/analyze-today', authenticateToken, async (req, res) => {
     return res.status(500).json({ error: 'AI当天日志分析失败' });
   }
 });
+
+// ==================== DeepSeek API 性格分析 ====================
+
+// 保存词云分析结果
+app.post('/api/ai/save-wordcloud', authenticateToken, async (req, res) => {
+  try {
+    const { analysisDate, keywords, wordFrequencies, description } = req.body;
+    const userId = req.user.id;
+    
+    const [result] = await db.execute(
+      `INSERT INTO wordcloud_analysis (user_id, analysis_date, keywords, word_frequencies, description, created_at)
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [userId, analysisDate, JSON.stringify(keywords), JSON.stringify(wordFrequencies), description]
+    );
+    
+    const analysis = {
+      id: result.insertId.toString(),
+      userId: userId,
+      analysisDate: analysisDate,
+      keywords: keywords,
+      wordFrequencies: wordFrequencies,
+      createdAt: new Date(),
+      description: description,
+    };
+    
+    res.json(analysis);
+  } catch (error) {
+    console.error('保存词云分析失败:', error);
+    res.status(500).json({ error: '保存词云分析失败' });
+  }
+});
+
+// 获取词云分析历史
+app.get('/api/ai/wordcloud-history', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const [rows] = await db.execute(
+      `SELECT id, user_id, analysis_date, keywords, word_frequencies, description, created_at
+       FROM wordcloud_analysis
+       WHERE user_id = ?
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+    
+    const history = rows.map(row => ({
+      id: row.id.toString(),
+      userId: row.user_id,
+      analysisDate: row.analysis_date,
+      keywords: JSON.parse(row.keywords),
+      wordFrequencies: JSON.parse(row.word_frequencies),
+      createdAt: row.created_at,
+      description: row.description,
+    }));
+    
+    res.json(history);
+  } catch (error) {
+    console.error('获取词云历史失败:', error);
+    res.status(500).json({ error: '获取词云历史失败' });
+  }
+});
+
+// DeepSeek API 性格分析
+app.post('/api/ai/personality-analysis', authenticateToken, async (req, res) => {
+  try {
+    const { logText, mbtiType, useDeepSeek } = req.body;
+    const userId = req.user.id;
+    
+    let analysisResult;
+    
+    if (useDeepSeek && DEEPSEEK_API_KEY) {
+      // 使用DeepSeek API进行性格分析
+      analysisResult = await analyzePersonalityWithDeepSeek(logText, mbtiType);
+    } else {
+      // 使用本地算法进行性格分析
+      analysisResult = await analyzePersonalityLocally(logText, mbtiType);
+    }
+    
+    const [result] = await db.execute(
+      `INSERT INTO personality_analysis (user_id, analysis_date, personality_traits, mbti_type, work_suggestions, personality_chart, ai_analysis_text, description, created_at)
+       VALUES (?, NOW(), ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        userId,
+        JSON.stringify(analysisResult.personalityTraits),
+        analysisResult.mbtiType,
+        JSON.stringify(analysisResult.workSuggestions),
+        JSON.stringify(analysisResult.personalityChart),
+        analysisResult.aiAnalysisText || null,
+        'AI性格分析报告'
+      ]
+    );
+    
+    const analysis = {
+      id: result.insertId.toString(),
+      userId: userId,
+      analysisDate: new Date(),
+      personalityTraits: analysisResult.personalityTraits,
+      mbtiType: analysisResult.mbtiType,
+      workSuggestions: analysisResult.workSuggestions,
+      personalityChart: analysisResult.personalityChart,
+      aiAnalysisText: analysisResult.aiAnalysisText,
+      createdAt: new Date(),
+      description: 'AI性格分析报告',
+    };
+    
+    res.json(analysis);
+  } catch (error) {
+    console.error('性格分析失败:', error);
+    res.status(500).json({ error: '性格分析失败' });
+  }
+});
+
+// 获取性格分析历史
+app.get('/api/ai/personality-history', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const [rows] = await db.execute(
+      `SELECT id, user_id, analysis_date, personality_traits, mbti_type, work_suggestions, personality_chart, ai_analysis_text, description, created_at
+       FROM personality_analysis
+       WHERE user_id = ?
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+    
+    const history = rows.map(row => ({
+      id: row.id.toString(),
+      userId: row.user_id,
+      analysisDate: row.analysis_date,
+      personalityTraits: JSON.parse(row.personality_traits),
+      mbtiType: row.mbti_type,
+      workSuggestions: JSON.parse(row.work_suggestions),
+      personalityChart: JSON.parse(row.personality_chart),
+      aiAnalysisText: row.ai_analysis_text,
+      createdAt: row.created_at,
+      description: row.description,
+    }));
+    
+    res.json(history);
+  } catch (error) {
+    console.error('获取性格分析历史失败:', error);
+    res.status(500).json({ error: '获取性格分析历史失败' });
+  }
+});
+
+// ==================== DeepSeek API 分析函数 ====================
+
+// DeepSeek API 性格分析函数
+async function analyzePersonalityWithDeepSeek(logText, mbtiType) {
+  const prompt = `
+请基于以下日志内容进行性格分析：
+
+日志内容：${logText}
+
+${mbtiType ? `已知MBTI类型：${mbtiType}` : ''}
+
+请分析并返回以下格式的JSON数据：
+{
+  "personalityTraits": {
+    "外向性": 0.8,
+    "宜人性": 0.6,
+    "尽责性": 0.9,
+    "神经质": 0.3,
+    "开放性": 0.7
+  },
+  "mbtiType": "ENFP",
+  "workSuggestions": {
+    "适合职业": ["产品经理", "市场营销", "创意总监"],
+    "工作环境": "开放、创新、团队合作",
+    "发展建议": "发挥创造力，加强执行力",
+    "沟通风格": "热情、富有感染力"
+  },
+  "personalityChart": {
+    "traits": {
+      "外向性": 0.8,
+      "宜人性": 0.6,
+      "尽责性": 0.9,
+      "神经质": 0.3,
+      "开放性": 0.7
+    },
+    "dimensions": {
+      "领导力": 0.8,
+      "创造力": 0.7,
+      "沟通能力": 0.9,
+      "分析能力": 0.6,
+      "团队合作": 0.8
+    }
+  }
+}
+`;
+
+  try {
+    const response = await axios.post(DEEPSEEK_API_URL, {
+      model: 'deepseek-chat',
+      messages: [
+        {
+          role: 'system',
+          content: '你是一个专业的性格分析师，擅长基于日志内容进行MBTI性格分析和职业建议。请返回有效的JSON格式数据。'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000
+    }, {
+      headers: {
+        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 30000 // 30秒超时
+    });
+
+    const content = response.data.choices[0].message.content;
+    
+    // 尝试解析JSON响应
+    try {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsedData = JSON.parse(jsonMatch[0]);
+        // 返回解析后的数据和原始文本
+        return {
+          ...parsedData,
+          aiAnalysisText: content // 保存原始AI分析文本
+        };
+      }
+    } catch (parseError) {
+      console.error('JSON解析失败:', parseError);
+    }
+    
+    // 如果解析失败，返回默认分析结果（包含原始文本）
+    return {
+      ...getDefaultPersonalityAnalysis(),
+      aiAnalysisText: content || 'AI分析结果解析失败，使用默认数据'
+    };
+    
+  } catch (error) {
+    console.error('DeepSeek API调用失败:', error);
+    return {
+      ...getDefaultPersonalityAnalysis(),
+      aiAnalysisText: `AI分析失败: ${error.message}`
+    };
+  }
+}
+
+// 本地性格分析函数（备用方案）
+async function analyzePersonalityLocally(logText, mbtiType) {
+  // 基于关键词的简单性格分析
+  const text = logText.toLowerCase();
+  
+  // 分析外向性
+  const extroversionKeywords = ['团队', '合作', '沟通', '交流', '社交', '会议', '讨论'];
+  const extroversionScore = extroversionKeywords.filter(keyword => text.includes(keyword)).length / extroversionKeywords.length;
+  
+  // 分析开放性
+  const opennessKeywords = ['创新', '创意', '想法', '探索', '学习', '新', '尝试'];
+  const opennessScore = opennessKeywords.filter(keyword => text.includes(keyword)).length / opennessKeywords.length;
+  
+  // 分析尽责性
+  const conscientiousnessKeywords = ['完成', '任务', '计划', '目标', '责任', '认真', '仔细'];
+  const conscientiousnessScore = conscientiousnessKeywords.filter(keyword => text.includes(keyword)).length / conscientiousnessKeywords.length;
+  
+  // 分析宜人性
+  const agreeablenessKeywords = ['帮助', '支持', '关心', '理解', '友好', '和谐'];
+  const agreeablenessScore = agreeablenessKeywords.filter(keyword => text.includes(keyword)).length / agreeablenessKeywords.length;
+  
+  // 分析神经质
+  const neuroticismKeywords = ['压力', '焦虑', '担心', '紧张', '困难', '问题'];
+  const neuroticismScore = Math.max(0, 1 - neuroticismKeywords.filter(keyword => text.includes(keyword)).length / neuroticismKeywords.length);
+  
+  // 基于MBTI类型调整分析结果
+  const mbtiBasedAdjustments = getMbtiBasedAdjustments(mbtiType);
+  
+  return {
+    personalityTraits: {
+      '外向性': Math.min(1, Math.max(0, extroversionScore + mbtiBasedAdjustments.extroversion)),
+      '宜人性': Math.min(1, Math.max(0, agreeablenessScore + mbtiBasedAdjustments.agreeableness)),
+      '尽责性': Math.min(1, Math.max(0, conscientiousnessScore + mbtiBasedAdjustments.conscientiousness)),
+      '神经质': Math.min(1, Math.max(0, neuroticismScore + mbtiBasedAdjustments.neuroticism)),
+      '开放性': Math.min(1, Math.max(0, opennessScore + mbtiBasedAdjustments.openness)),
+    },
+    mbtiType: mbtiType || 'ENFP',
+    workSuggestions: mbtiBasedAdjustments.workSuggestions,
+    personalityChart: {
+      traits: {
+        '外向性': Math.min(1, Math.max(0, extroversionScore + mbtiBasedAdjustments.extroversion)),
+        '宜人性': Math.min(1, Math.max(0, agreeablenessScore + mbtiBasedAdjustments.agreeableness)),
+        '尽责性': Math.min(1, Math.max(0, conscientiousnessScore + mbtiBasedAdjustments.conscientiousness)),
+        '神经质': Math.min(1, Math.max(0, neuroticismScore + mbtiBasedAdjustments.neuroticism)),
+        '开放性': Math.min(1, Math.max(0, opennessScore + mbtiBasedAdjustments.openness)),
+      },
+      dimensions: mbtiBasedAdjustments.dimensions,
+    },
+    aiAnalysisText: `基于本地算法和MBTI类型(${mbtiType})的分析：通过关键词匹配分析日志内容，结合MBTI性格类型特征，评估五大人格特质和职业倾向。建议使用DeepSeek API获得更精确的分析结果。`,
+  };
+}
+
+// 根据MBTI类型获取调整参数
+function getMbtiBasedAdjustments(mbtiType) {
+  const adjustments = {
+    // 外向性调整 (E vs I)
+    extroversion: mbtiType && mbtiType.startsWith('E') ? 0.3 : -0.2,
+    // 开放性调整 (N vs S)  
+    openness: mbtiType && mbtiType[1] === 'N' ? 0.3 : -0.1,
+    // 尽责性调整 (J vs P)
+    conscientiousness: mbtiType && mbtiType[3] === 'J' ? 0.2 : -0.1,
+    // 宜人性调整 (F vs T)
+    agreeableness: mbtiType && mbtiType[2] === 'F' ? 0.2 : -0.1,
+    // 神经质调整 (基于MBTI类型特征)
+    neuroticism: mbtiType && ['INFP', 'ISFP', 'ENFP', 'ESFP'].includes(mbtiType) ? 0.1 : -0.1,
+  };
+  
+  // 工作建议
+  const workSuggestions = getWorkSuggestionsByMbti(mbtiType);
+  
+  // 维度调整
+  const dimensions = {
+    '领导力': mbtiType && ['ENTJ', 'ESTJ', 'ENFJ', 'ESFJ'].includes(mbtiType) ? 0.8 : 0.6,
+    '创造力': mbtiType && ['ENFP', 'INFP', 'ENFJ', 'INFJ'].includes(mbtiType) ? 0.8 : 0.6,
+    '沟通能力': mbtiType && mbtiType.startsWith('E') ? 0.8 : 0.6,
+    '分析能力': mbtiType && ['INTJ', 'INTP', 'ENTJ', 'ENTP'].includes(mbtiType) ? 0.8 : 0.6,
+    '团队合作': mbtiType && mbtiType[2] === 'F' ? 0.8 : 0.6,
+  };
+  
+  return {
+    ...adjustments,
+    workSuggestions,
+    dimensions,
+  };
+}
+
+// 根据MBTI类型获取工作建议
+function getWorkSuggestionsByMbti(mbtiType) {
+  const suggestions = {
+    'ENFP': {
+      '适合职业': ['产品经理', '市场营销', '创意总监', '培训师', '心理咨询师'],
+      '工作环境': '开放、创新、团队合作',
+      '发展建议': '发挥创造力，加强执行力',
+      '沟通风格': '热情、富有感染力',
+    },
+    'INFP': {
+      '适合职业': ['作家', '心理咨询师', '艺术指导', '翻译', '社会工作者'],
+      '工作环境': '安静、有创意空间、价值观一致',
+      '发展建议': '保持理想主义，提升实际执行力',
+      '沟通风格': '温和、富有同理心',
+    },
+    'ESTJ': {
+      '适合职业': ['项目经理', '行政主管', '财务经理', '运营总监', '律师'],
+      '工作环境': '结构化、目标明确、有权威',
+      '发展建议': '保持高效执行，提升灵活性',
+      '沟通风格': '直接、务实、有组织性',
+    },
+    'ISTJ': {
+      '适合职业': ['会计师', '审计师', '系统管理员', '质量经理', '公务员'],
+      '工作环境': '稳定、有序、传统',
+      '发展建议': '保持可靠性，适度创新',
+      '沟通风格': '谨慎、准确、注重细节',
+    },
+    // 可以添加更多MBTI类型...
+  };
+  
+  return suggestions[mbtiType] || {
+    '适合职业': ['通用职业', '需要根据个人兴趣选择'],
+    '工作环境': '根据个人偏好调整',
+    '发展建议': '发挥个人优势，改进不足',
+    '沟通风格': '根据性格特点调整',
+  };
+}
+
+// 默认性格分析结果
+function getDefaultPersonalityAnalysis() {
+  return {
+    personalityTraits: {
+      '外向性': 0.8,
+      '宜人性': 0.6,
+      '尽责性': 0.9,
+      '神经质': 0.3,
+      '开放性': 0.7,
+    },
+    mbtiType: 'ENFP',
+    workSuggestions: {
+      '适合职业': ['产品经理', '市场营销', '创意总监', '培训师'],
+      '工作环境': '开放、创新、团队合作',
+      '发展建议': '发挥创造力，加强执行力',
+      '沟通风格': '热情、富有感染力',
+    },
+    personalityChart: {
+      traits: {
+        '外向性': 0.8,
+        '宜人性': 0.6,
+        '尽责性': 0.9,
+        '神经质': 0.3,
+        '开放性': 0.7,
+      },
+      dimensions: {
+        '领导力': 0.8,
+        '创造力': 0.7,
+        '沟通能力': 0.9,
+        '分析能力': 0.6,
+        '团队合作': 0.8,
+      },
+    },
+    aiAnalysisText: '使用默认分析结果。请配置DeepSeek API Key以获得AI分析。',
+  };
+}

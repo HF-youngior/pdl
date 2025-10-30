@@ -68,7 +68,7 @@ class PersonalityChart extends StatelessWidget {
     final traitValues = traits.values.map((v) => (v as num).toDouble()).toList();
     
     if (traitNames.isEmpty) {
-      return _buildTestRadarChart();
+      return _buildEmptyRadarChart();
     }
 
     return Container(
@@ -104,22 +104,13 @@ class PersonalityChart extends StatelessWidget {
     );
   }
 
-  Widget _buildTestRadarChart() {
-    final testTraits = ['外向性', '宜人性', '尽责性', '神经质', '开放性'];
-    final testValues = [0.8, 0.6, 0.9, 0.3, 0.7];
-    
+  Widget _buildEmptyRadarChart() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: Colors.grey[300]!),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,11 +120,31 @@ class PersonalityChart extends StatelessWidget {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            height: 200,
-            child: CustomPaint(
-              painter: RadarChartPainter(testTraits, testValues),
-              size: const Size(200, 200),
+          Center(
+            child: Column(
+              children: [
+                Icon(
+                  Icons.analytics_outlined,
+                  size: 48,
+                  color: Colors.grey[400],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '暂无分析数据',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '请先完成性格分析',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[500],
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -147,7 +158,7 @@ class PersonalityChart extends StatelessWidget {
     final dimensionValues = dimensions.values.map((v) => (v as num).toDouble()).toList();
     
     if (dimensionNames.isEmpty) {
-      return _buildTestBarChart();
+      return _buildEmptyBarChart();
     }
 
     return Container(
@@ -182,27 +193,13 @@ class PersonalityChart extends StatelessWidget {
     );
   }
 
-  Widget _buildTestBarChart() {
-    final testDimensions = {
-      '领导力': 0.8,
-      '创造力': 0.7,
-      '沟通能力': 0.9,
-      '分析能力': 0.6,
-      '团队合作': 0.8,
-    };
-
+  Widget _buildEmptyBarChart() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: Colors.grey[300]!),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,9 +209,33 @@ class PersonalityChart extends StatelessWidget {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
-          ...testDimensions.entries.map((entry) {
-            return _buildBarItem(entry.key, entry.value);
-          }).toList(),
+          Center(
+            child: Column(
+              children: [
+                Icon(
+                  Icons.bar_chart_outlined,
+                  size: 48,
+                  color: Colors.grey[400],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '暂无分析数据',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '请先完成性格分析',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
