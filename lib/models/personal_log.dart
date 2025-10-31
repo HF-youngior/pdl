@@ -25,6 +25,7 @@ class PersonalLog {
             taskId: u.taskId,
             progressPercentage: u.progress_percentage ?? 0,
             taskStatus: u.task_status,
+            taskName: u.taskName,
           ))
       .toList();
 
@@ -100,11 +101,13 @@ class LogTaskLinkage {
   final String taskId;
   final int progressPercentage;
   final String? taskStatus;
+  final String? taskName;
 
   LogTaskLinkage({
     required this.taskId,
     required this.progressPercentage,
     this.taskStatus,
+    this.taskName,
   });
 }
 

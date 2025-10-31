@@ -16,6 +16,8 @@ class PersonalLogsScreen extends StatefulWidget {
 class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
   late Future<List<PersonalLog>> _logsFuture;
   final ApiService _apiService = ApiService();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchType = 'keyword'; // keyword | date | content
 
   @override
   void initState() {

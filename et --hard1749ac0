@@ -1,0 +1,32 @@
+[33m1749ac0[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfeature/log-hyx[m[33m, [m[1;31morigin/feature/log-hyx[m[33m)[m 小bug修修修
+[33mb852683[m 实现增删改查存档一下
+[33m3fa9927[m[33m ([m[1;31morigin/zyl[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m 视图与AI的合并
+[33mb35d3c3[m Merge remote-tracking branch 'origin/AImap' into zyl
+[33m585b32b[m[33m ([m[1;31morigin/AImap[m[33m)[m ai地图提交
+[33mebb5135[m wx密码更改提交
+[33m3fafa70[m ai地图环境配置
+[33mafc8be4[m AI地图模块
+[33m0464f75[m 修改了日视图
+[33mbc2e79a[m Merge pull request #2 from HF-youngior/feature/log-hyx
+[33mc188a76[m 前期工作与主分支合并
+[33m042cba0[m[33m ([m[1;32mmaster[m[33m)[m Merge branch 'yyh' 合并 yyh 分支的最新更新，包括 backend 脚本修改和数据加载优化
+[33m8c22a34[m 完成十大重要事项的展示与编辑，管理者可以勾选要展示的十大事项，也可以新建和编辑，其他人员只能查看
+[33m44ce6bb[m Merge branch 'AImap'
+[33mf807894[m 实现前端任务&日志实际开发功能的添加和调整
+[33m2d2be88[m 避免缓存文件提交
+[33m8e4e487[m wx密码更改提交
+[33m5652a5d[m ai地图环境配置
+[33m152fa86[m AI地图模块
+[33m5f73f6f[m 整合zyl的第一次版本
+[33m61591d6[m[33m ([m[1;31morigin/yyh[m[33m)[m Update .gitignore to ignore generated Windows files
+[33m70cf7fe[m 完成日视图数据显示
+[33m57e01c1[m 月视图可以显示数据
+[33m0861f41[m 月视图可以显示数据
+[33m85d7b86[m 更新了API测试界面，更简约更详细
+[33mba6690c[m Merge remote-tracking branch 'origin/feature/log-hyx' into zyl
+[33m708cd00[m 更新新建日志填写信息以及关联任务展示界面
+[33mab61171[m 调整日志前端界面
+[33m6dc9a1f[m 更新了API界面
+[33mbcf9b05[m 可以看到API界面，方便找接口
+[33m51f3e4e[m[33m ([m[1;32mhyx[m[33m)[m 新增一键初始化数据库的bat文件，安装好依赖后双击init文件后，再双击后端启动文件就可以了
+[33mb5baae5[m[33m ([m[1;31morigin/dmb[m[33m)[m Initial commit of Flutter project
