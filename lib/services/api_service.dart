@@ -268,42 +268,65 @@ class ApiService {
     }
   }
 
-  // 新增：创建个人日志（新结构，包含多任务关联）
-  static Future<bool> createPersonalLog(PersonalLog log) async {
-    try {
-      final payload = {
-        'log': log.toJson()
-          ..remove('created_at')
-          ..remove('updated_at'),
-        'linkages': log.linkages.map((e) => e.toJson()).toList(),
-      };
-      final response = await http.post(
-        Uri.parse('$baseUrl/personal-logs'),
-        headers: getAuthHeaders(),
-        body: jsonEncode(payload),
-      );
-      return response.statusCode == 201;
-    } catch (e) {
-      print('创建个人日志错误: $e');
-      return false;
-    }
-  }
-
-  // 新增：获取个人日志（包含关联）
-  static Future<List<PersonalLog>> getPersonalLogs() async {
+  // 获取个人日志列表（使用 token 认证，不需要 userId 参数）
+  static Future<List<PersonalLog>> getPersonalLogs(String userId) async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/personal-logs'),
         headers: getAuthHeaders(),
       );
       if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        return data.map((e) => PersonalLog.fromJson(e)).toList();
+        final List<dynamic> body = jsonDecode(utf8.decode(response.bodyBytes));
+        return body.map((item) => PersonalLog.fromJson(item)).toList();
       }
-      return [];
+      throw Exception('Failed to load personal logs: ${response.body}');
     } catch (e) {
-      print('获取个人日志错误: $e');
-      return [];
+      rethrow;
+    }
+  }
+
+  // 创建个人日志（logData 结构: { log: {...}, linkages: [...] }）
+  static Future<PersonalLog> createPersonalLog(Map<String, dynamic> logData) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/personal-logs'),
+        headers: getAuthHeaders(),
+        body: jsonEncode(logData),
+      );
+      if (response.statusCode == 201) {
+        return PersonalLog.fromJson(jsonDecode(utf8.decode(response.bodyBytes)));
+      }
+      throw Exception('Failed to create personal log: ${response.body}');
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // 更新个人日志
+  static Future<PersonalLog> updatePersonalLog(String logId, Map<String, dynamic> logData) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/personal-logs/$logId'),
+        headers: getAuthHeaders(),
+        body: jsonEncode(logData),
+      );
+      if (response.statusCode == 200) {
+        return PersonalLog.fromJson(jsonDecode(utf8.decode(response.bodyBytes)));
+      }
+      throw Exception('Failed to update personal log: ${response.body}');
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // 删除个人日志
+  static Future<void> deletePersonalLog(String logId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/personal-logs/$logId'),
+      headers: getAuthHeaders(),
+    );
+    if (response.statusCode != 204) {
+      throw Exception('Failed to delete personal log: ${response.body}');
     }
   }
 

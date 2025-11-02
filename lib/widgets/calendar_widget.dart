@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import '../models/task.dart';
@@ -37,7 +38,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   DayDetailData? _dayViewData; // 日视图数据
   bool _isLoading = false;
   String? _error;
-  
+
   // 任务筛选状态
   String _taskFilter = 'all'; // 'all', 'completed', 'pending'
 
@@ -100,7 +101,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
 
   Future<void> _loadMonthViewData() async {
     if (_currentView != CalendarView.month) return;
-    
+
     setState(() {
       _isLoading = true;
       _error = null;
@@ -111,7 +112,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         _currentDate.year,
         _currentDate.month,
       );
-      
+
       setState(() {
         _monthViewData = monthData;
         _isLoading = false;
@@ -201,7 +202,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          gradient: isSelected 
+          gradient: isSelected
               ? LinearGradient(
                   colors: [Colors.blue.shade400, Colors.cyan.shade400],
                   begin: Alignment.topLeft,
@@ -226,7 +227,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              view == CalendarView.month 
+              view == CalendarView.month
                   ? Icons.calendar_month
                   : view == CalendarView.week
                       ? Icons.view_week
@@ -434,7 +435,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                       final day = days[index];
                       final isCurrentMonth = day.month == _currentDate.month;
                       final isToday = _isSameDay(day, DateTime.now());
-                      
+
                       // 获取该日期的数据
                       final dayData = _getDayData(day);
                       final hasData = dayData != null && dayData.hasData;
@@ -445,11 +446,11 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                         child: Container(
                           margin: const EdgeInsets.all(2),
                           decoration: BoxDecoration(
-                            color: isToday 
+                            color: isToday
                                 ? Colors.blue.shade50
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(4),
-                            border: isToday 
+                            border: isToday
                                 ? Border.all(
                                     color: Colors.blue.shade300,
                                     width: 1.5,
@@ -462,7 +463,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                               Text(
                                 '${day.day}',
                                 style: TextStyle(
-                                  color: isCurrentMonth 
+                                  color: isCurrentMonth
                                       ? (isToday ? Colors.blue.shade700 : Colors.grey.shade800)
                                       : Colors.grey.shade300,
                                   fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
@@ -484,13 +485,13 @@ class _CalendarWidgetState extends State<CalendarWidget> {
               ],
             ),
           ),
-          
+
           // 统计信息框
           _buildMonthStatisticsBox(),
-          
+
           // 任务筛选和列表
           _buildTaskFilterAndList(),
-          
+
           // 底部安全间距
           const SizedBox(height: 20),
         ],
@@ -510,7 +511,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     // 收集所有任务和日志，用于甘特图渲染
     final allTasks = <CalendarTask>[];
     final allLogs = <CalendarLog>[];
-    
+
     for (final day in weekDays) {
       final dateKey = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
       final dayData = _weekViewData[dateKey];
@@ -519,14 +520,14 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         allLogs.addAll(dayData.logs);
       }
     }
-    
+
     // 去重（同一个任务可能在多天出现）
     final uniqueTasks = <String, CalendarTask>{};
     for (final task in allTasks) {
       uniqueTasks[task.id] = task;
     }
     final taskList = uniqueTasks.values.toList();
-    
+
     final uniqueLogs = <String, CalendarLog>{};
     for (final log in allLogs) {
       uniqueLogs[log.id] = log;
@@ -563,7 +564,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                     Text(
                       ['一', '二', '三', '四', '五', '六', '日'][day.weekday - 1],
                       style: TextStyle(
-                        fontSize: 12, 
+                        fontSize: 12,
                         color: isToday ? Colors.purple.shade600 : Colors.purple.shade400,
                         fontWeight: FontWeight.w500,
                       ),
@@ -581,7 +582,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       ],
     );
   }
-  
+
   // 构建周视图甘特图
   Widget _buildWeekGanttChart(List<DateTime> weekDays, List<CalendarTask> tasks, List<CalendarLog> logs) {
     return Container(
@@ -630,40 +631,40 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       ),
     );
   }
-  
+
   // 构建甘特图任务条
   Widget _buildGanttTaskBar(CalendarTask task, List<DateTime> weekDays, {VoidCallback? onTap}) {
     if (task.startTime == null || task.endTime == null) {
       return const SizedBox.shrink();
     }
-    
+
     try {
       // 直接从ISO字符串提取日期部分，避免时区转换
       final taskStartDate = _extractDateFromISO(task.startTime!);
       final taskEndDate = _extractDateFromISO(task.endTime!);
-      
+
       // 找出任务在本周的起始和结束位置
       int? startIndex;
       int? endIndex;
-      
+
       for (int i = 0; i < weekDays.length; i++) {
         final day = weekDays[i];
         final dayOnly = DateTime(day.year, day.month, day.day);
-        
+
         // 检查任务是否覆盖这一天
-        if (dayOnly.isAtSameMomentAs(taskStartDate) || 
+        if (dayOnly.isAtSameMomentAs(taskStartDate) ||
             (dayOnly.isAfter(taskStartDate) && dayOnly.isBefore(taskEndDate)) ||
             dayOnly.isAtSameMomentAs(taskEndDate)) {
           startIndex ??= i;
           endIndex = i;
         }
       }
-      
+
       // 如果任务不在本周范围内，不显示
       if (startIndex == null || endIndex == null) {
         return const SizedBox.shrink();
       }
-      
+
       return _buildGanttBar(
         title: task.title,
         startIndex: startIndex,
@@ -678,35 +679,35 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       return const SizedBox.shrink();
     }
   }
-  
+
   // 构建甘特图日志条
   Widget _buildGanttLogBar(CalendarLog log, List<DateTime> weekDays, {VoidCallback? onTap}) {
     if (log.createdAt == null) {
       return const SizedBox.shrink();
     }
-    
+
     try {
       // 日志只显示在创建当天
       final logDate = _extractDateFromISO(log.createdAt!);
-      
+
       // 找出日志在本周的位置
       int? dayIndex;
-      
+
       for (int i = 0; i < weekDays.length; i++) {
         final day = weekDays[i];
         final dayOnly = DateTime(day.year, day.month, day.day);
-        
+
         if (dayOnly.isAtSameMomentAs(logDate)) {
           dayIndex = i;
           break;
         }
       }
-      
+
       // 如果日志不在本周范围内，不显示
       if (dayIndex == null) {
         return const SizedBox.shrink();
       }
-      
+
       return _buildGanttBar(
         title: log.title,
         startIndex: dayIndex,
@@ -721,7 +722,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       return const SizedBox.shrink();
     }
   }
-  
+
   // 从ISO字符串提取日期（不含时区转换）
   DateTime _extractDateFromISO(String isoString) {
     final datePart = isoString.split('T')[0];
@@ -732,7 +733,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       int.parse(parts[2]),
     );
   }
-  
+
   // 构建甘特图横条
   Widget _buildGanttBar({
     required String title,
@@ -744,7 +745,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     VoidCallback? onTap,
   }) {
     final span = endIndex - startIndex + 1;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       height: 64, // 增加高度从48到64，确保文字完整显示
@@ -752,7 +753,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         children: [
           // 左侧空白（占据startIndex列之前的空间）
           ...List.generate(startIndex, (_) => const Expanded(child: SizedBox())),
-          
+
           // 甘特图条（横跨span列）
           Expanded(
             flex: span,
@@ -790,7 +791,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
               ),
             ),
           ),
-          
+
           // 右侧空白（占据endIndex列之后的空间）
           ...List.generate(6 - endIndex, (_) => const Expanded(child: SizedBox())),
         ],
@@ -1185,6 +1186,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   // 区域标题
   Widget _buildSectionTitle(String title) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Container(
           width: 4,
@@ -1201,6 +1203,14 @@ class _CalendarWidgetState extends State<CalendarWidget> {
             fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
+        ),
+        IconButton(
+          onPressed: () {
+            setState(() {
+              _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1);
+            });
+          },
+          icon: const Icon(Icons.chevron_right),
         ),
       ],
     );
@@ -1645,19 +1655,19 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   // 构建美化的数据指示器
   Widget _buildBeautifiedDataIndicators(DayData dayData) {
     final indicators = <Widget>[];
-    
+
     // 任务指示器 - 美化版
     if (dayData.tasks.isNotEmpty) {
       final completedTasks = dayData.tasks.where((t) => t.status == 'completed').length;
       final totalTasks = dayData.tasks.length;
-      
+
       indicators.add(
         Container(
           width: 24,
           height: 4,
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: completedTasks == totalTasks 
+              colors: completedTasks == totalTasks
                   ? [Colors.green.shade300, Colors.green.shade500]
                   : [Colors.blue.shade300, Colors.blue.shade500],
               begin: Alignment.centerLeft,
@@ -1675,7 +1685,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         ),
       );
     }
-    
+
     // 日志指示器 - 美化版
     if (dayData.logs.isNotEmpty) {
       indicators.add(
@@ -1700,7 +1710,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         ),
       );
     }
-    
+
     return Column(
       children: indicators,
     );
@@ -1715,7 +1725,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     final totalTasks = _monthViewData!.summary.totalTasks;
     final totalLogs = _monthViewData!.summary.totalLogs;
     final completedTasks = _monthViewData!.days.fold<int>(
-      0, 
+      0,
       (sum, day) => sum + day.tasks.where((t) => t.status == 'completed').length
     );
     final completionRate = totalTasks > 0 ? (completedTasks / totalTasks * 100).toStringAsFixed(1) : '0';
@@ -1768,7 +1778,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // 统计卡片
           Row(
             children: [
@@ -1880,7 +1890,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         ],
       ),
     );
-    
+
     if (onTap != null) {
       return GestureDetector(
         onTap: onTap,
@@ -1988,7 +1998,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
               ],
             ),
           ),
-          
+
           // 筛选按钮
           Container(
             padding: const EdgeInsets.all(16),
@@ -2012,7 +2022,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
               ],
             ),
           ),
-          
+
           // 任务列表
           Container(
             height: 350, // 增加高度到350px
@@ -2025,7 +2035,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                       final task = item['task'] as CalendarTask;
                       final date = item['date'] as String;
                       final day = item['day'] as DateTime;
-                      
+
                       return _buildTaskListItem(task, date, day);
                     },
                   )
@@ -2040,7 +2050,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          _taskFilter == 'all' 
+                          _taskFilter == 'all'
                               ? '本月暂无任务'
                               : _taskFilter == 'completed'
                                   ? '暂无已完成任务'
@@ -2066,7 +2076,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   // 构建筛选按钮
   Widget _buildFilterButton(String label, String value, Color color) {
     final isSelected = _taskFilter == value;
-    
+
     return GestureDetector(
       onTap: () {
         setState(() {
@@ -2076,7 +2086,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
         decoration: BoxDecoration(
-          gradient: isSelected 
+          gradient: isSelected
               ? LinearGradient(
                   colors: [color.withOpacity(0.7), color],
                   begin: Alignment.topLeft,
@@ -2115,7 +2125,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   Widget _buildTaskListItem(CalendarTask task, String date, DateTime day) {
     final statusColor = _getStatusColor(task.status);
     final statusText = _getStatusText(task.status);
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
@@ -2234,9 +2244,9 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   Future<void> _showDayDetail(DateTime day) async {
     try {
       final dayDetail = await CalendarService.getDayDetail(day);
-      
+
       if (!mounted) return;
-      
+
       showDialog(
         context: context,
         builder: (context) => Dialog(
@@ -2292,7 +2302,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                     ],
                   ),
                 ),
-                
+
                 // 内容区域
                 Flexible(
                   child: SingleChildScrollView(
@@ -2409,10 +2419,10 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                             ),
                           )).toList(),
                         ],
-                        
+
                         // 日志列表
                         if (dayDetail.logs.isNotEmpty) ...[
-                          if (dayDetail.tasks.isNotEmpty) 
+                          if (dayDetail.tasks.isNotEmpty)
                             const SizedBox(height: 20),
                           Row(
                             children: [
@@ -2524,7 +2534,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                             ),
                           )).toList(),
                         ],
-                        
+
                         // 无数据提示
                         if (dayDetail.tasks.isEmpty && dayDetail.logs.isEmpty)
                           Center(
@@ -2554,7 +2564,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                     ),
                   ),
                 ),
-                
+
                 // 底部按钮栏
                 Container(
                   padding: const EdgeInsets.all(20),
@@ -2633,7 +2643,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   // 显示单个任务详情
   void _showTaskDetail(CalendarTask task, DateTime day) {
     if (!mounted) return;
-    
+
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -2691,7 +2701,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                   ],
                 ),
               ),
-              
+
               // 内容区域
               Flexible(
                 child: SingleChildScrollView(
@@ -2719,7 +2729,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                         ),
                         const SizedBox(height: 20),
                       ],
-                      
+
                       // 任务信息标签
                       Wrap(
                         spacing: 8,
@@ -2740,7 +2750,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                             ),
                         ],
                       ),
-                      
+
                       // 时间信息
                       if (task.startTime != null || task.endTime != null || task.deadline != null) ...[
                         const SizedBox(height: 20),
@@ -2865,7 +2875,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                   ),
                 ),
               ),
-              
+
               // 底部按钮栏
               Container(
                 padding: const EdgeInsets.all(20),
@@ -3471,14 +3481,14 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     if (dateTimeStr == null || dateTimeStr.isEmpty) {
       return '';
     }
-    
+
     try {
       // 解析 ISO 8601 格式的字符串 (例如: 2025-10-01T02:00:00.000Z)
       final dateTime = DateTime.parse(dateTimeStr);
-      
+
       // 转换为本地时区
       final localDateTime = dateTime.toLocal();
-      
+
       // 格式化为中文格式: 2025年10月1日 10:00
       return DateFormat('yyyy年M月d日 HH:mm', 'zh_CN').format(localDateTime);
     } catch (e) {
@@ -3490,7 +3500,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   // 显示本月日志对话框
   void _showMonthlyLogsDialog() {
     if (_monthViewData == null) return;
-    
+
     // 收集所有有日志的日期，按日期排序
     final daysWithLogs = <DayData>[];
     for (final day in _monthViewData!.days) {
@@ -3498,17 +3508,17 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         daysWithLogs.add(day);
       }
     }
-    
+
     if (daysWithLogs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('本月暂无日志')),
       );
       return;
     }
-    
+
     // 按日期排序
     daysWithLogs.sort((a, b) => a.date.compareTo(b.date));
-    
+
     // 显示对话框（对话框内部会初始化本地化数据）
     showDialog(
       context: context,
@@ -3810,7 +3820,7 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
 
     final currentDay = widget.daysWithLogs[_currentDayIndex];
     final dayDate = DateTime.parse(currentDay.date);
-    
+
     return Dialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
@@ -3885,7 +3895,7 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
                 ],
               ),
             ),
-            
+
             // 日期切换控制栏
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -3956,7 +3966,7 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
                 ],
               ),
             ),
-            
+
             // 日期指示器
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -3973,7 +3983,7 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
                 ],
               ),
             ),
-            
+
             // 日志列表
             Expanded(
               child: currentDay.logs.isEmpty
@@ -4017,7 +4027,7 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
     Color accentLightColor = _getLogColor(log);
     Color accentDarkColor = _getLogAccentColor(log);
     Color textColor = Colors.blueGrey.shade900;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -4064,7 +4074,7 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
                     ),
                   ),
                 ),
-                
+
                 // 内容
                 if (log.content != null && log.content.toString().isNotEmpty) ...[
                   const SizedBox(height: 8),
@@ -4079,7 +4089,7 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
-                
+
                 // 底部信息栏
                 const SizedBox(height: 12),
                 Row(
@@ -4318,7 +4328,7 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
   Color _getLogColor(dynamic log) {
     // 根据类别返回颜色（浅色系），只支持四个类别
     final category = log.category?.toString() ?? '';
-    
+
     switch (category.toLowerCase()) {
       case 'work':
         return Colors.blue.shade50; // 工作：更浅蓝色

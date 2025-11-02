@@ -39,9 +39,14 @@ const dbConfig = {
   charset: 'utf8mb4',
   multipleStatements: true,
   timezone: '+08:00'  // 设置为北京时间
+  multipleStatements: true,
+  waitForConnections: true,
+  connectionLimit: 20,
+  queueLimit: 0,
+  connectTimeout: 10000
 };
 
-let db;
+let db; // 连接池
 
 // 时区处理工具函数
 // 将MySQL返回的Date对象或字符串转换为北京时间的ISO字符串
@@ -82,19 +87,21 @@ function formatDateTimeForBeijing(dateTime) {
 // 初始化数据库连接
 async function initDatabase() {
   try {
-    db = await mysql.createConnection(dbConfig);
-    
-    // 设置连接字符集
-    await db.query("SET NAMES 'utf8mb4'");
-    await db.query("SET CHARACTER SET utf8mb4");
-    await db.query("SET character_set_connection=utf8mb4");
-    
-    console.log('数据库连接成功');
+    db = mysql.createPool(dbConfig);
+
+    // 测试并设置字符集
+    const connection = await db.getConnection();
+    await connection.query("SET NAMES 'utf8mb4'");
+    await connection.query("SET CHARACTER SET utf8mb4");
+    await connection.query("SET character_set_connection=utf8mb4");
+    connection.release();
+
+    console.log('数据库连接池创建成功');
     
     // 创建表
     await createTables();
   } catch (error) {
-    console.error('数据库连接失败:', error);
+    console.error('数据库连接池创建失败:', error);
     process.exit(1);
   }
 }
@@ -162,6 +169,7 @@ async function createTables() {
       start_time TIMESTAMP NULL,
       end_time TIMESTAMP NULL,
       color VARCHAR(7) DEFAULT '#4CAF50',
+      updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
       location VARCHAR(200) NULL,
       is_all_day BOOLEAN DEFAULT FALSE,
       special_notes TEXT NULL,
@@ -189,8 +197,9 @@ async function createTables() {
     // 个人日志表
     `CREATE TABLE IF NOT EXISTS personal_logs (
       id VARCHAR(36) PRIMARY KEY,
+      log_id VARCHAR(36) UNIQUE,
       user_id VARCHAR(36) NOT NULL,
-      title VARCHAR(200) NOT NULL,
+      title VARCHAR(200) NOT NULL DEFAULT '个人日志',
       content TEXT,
       category VARCHAR(50) NOT NULL,
       quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent',
@@ -198,6 +207,15 @@ async function createTables() {
       is_completed BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+      log_date DATE NULL,
+      weather VARCHAR(50) NULL,
+      keywords VARCHAR(255) NULL,
+      log_title VARCHAR(200) NULL,
+      log_content TEXT NULL,
+      category VARCHAR(50) NOT NULL DEFAULT 'work',
+      quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent',
+      is_archived BOOLEAN DEFAULT FALSE,
+      related_task_id VARCHAR(36) NULL,
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (related_task_id) REFERENCES tasks(id)
     )`,
@@ -214,7 +232,7 @@ async function createTables() {
       metadata JSON,
       FOREIGN KEY (user_id) REFERENCES users(id)
     )`,
-    
+
     // MBTI记录表 - 存储用户性格测试结果和AI分析建议
     `CREATE TABLE IF NOT EXISTS mbti_records (
       id VARCHAR(36) PRIMARY KEY,
@@ -239,7 +257,7 @@ async function createTables() {
       INDEX idx_is_active (is_active),
       INDEX idx_user_test_date (user_id, test_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MBTI测试记录表，存储用户性格测试结果和AI分析建议'`,
-    
+
     // 词云分析表 - 存储用户日志的词云分析结果
     `CREATE TABLE IF NOT EXISTS wordcloud_analysis (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -254,7 +272,7 @@ async function createTables() {
       INDEX idx_analysis_date (analysis_date),
       INDEX idx_user_analysis_date (user_id, analysis_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='词云分析表，存储用户日志的词云分析结果'`,
-    
+
     // 性格分析表 - 存储AI性格分析结果
     `CREATE TABLE IF NOT EXISTS personality_analysis (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -273,14 +291,72 @@ async function createTables() {
       INDEX idx_mbti_type (mbti_type),
       INDEX idx_user_analysis_date (user_id, analysis_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='性格分析表，存储AI性格分析结果'`
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS log_task_linkage (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      log_id VARCHAR(36) NOT NULL,
+      task_id VARCHAR(36) NOT NULL,
+      progress_percentage INT DEFAULT 0,
+      task_status VARCHAR(50) DEFAULT 'in_progress',
+      linkage_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY log_task_unique (log_id, task_id),
+      FOREIGN KEY (log_id) REFERENCES personal_logs(id) ON DELETE CASCADE,
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    )`
   ];
 
   for (const table of tables) {
     await db.execute(table);
   }
-  
+  // 为已存在数据库补齐缺失字段
+  await ensureSchemaCompatibility();
+
   // 插入示例数据
   await insertSampleData();
+}
+
+// 兼容性：为已存在的数据库补齐 personal_logs 与 log_task_linkage 所需字段
+async function ensureSchemaCompatibility() {
+  try {
+    // 兼容性调整（如需 MySQL 8+ 兼容，ALTER ... IF NOT EXISTS，保留原 personal_logs 相关字段）
+    // tasks表 updated_at 的 ALTER TABLE 已彻底删除
+
+    // 所有 ALTER TABLE ... IF NOT EXISTS 语句外包裹 try...catch，兼容老MySQL
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_id VARCHAR(36) UNIQUE"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS title VARCHAR(200) NOT NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS content TEXT"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_date DATE NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS weather VARCHAR(50) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS keywords VARCHAR(255) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_title VARCHAR(200) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_content TEXT NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent'"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS related_task_id VARCHAR(36) NULL"); } catch(e){}
+    // 设置默认值（兼容已有库）
+    try { await db.execute("ALTER TABLE personal_logs MODIFY title VARCHAR(200) NOT NULL DEFAULT '个人日志'"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs MODIFY category VARCHAR(50) NOT NULL DEFAULT 'work'"); } catch(e){}
+    // 索引、关联关系等原有包裹不变
+    try { await db.execute("CREATE INDEX IF NOT EXISTS idx_personal_logs_user_id ON personal_logs(user_id)"); } catch (_) {}
+    try { await db.execute("CREATE INDEX IF NOT EXISTS idx_personal_logs_log_date ON personal_logs(log_date)"); } catch (_) {}
+    await db.execute(`CREATE TABLE IF NOT EXISTS log_task_linkage (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      log_id VARCHAR(36) NOT NULL,
+      task_id VARCHAR(36) NOT NULL,
+      progress_percentage INT DEFAULT 0,
+      task_status VARCHAR(50) DEFAULT 'in_progress',
+      linkage_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY log_task_unique (log_id, task_id),
+      FOREIGN KEY (log_id) REFERENCES personal_logs(id) ON DELETE CASCADE,
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    )`);
+    try { await db.execute("CREATE INDEX IF NOT EXISTS idx_log_task_linkage_log_id ON log_task_linkage(log_id)"); } catch (_) {}
+    try { await db.execute("CREATE INDEX IF NOT EXISTS idx_log_task_linkage_task_id ON log_task_linkage(task_id)"); } catch (_) {}
+  } catch (e) {
+    console.error('ensureSchemaCompatibility 执行失败:', e.message);
+  }
 }
 
 // 插入示例数据
@@ -544,6 +620,73 @@ async function insertSampleData() {
   }
 }
 
+/**
+ * [新] 异步同步任务状态和进度。
+ * 必须在 MySQL 事务中调用。
+ * @param {mysql.PoolConnection} connection - 事务连接对象
+ * @param {object} taskUpdateData - 包含 { taskId, progress_percentage, task_status } 的对象
+ */
+async function syncTaskStatusFromLog(connection, taskUpdateData) {
+  // 您的 API 路由已使用 task_id, progress_percentage, task_status, 我们将保持一致
+  const { task_id, progress_percentage, task_status } = taskUpdateData;
+
+  if (!task_id) {
+    console.warn('syncTaskStatusFromLog: Skipping update, task_id is missing.');
+    return;
+  }
+
+  try {
+    // 1. 获取当前任务状态 (FOR UPDATE 用于锁定行，防止事务冲突)
+    const [taskRows] = await connection.execute('SELECT progress_percentage, status FROM tasks WHERE id = ? FOR UPDATE', [task_id]);
+    if (taskRows.length === 0) {
+      console.warn(`Task with ID ${task_id} not found during sync.`);
+      return; // 任务不存在
+    }
+
+    const currentTask = taskRows[0];
+    let finalProgress = currentTask.progress_percentage;
+    let finalStatus = currentTask.status;
+    let needsUpdate = false;
+    const now = new Date();
+
+    // 2. 检查日志中是否有进度更新
+    if (progress_percentage !== null && progress_percentage !== undefined) {
+      finalProgress = progress_percentage;
+      needsUpdate = true;
+    }
+
+    // 3. 检查日志中是否有状态更新
+    if (task_status !== null && task_status !== undefined) {
+      // 确保状态值在 'tasks' 表的 ENUM 范围内
+      const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
+      finalStatus = validStatuses.includes(task_status) ? task_status : currentTask.status;
+      needsUpdate = true;
+    }
+
+    // 4. 联动逻辑
+    if (finalStatus === 'completed' && finalProgress !== 100) {
+      finalProgress = 100;
+      needsUpdate = true;
+    }
+    if (finalProgress === 100 && finalStatus !== 'completed') {
+      finalStatus = 'completed';
+      needsUpdate = true;
+    }
+
+    // 5. 如果有任何更改，则更新 tasks 表
+    if (needsUpdate && (finalProgress !== currentTask.progress_percentage || finalStatus !== currentTask.status)) {
+      const updateSql = `UPDATE tasks SET progress_percentage = ?, status = ?, updated_at = ? WHERE id = ?`;
+      await connection.execute(updateSql, [finalProgress, finalStatus, now, task_id]);
+      console.log(`Synced task ${task_id}: Progress=${finalProgress}, Status=${finalStatus}`);
+    }
+  } catch (error) {
+    console.error(`Error syncing task ${task_id}:`, error);
+    // 抛出错误以确保事务回滚
+    throw new Error(`Failed to sync task ${task_id}: ${error.message}`);
+  }
+}
+
+// (authenticateToken 函数应该在下面...)
 // JWT中间件
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -993,7 +1136,7 @@ app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     let query = `
       SELECT u.id, u.username, u.name, u.position, u.role, u.is_active, u.created_at, u.last_login_at,
-             u.department_id, d.name as department_name, p.name as parent_name
+             d.name as department_name, p.name as parent_name
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN users p ON u.parent_id = p.id
@@ -1697,56 +1840,114 @@ app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
 
 // 创建个人日志
 app.post('/api/personal-logs', authenticateToken, async (req, res) => {
-  const connection = db; // 单连接环境
+  // 兼容旧形态：{ log, linkages }；也支持直接平铺字段
+  const userId = req.user.id;
+  const payload = req.body && req.body.log ? req.body.log : req.body;
+  const linkages = Array.isArray(req.body && req.body.linkages) ? req.body.linkages : (payload.linkages || []);
+
+  // 校验必填字段
+  if (!payload || !payload.title || !payload.category) {
+    return res.status(400).json({ error: '缺少必填字段 (title, category)' });
+  }
+
+  const id = require('crypto').randomUUID();
+  const businessLogId = require('crypto').randomUUID(); // 存入 personal_logs.log_id
+
+  // 归一化字段
+  function formatDateOnly(dateLike) {
+    if (!dateLike) return null;
+    const d = new Date(dateLike);
+    if (Number.isNaN(d.getTime())) return null;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  const title = payload.title;
+  const content = payload.content || null;
+  const is_completed = Boolean(payload.is_completed);
+  const created_at = payload.created_at ? new Date(payload.created_at) : (payload.log_date ? new Date(payload.log_date) : new Date());
+  const log_date = payload.log_date ? formatDateOnly(payload.log_date) : formatDateOnly(created_at);
+  const weather = payload.weather || null;
+  const keywords = Array.isArray(payload.keywords) ? payload.keywords.join(',') : (payload.keywords || null);
+  const log_title = payload.log_title || null;
+  const log_content = payload.log_content || null;
+  const category = payload.category;
+  const quadrant = payload.quadrant || 'important_not_urgent';
+  const is_archived = Boolean(payload.is_archived);
+  const related_task_id = payload.related_task_id || null;
+
+  let connection;
   try {
-    const { log, linkages } = req.body || {};
-    if (!log) {
-      return res.status(400).json({ error: '缺少日志数据' });
-    }
+    connection = await db.getConnection();
+    await connection.beginTransaction();
 
-    const logId = log.log_id || require('crypto').randomUUID();
-    const userId = req.user.id;
-    const logDate = log.log_date;
-    const weather = log.weather;
-    const keywords = log.keywords || null;
-    const logTitle = log.log_title || '个人日志';
-    const logContent = log.log_content || null;
-    const category = log.category || 'work';
-    const quadrant = log.quadrant || 'important_not_urgent';
-    const isArchived = !!log.is_archived;
+    // 1) 插入 personal_logs
+    const insertSql = `
+      INSERT INTO personal_logs (
+        id, log_id, user_id, title, content, is_completed, created_at, log_date, weather, keywords,
+        log_title, log_content, category, quadrant, is_archived, related_task_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    await connection.execute(insertSql, [
+      id, businessLogId, userId, title, content, is_completed, created_at, log_date, weather, keywords,
+      log_title, log_content, category, quadrant, is_archived, related_task_id
+    ]);
 
-    await connection.execute(
-      `INSERT INTO personal_logs (log_id, user_id, log_date, weather, keywords, log_title, log_content, category, quadrant, is_archived)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [logId, userId, logDate, weather, keywords, logTitle, logContent, category, quadrant, isArchived]
-    );
-
+    // 2) 插入任务关联并同步（可选）
     if (Array.isArray(linkages) && linkages.length > 0) {
-      for (const l of linkages) {
-        const taskId = l.task_id;
-        const progress = Number(l.progress_percentage ?? 0);
-        const status = l.task_status || 'in_progress';
-        await connection.execute(
-          `INSERT INTO log_task_linkage (log_id, task_id, progress_percentage, task_status)
-           VALUES (?, ?, ?, ?)`,
-          [logId, taskId, progress, status]
-        );
-        // 可选：同步更新任务表的进度/状态
-        await connection.execute(
-          `UPDATE tasks SET progress_percentage = ?, status = ? WHERE id = ?`,
-          [progress, status === 'interrupted' ? 'cancelled' : status, taskId]
-        );
+      const insertLinkSql = `
+        INSERT INTO log_task_linkage (log_id, task_id, progress_percentage, task_status, linkage_time)
+        VALUES (?, ?, ?, ?, ?)
+      `;
+      for (const update of linkages) {
+        if (update && update.task_id) {
+          const taskUpdateData = {
+            task_id: update.task_id,
+            progress_percentage: update.progress_percentage || 0,
+            task_status: update.task_status || 'in_progress'
+          };
+          await connection.execute(insertLinkSql, [
+            id,
+            taskUpdateData.task_id,
+            taskUpdateData.progress_percentage,
+            taskUpdateData.task_status,
+            created_at
+          ]);
+          await syncTaskStatusFromLog(connection, taskUpdateData);
+        }
       }
     }
 
-    res.status(201).json({ message: '日志创建成功', id: logId });
+    await connection.commit();
+
+    // 3) 查询并返回
+    const [rows] = await connection.execute('SELECT * FROM personal_logs WHERE id = ?', [id]);
+    const [links] = await connection.execute(
+      `SELECT l.task_id, t.title as task_name, l.progress_percentage, l.task_status
+       FROM log_task_linkage l LEFT JOIN tasks t ON l.task_id = t.id
+       WHERE l.log_id = ?`,
+      [id]
+    );
+
+    const taskUpdates = links.map(link => ({
+      taskId: link.task_id,
+      taskName: link.task_name,
+      progress_percentage: link.progress_percentage,
+      task_status: link.task_status
+    }));
+
+    return res.status(201).json({ ...rows[0], taskUpdates });
   } catch (error) {
+    if (connection) await connection.rollback();
     console.error('创建个人日志错误:', error);
-    res.status(500).json({ error: '服务器内部错误' });
+    return res.status(500).json({ error: '服务器内部错误', details: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
-// 获取个人日志（主表+关联）
+// [新] 获取个人日志 (Read)
 app.get('/api/personal-logs', authenticateToken, async (req, res) => {
   try {
     const [logs] = await db.execute(
@@ -1754,17 +1955,27 @@ app.get('/api/personal-logs', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const result = [];
-    for (const row of logs) {
+    // 并行获取所有日志的任务关联
+    const result = await Promise.all(logs.map(async (log) => {
       const [links] = await db.execute(
-        `SELECT log_id, task_id, progress_percentage, task_status, linkage_time FROM log_task_linkage WHERE log_id = ?`,
-        [row.log_id]
+        `SELECT l.task_id, t.title as task_name, l.progress_percentage, l.task_status
+         FROM log_task_linkage l
+         LEFT JOIN tasks t ON l.task_id = t.id
+         WHERE l.log_id = ?`,
+        [log.id]
       );
-      result.push({
-        ...row,
-        linkages: links,
-      });
-    }
+
+      return {
+        ...log,
+        // 转换为 camelCase 以匹配 Flutter 模型
+        taskUpdates: links.map(link => ({
+           taskId: link.task_id,
+           taskName: link.task_name,
+           progress_percentage: link.progress_percentage,
+           task_status: link.task_status
+        }))
+      };
+    }));
 
     res.json(result);
   } catch (error) {
@@ -1801,129 +2012,128 @@ app.get('/api/logs', async (req, res) => {
   }
 });
 
-// 更新个人日志完成状态
-app.put('/api/personal-logs/:id/complete', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { is_completed } = req.body;
+// [新] 更新个人日志 (Update)
+app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
+  const { id: logId } = req.params;
+  const userId = req.user.id;
+  const payload = req.body && req.body.log ? req.body.log : req.body;
+  const linkages = Array.isArray(req.body && req.body.linkages) ? req.body.linkages : (payload.linkages || []);
 
-    await db.execute(
-      'UPDATE personal_logs SET is_completed = ? WHERE id = ? AND user_id = ?',
-      [is_completed, id, req.user.id]
-    );
-
-    // 如果日志关联了任务，更新任务进度
-    const [logRows] = await db.execute(
-      'SELECT related_task_id FROM personal_logs WHERE id = ?',
-      [id]
-    );
-
-    if (logRows.length > 0 && logRows[0].related_task_id) {
-      // 计算该任务关联的已完成日志数量
-      const [completedLogs] = await db.execute(
-        'SELECT COUNT(*) as count FROM personal_logs WHERE related_task_id = ? AND is_completed = TRUE',
-        [logRows[0].related_task_id]
-      );
-
-      // 更新任务进度（这里简化处理，实际可能需要更复杂的计算）
-      const progressPercentage = Math.min(completedLogs[0].count * 10, 100);
-      
-      await db.execute(
-        'UPDATE tasks SET progress_percentage = ? WHERE id = ?',
-        [progressPercentage, logRows[0].related_task_id]
-      );
-    }
-
-    res.json({ message: '日志状态更新成功' });
-  } catch (error) {
-    console.error('更新日志状态错误:', error);
-    res.status(500).json({ error: '服务器内部错误' });
+  if (!payload || !payload.title || !payload.category) {
+    return res.status(400).json({ error: '缺少必填字段 (title, category)' });
   }
-});
 
-// 更新个人日志（完整更新，用于日历编辑）
-app.put('/api/logs/:id', authenticateToken, async (req, res) => {
+  function formatDateOnly(dateLike) {
+    if (!dateLike) return null;
+    const d = new Date(dateLike);
+    if (Number.isNaN(d.getTime())) return null;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  const updatedCreatedAt = payload.created_at ? new Date(payload.created_at) : (payload.log_date ? new Date(payload.log_date) : null);
+  const dbKeywords = Array.isArray(payload.keywords) ? payload.keywords.join(',') : (payload.keywords || null);
+
+  let connection;
   try {
-    const { id } = req.params;
-    const { title, content } = req.body;
+    connection = await db.getConnection();
+    await connection.beginTransaction();
 
-    // 获取日志信息
-    const [logRows] = await db.execute(
-      'SELECT * FROM personal_logs WHERE id = ?',
-      [id]
-    );
-
+    // 权限校验
+    const [logRows] = await connection.execute('SELECT id FROM personal_logs WHERE id = ? AND user_id = ?', [logId, userId]);
     if (logRows.length === 0) {
-      return res.status(404).json({ error: '日志不存在' });
+      throw new Error('Log not found or access denied.');
     }
 
-    const log = logRows[0];
-
-    // 权限检查：只有创建者才能更新日志
-    if (log.user_id !== req.user.id) {
-      return res.status(403).json({ error: '无权更新此日志' });
-    }
-
-    // 构建更新语句
+    // 更新主记录（仅设置提供的字段）
     const updates = [];
     const values = [];
-    
-    if (title !== undefined) {
-      updates.push('title = ?');
-      values.push(title);
+    const fields = {
+      title: payload.title,
+      content: payload.content ?? null,
+      category: payload.category,
+      is_completed: payload.is_completed ?? false,
+      log_date: payload.log_date ? formatDateOnly(payload.log_date) : null,
+      weather: payload.weather ?? null,
+      keywords: dbKeywords,
+      log_title: payload.log_title ?? null,
+      log_content: payload.log_content ?? null,
+      quadrant: payload.quadrant || 'important_not_urgent',
+      is_archived: payload.is_archived ? 1 : 0,
+      related_task_id: payload.related_task_id ?? null
+    };
+    if (updatedCreatedAt) {
+      fields.created_at = updatedCreatedAt;
     }
-    
-    if (content !== undefined) {
-      updates.push('content = ?');
-      values.push(content);
+    for (const [k, v] of Object.entries(fields)) {
+      updates.push(`${k} = ?`);
+      values.push(v);
+    }
+    values.push(logId);
+    await connection.execute(`UPDATE personal_logs SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`, values);
+
+    // 重新应用任务关联
+    await connection.execute('DELETE FROM log_task_linkage WHERE log_id = ?', [logId]);
+    if (Array.isArray(linkages) && linkages.length > 0) {
+      const insertLinkSql = `INSERT INTO log_task_linkage (log_id, task_id, progress_percentage, task_status, linkage_time) VALUES (?, ?, ?, ?, ?)`;
+      const linkageTime = updatedCreatedAt || new Date();
+      for (const update of linkages) {
+        if (update && update.task_id) {
+          const taskUpdateData = {
+            task_id: update.task_id,
+            progress_percentage: update.progress_percentage || 0,
+            task_status: update.task_status || 'in_progress'
+          };
+          await connection.execute(insertLinkSql, [logId, taskUpdateData.task_id, taskUpdateData.progress_percentage, taskUpdateData.task_status, linkageTime]);
+          await syncTaskStatusFromLog(connection, taskUpdateData);
+        }
+      }
     }
 
-    if (updates.length === 0) {
-      return res.status(400).json({ error: '没有要更新的字段' });
-    }
+    await connection.commit();
 
-    values.push(id);
-    
-    await db.execute(
-      `UPDATE personal_logs SET ${updates.join(', ')} WHERE id = ?`,
-      values
+    const [newLogRows] = await connection.execute('SELECT * FROM personal_logs WHERE id = ?', [logId]);
+    const [newLinks] = await connection.execute(
+      `SELECT l.task_id, t.title as task_name, l.progress_percentage, l.task_status
+       FROM log_task_linkage l LEFT JOIN tasks t ON l.task_id = t.id
+       WHERE l.log_id = ?`,
+      [logId]
     );
-
-    res.json({ message: '日志更新成功' });
+    const finalLinks = newLinks.map(link => ({
+      taskId: link.task_id,
+      taskName: link.task_name,
+      progress_percentage: link.progress_percentage,
+      task_status: link.task_status
+    }));
+    return res.status(200).json({ ...newLogRows[0], taskUpdates: finalLinks });
   } catch (error) {
-    console.error('更新日志错误:', error);
-    res.status(500).json({ error: '服务器内部错误' });
+    if (connection) await connection.rollback();
+    console.error('更新个人日志错误:', error);
+    return res.status(500).json({ error: '服务器内部错误', details: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
-// 删除个人日志
-app.delete('/api/logs/:id', authenticateToken, async (req, res) => {
+// [新] 删除个人日志 (Delete)
+app.delete('/api/personal-logs/:id', authenticateToken, async (req, res) => {
+  const { id: logId } = req.params;
+  const userId = req.user.id;
+
   try {
-    const { id } = req.params;
-
-    // 获取日志信息
-    const [logRows] = await db.execute(
-      'SELECT * FROM personal_logs WHERE id = ?',
-      [id]
-    );
-
+    // 1. 验证权限
+    const [logRows] = await db.execute('SELECT id FROM personal_logs WHERE id = ? AND user_id = ?', [logId, userId]);
     if (logRows.length === 0) {
-      return res.status(404).json({ error: '日志不存在' });
+      return res.status(404).json({ error: 'Log not found or access denied.' });
     }
 
-    const log = logRows[0];
+    // 2. 删除 (ON DELETE CASCADE 会自动删除 log_task_linkage)
+    await db.execute('DELETE FROM personal_logs WHERE id = ?', [logId]);
 
-    // 权限检查：只有创建者才能删除日志
-    if (log.user_id !== req.user.id) {
-      return res.status(403).json({ error: '无权删除此日志' });
-    }
-
-    // 删除日志
-    await db.execute('DELETE FROM personal_logs WHERE id = ?', [id]);
-
-    res.json({ message: '日志删除成功' });
+    res.status(204).send(); // 成功，无内容
   } catch (error) {
-    console.error('删除日志错误:', error);
+    console.error(`删除日志 ${logId} 错误:`, error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
@@ -2441,7 +2651,7 @@ function generateAiAnalysis(mbtiType, testScores, personalityTraits) {
   };
 
   const template = analysisTemplates[mbtiType] || analysisTemplates['ENFP'];
-  
+
   return {
     strengths: template.strengths,
     weaknesses: template.weaknesses,
@@ -2529,7 +2739,7 @@ app.post('/api/mbti-records', authenticateToken, async (req, res) => {
 
     const id = `mbti-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const userId = req.user?.id;
-    
+
     // 验证userId存在
     if (!userId) {
       return res.status(401).json({ error: '用户未认证' });
@@ -2543,7 +2753,7 @@ app.post('/api/mbti-records', authenticateToken, async (req, res) => {
       const variance = scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) / scores.length;
       confidence_score = Math.max(0, Math.min(1, 1 - (variance / 2500)));
     }
-    
+
     // 确保confidence_score是有效数字
     if (isNaN(confidence_score)) {
       confidence_score = 0.5;
@@ -2561,8 +2771,8 @@ app.post('/api/mbti-records', authenticateToken, async (req, res) => {
 
     const [result] = await db.execute(
       `INSERT INTO mbti_records (
-        id, user_id, mbti_type, test_scores, personality_traits, 
-        ai_analysis, work_suggestions, improvement_advice, 
+        id, user_id, mbti_type, test_scores, personality_traits,
+        ai_analysis, work_suggestions, improvement_advice,
         personal_info, test_version, confidence_score
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -2582,7 +2792,7 @@ app.post('/api/mbti-records', authenticateToken, async (req, res) => {
 
     // 记录系统日志
     await db.execute(
-      `INSERT INTO system_logs (id, user_id, user_name, action, description, category) 
+      `INSERT INTO system_logs (id, user_id, user_name, action, description, category)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         `log-${Date.now()}`,
@@ -2594,8 +2804,8 @@ app.post('/api/mbti-records', authenticateToken, async (req, res) => {
       ].map(param => param === undefined ? null : param)
     );
 
-    res.status(201).json({ 
-      message: 'MBTI记录创建成功', 
+    res.status(201).json({
+      message: 'MBTI记录创建成功',
       id: id,
       mbti_type: mbti_type,
       confidence_score: confidence_score
@@ -2604,7 +2814,7 @@ app.post('/api/mbti-records', authenticateToken, async (req, res) => {
     console.error('创建MBTI记录错误:', error);
     console.error('错误堆栈:', error.stack);
     console.error('请求数据:', JSON.stringify(req.body, null, 2));
-    res.status(500).json({ 
+    res.status(500).json({
       error: '服务器内部错误',
       details: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -2621,7 +2831,7 @@ app.get('/api/mbti-records', authenticateToken, async (req, res) => {
 
     let query = `
       SELECT id, mbti_type, test_date, confidence_score, created_at
-      FROM mbti_records 
+      FROM mbti_records
       WHERE user_id = ? AND is_active = TRUE
     `;
     let params = [userId];
@@ -2663,9 +2873,9 @@ app.get('/api/mbti-records/latest', authenticateToken, async (req, res) => {
     const userId = req.user.id;
 
     const [rows] = await db.execute(
-      `SELECT * FROM mbti_records 
+      `SELECT * FROM mbti_records
        WHERE user_id = ? AND is_active = TRUE
-       ORDER BY test_date DESC 
+       ORDER BY test_date DESC
        LIMIT 1`,
       [userId]
     );
@@ -2675,7 +2885,7 @@ app.get('/api/mbti-records/latest', authenticateToken, async (req, res) => {
     }
 
     const record = rows[0];
-    
+
     // 解析JSON字段
     record.test_scores = JSON.parse(record.test_scores);
     record.personality_traits = JSON.parse(record.personality_traits);
@@ -2702,7 +2912,7 @@ app.get('/api/mbti-records/:id', authenticateToken, async (req, res) => {
     const userId = req.user.id;
 
     const [rows] = await db.execute(
-      `SELECT * FROM mbti_records 
+      `SELECT * FROM mbti_records
        WHERE id = ? AND user_id = ? AND is_active = TRUE`,
       [id, userId]
     );
@@ -2712,7 +2922,7 @@ app.get('/api/mbti-records/:id', authenticateToken, async (req, res) => {
     }
 
     const record = rows[0];
-    
+
     // 解析JSON字段
     record.test_scores = JSON.parse(record.test_scores);
     record.personality_traits = JSON.parse(record.personality_traits);
@@ -2741,7 +2951,7 @@ app.put('/api/mbti-records/:id', authenticateToken, async (req, res) => {
 
     // 检查记录是否存在且属于当前用户
     const [existing] = await db.execute(
-      `SELECT id FROM mbti_records 
+      `SELECT id FROM mbti_records
        WHERE id = ? AND user_id = ? AND is_active = TRUE`,
       [id, userId]
     );
@@ -2795,14 +3005,14 @@ app.put('/api/mbti-records/:id', authenticateToken, async (req, res) => {
     updateValues.push(id, userId);
 
     await db.execute(
-      `UPDATE mbti_records SET ${updateFields.join(', ')} 
+      `UPDATE mbti_records SET ${updateFields.join(', ')}
        WHERE id = ? AND user_id = ?`,
       [...updateValues]
     );
 
     // 记录系统日志
     await db.execute(
-      `INSERT INTO system_logs (id, user_id, user_name, action, description, category) 
+      `INSERT INTO system_logs (id, user_id, user_name, action, description, category)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         `log-${Date.now()}`,
@@ -2828,7 +3038,7 @@ app.delete('/api/mbti-records/:id', authenticateToken, async (req, res) => {
     const userId = req.user.id;
 
     const [result] = await db.execute(
-      `UPDATE mbti_records SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP 
+      `UPDATE mbti_records SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND user_id = ? AND is_active = TRUE`,
       [id, userId]
     );
@@ -2839,7 +3049,7 @@ app.delete('/api/mbti-records/:id', authenticateToken, async (req, res) => {
 
     // 记录系统日志
     await db.execute(
-      `INSERT INTO system_logs (id, user_id, user_name, action, description, category) 
+      `INSERT INTO system_logs (id, user_id, user_name, action, description, category)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         `log-${Date.now()}`,
@@ -2867,14 +3077,14 @@ app.get('/api/mbti-records/statistics', authenticateToken, async (req, res) => {
     }
 
     const [stats] = await db.execute(`
-      SELECT 
+      SELECT
         mbti_type,
         COUNT(*) as total_count,
         AVG(confidence_score) as avg_confidence,
         COUNT(DISTINCT user_id) as unique_users,
         MAX(test_date) as latest_test
-      FROM mbti_records 
-      WHERE is_active = TRUE 
+      FROM mbti_records
+      WHERE is_active = TRUE
       GROUP BY mbti_type
       ORDER BY total_count DESC
     `);
@@ -2931,7 +3141,7 @@ app.post('/api/ai/analyze-log', async (req, res) => {
       .sort((a, b) => b.count - a.count)
       .slice(0, topK);
 
-    // 用频次代替简易“权重”，并归一化一个权重字段
+    // 用频次代替简易"权重"，并归一化一个权重字段
     const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
     const keywords = wordFrequencies.map(x => ({ word: x.word, weight: x.count / (maxCount || 1) }));
 
@@ -3008,13 +3218,13 @@ app.post('/api/ai/save-wordcloud', authenticateToken, async (req, res) => {
   try {
     const { analysisDate, keywords, wordFrequencies, description } = req.body;
     const userId = req.user.id;
-    
+
     const [result] = await db.execute(
       `INSERT INTO wordcloud_analysis (user_id, analysis_date, keywords, word_frequencies, description, created_at)
        VALUES (?, ?, ?, ?, ?, NOW())`,
       [userId, analysisDate, JSON.stringify(keywords), JSON.stringify(wordFrequencies), description]
     );
-    
+
     const analysis = {
       id: result.insertId.toString(),
       userId: userId,
@@ -3024,7 +3234,7 @@ app.post('/api/ai/save-wordcloud', authenticateToken, async (req, res) => {
       createdAt: new Date(),
       description: description,
     };
-    
+
     res.json(analysis);
   } catch (error) {
     console.error('保存词云分析失败:', error);
@@ -3043,7 +3253,7 @@ app.get('/api/ai/wordcloud-history', authenticateToken, async (req, res) => {
        ORDER BY created_at DESC`,
       [userId]
     );
-    
+
     const history = rows.map(row => ({
       id: row.id.toString(),
       userId: row.user_id,
@@ -3053,7 +3263,7 @@ app.get('/api/ai/wordcloud-history', authenticateToken, async (req, res) => {
       createdAt: row.created_at,
       description: row.description,
     }));
-    
+
     res.json(history);
   } catch (error) {
     console.error('获取词云历史失败:', error);
@@ -3066,9 +3276,9 @@ app.post('/api/ai/personality-analysis', authenticateToken, async (req, res) => 
   try {
     const { logText, mbtiType, useDeepSeek } = req.body;
     const userId = req.user.id;
-    
+
     let analysisResult;
-    
+
     if (useDeepSeek && DEEPSEEK_API_KEY) {
       // 使用DeepSeek API进行性格分析
       analysisResult = await analyzePersonalityWithDeepSeek(logText, mbtiType);
@@ -3076,7 +3286,7 @@ app.post('/api/ai/personality-analysis', authenticateToken, async (req, res) => 
       // 使用本地算法进行性格分析
       analysisResult = await analyzePersonalityLocally(logText, mbtiType);
     }
-    
+
     const [result] = await db.execute(
       `INSERT INTO personality_analysis (user_id, analysis_date, personality_traits, mbti_type, work_suggestions, personality_chart, ai_analysis_text, description, created_at)
        VALUES (?, NOW(), ?, ?, ?, ?, ?, ?, NOW())`,
@@ -3090,7 +3300,7 @@ app.post('/api/ai/personality-analysis', authenticateToken, async (req, res) => 
         'AI性格分析报告'
       ]
     );
-    
+
     const analysis = {
       id: result.insertId.toString(),
       userId: userId,
@@ -3103,7 +3313,7 @@ app.post('/api/ai/personality-analysis', authenticateToken, async (req, res) => 
       createdAt: new Date(),
       description: 'AI性格分析报告',
     };
-    
+
     res.json(analysis);
   } catch (error) {
     console.error('性格分析失败:', error);
@@ -3122,7 +3332,7 @@ app.get('/api/ai/personality-history', authenticateToken, async (req, res) => {
        ORDER BY created_at DESC`,
       [userId]
     );
-    
+
     const history = rows.map(row => ({
       id: row.id.toString(),
       userId: row.user_id,
@@ -3135,7 +3345,7 @@ app.get('/api/ai/personality-history', authenticateToken, async (req, res) => {
       createdAt: row.created_at,
       description: row.description,
     }));
-    
+
     res.json(history);
   } catch (error) {
     console.error('获取性格分析历史失败:', error);
@@ -3213,7 +3423,7 @@ ${mbtiType ? `已知MBTI类型：${mbtiType}` : ''}
     });
 
     const content = response.data.choices[0].message.content;
-    
+
     // 尝试解析JSON响应
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -3228,13 +3438,13 @@ ${mbtiType ? `已知MBTI类型：${mbtiType}` : ''}
     } catch (parseError) {
       console.error('JSON解析失败:', parseError);
     }
-    
+
     // 如果解析失败，返回默认分析结果（包含原始文本）
     return {
       ...getDefaultPersonalityAnalysis(),
       aiAnalysisText: content || 'AI分析结果解析失败，使用默认数据'
     };
-    
+
   } catch (error) {
     console.error('DeepSeek API调用失败:', error);
     return {
@@ -3248,30 +3458,30 @@ ${mbtiType ? `已知MBTI类型：${mbtiType}` : ''}
 async function analyzePersonalityLocally(logText, mbtiType) {
   // 基于关键词的简单性格分析
   const text = logText.toLowerCase();
-  
+
   // 分析外向性
   const extroversionKeywords = ['团队', '合作', '沟通', '交流', '社交', '会议', '讨论'];
   const extroversionScore = extroversionKeywords.filter(keyword => text.includes(keyword)).length / extroversionKeywords.length;
-  
+
   // 分析开放性
   const opennessKeywords = ['创新', '创意', '想法', '探索', '学习', '新', '尝试'];
   const opennessScore = opennessKeywords.filter(keyword => text.includes(keyword)).length / opennessKeywords.length;
-  
+
   // 分析尽责性
   const conscientiousnessKeywords = ['完成', '任务', '计划', '目标', '责任', '认真', '仔细'];
   const conscientiousnessScore = conscientiousnessKeywords.filter(keyword => text.includes(keyword)).length / conscientiousnessKeywords.length;
-  
+
   // 分析宜人性
   const agreeablenessKeywords = ['帮助', '支持', '关心', '理解', '友好', '和谐'];
   const agreeablenessScore = agreeablenessKeywords.filter(keyword => text.includes(keyword)).length / agreeablenessKeywords.length;
-  
+
   // 分析神经质
   const neuroticismKeywords = ['压力', '焦虑', '担心', '紧张', '困难', '问题'];
   const neuroticismScore = Math.max(0, 1 - neuroticismKeywords.filter(keyword => text.includes(keyword)).length / neuroticismKeywords.length);
-  
+
   // 基于MBTI类型调整分析结果
   const mbtiBasedAdjustments = getMbtiBasedAdjustments(mbtiType);
-  
+
   return {
     personalityTraits: {
       '外向性': Math.min(1, Math.max(0, extroversionScore + mbtiBasedAdjustments.extroversion)),
@@ -3301,7 +3511,7 @@ function getMbtiBasedAdjustments(mbtiType) {
   const adjustments = {
     // 外向性调整 (E vs I)
     extroversion: mbtiType && mbtiType.startsWith('E') ? 0.3 : -0.2,
-    // 开放性调整 (N vs S)  
+    // 开放性调整 (N vs S)
     openness: mbtiType && mbtiType[1] === 'N' ? 0.3 : -0.1,
     // 尽责性调整 (J vs P)
     conscientiousness: mbtiType && mbtiType[3] === 'J' ? 0.2 : -0.1,
@@ -3310,10 +3520,10 @@ function getMbtiBasedAdjustments(mbtiType) {
     // 神经质调整 (基于MBTI类型特征)
     neuroticism: mbtiType && ['INFP', 'ISFP', 'ENFP', 'ESFP'].includes(mbtiType) ? 0.1 : -0.1,
   };
-  
+
   // 工作建议
   const workSuggestions = getWorkSuggestionsByMbti(mbtiType);
-  
+
   // 维度调整
   const dimensions = {
     '领导力': mbtiType && ['ENTJ', 'ESTJ', 'ENFJ', 'ESFJ'].includes(mbtiType) ? 0.8 : 0.6,
@@ -3322,7 +3532,7 @@ function getMbtiBasedAdjustments(mbtiType) {
     '分析能力': mbtiType && ['INTJ', 'INTP', 'ENTJ', 'ENTP'].includes(mbtiType) ? 0.8 : 0.6,
     '团队合作': mbtiType && mbtiType[2] === 'F' ? 0.8 : 0.6,
   };
-  
+
   return {
     ...adjustments,
     workSuggestions,
@@ -3359,7 +3569,7 @@ function getWorkSuggestionsByMbti(mbtiType) {
     },
     // 可以添加更多MBTI类型...
   };
-  
+
   return suggestions[mbtiType] || {
     '适合职业': ['通用职业', '需要根据个人兴趣选择'],
     '工作环境': '根据个人偏好调整',

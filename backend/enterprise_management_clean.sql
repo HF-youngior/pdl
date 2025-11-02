@@ -69,6 +69,7 @@ CREATE TABLE tasks (
     start_time TIMESTAMP NULL,
     end_time TIMESTAMP NULL,
     color VARCHAR(7) DEFAULT '#4CAF50',
+    updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
     location VARCHAR(200) NULL,
     is_all_day BOOLEAN DEFAULT FALSE,
     special_notes TEXT NULL,
@@ -96,15 +97,23 @@ CREATE TABLE task_notifications (
 -- Personal logs table
 CREATE TABLE personal_logs (
     id VARCHAR(36) PRIMARY KEY,
+    log_id VARCHAR(36) UNIQUE,
     user_id VARCHAR(36) NOT NULL,
-    title VARCHAR(200) NOT NULL,
+    title VARCHAR(200) NOT NULL DEFAULT '个人日志',
     content TEXT,
-    category VARCHAR(50) NOT NULL,
-    quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent',
-    related_task_id VARCHAR(36) NULL,
     is_completed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    -- new API fields
+    log_date DATE NULL,
+    weather VARCHAR(50) NULL,
+    keywords VARCHAR(255) NULL,
+    log_title VARCHAR(200) NULL,
+    log_content TEXT NULL,
+    category VARCHAR(50) NOT NULL DEFAULT 'work',
+    quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent',
+    is_archived BOOLEAN DEFAULT FALSE,
+    related_task_id VARCHAR(36) NULL,
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (related_task_id) REFERENCES tasks(id)
 );
@@ -120,6 +129,19 @@ CREATE TABLE system_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     metadata JSON,
     FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Log task linkage table
+CREATE TABLE log_task_linkage (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    log_id VARCHAR(36) NOT NULL,
+    task_id VARCHAR(36) NOT NULL,
+    progress_percentage INT DEFAULT 0,
+    task_status VARCHAR(50) DEFAULT 'in_progress',
+    linkage_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY log_task_unique (log_id, task_id),
+    FOREIGN KEY (log_id) REFERENCES personal_logs(id) ON DELETE CASCADE,
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
 -- Insert department data
