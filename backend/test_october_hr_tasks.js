@@ -8,7 +8,7 @@ async function testOctoberHRTasks() {
     connection = await mysql.createConnection({
       host: 'localhost',
       user: 'root',
-      password: '23301144',
+      password: 'asdfgh0625YYH',
       database: 'enterprise_management',
       charset: 'utf8mb4'
     });

@@ -117,12 +117,15 @@ class _ViewScreenState extends State<ViewScreen> {
       ),
       body: CalendarWidget(
         tasks: const [], // CalendarWidget内部会加载数据
+        currentDate: _currentDate,
         onDateSelected: (date) {
           setState(() {
             _currentDate = date;
           });
         },
-        onTaskSelected: _editTask
+        onTaskSelected: _editTask,
+        onTaskAdd: _createTask,
+        onLogAdd: _addLog,
       ),
     );
   }

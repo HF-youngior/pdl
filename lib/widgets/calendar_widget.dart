@@ -1205,11 +1205,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
           ),
         ),
         IconButton(
-          onPressed: () {
-            setState(() {
-              _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1);
-            });
-          },
+          onPressed: () => _navigateDate(1),
           icon: const Icon(Icons.chevron_right),
         ),
       ],

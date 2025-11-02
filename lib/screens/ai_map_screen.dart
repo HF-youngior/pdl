@@ -8,12 +8,15 @@ import '../models/wordcloud_analysis.dart';
 import '../models/personality_analysis.dart';
 import '../models/personal_log.dart';
 import '../models/mbti_test_result.dart';
+import '../models/user.dart';
 import '../widgets/enhanced_wordcloud.dart';
 import '../widgets/personality_chart.dart';
 import 'mbti_test_screen.dart';
 
 class AiMapScreen extends StatefulWidget {
-  const AiMapScreen({super.key});
+  final User user;
+  
+  const AiMapScreen({super.key, required this.user});
 
   @override
   State<AiMapScreen> createState() => _AiMapScreenState();
@@ -83,12 +86,14 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     });
     
     try {
-      final allLogs = await ApiService.getPersonalLogs();
+      final allLogs = await ApiService.getPersonalLogs(widget.user.id);
       final today = DateTime.now();
       final todayLogs = allLogs.where((log) {
-        return log.logDate.year == today.year &&
-               log.logDate.month == today.month &&
-               log.logDate.day == today.day;
+        final logDate = log.logDate ?? log.createdAtDate;
+        if (logDate == null) return false;
+        return logDate.year == today.year &&
+               logDate.month == today.month &&
+               logDate.day == today.day;
       }).toList();
       
       setState(() {
@@ -1814,10 +1819,10 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _getQuadrantColor(log.quadrant).withOpacity(0.05),
+        color: Colors.blue.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: _getQuadrantColor(log.quadrant).withOpacity(0.2),
+          color: Colors.blue.withOpacity(0.2),
           width: 1,
         ),
       ),
@@ -1843,14 +1848,14 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _getQuadrantColor(log.quadrant).withOpacity(0.1),
+                  color: Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  _getQuadrantLabel(log.quadrant),
-                  style: TextStyle(
+                  log.category ?? '未分类',
+                  style: const TextStyle(
                     fontSize: 12,
-                    color: _getQuadrantColor(log.quadrant),
+                    color: Colors.blue,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1859,10 +1864,10 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           ),
           
           // 日志内容预览
-          if (log.logContent != null && log.logContent!.isNotEmpty) ...[
+          if (log.content != null && log.content!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              log.logContent!,
+              log.content!,
               style: const TextStyle(
                 fontSize: 14,
                 color: Color(0xFF4B5563),
@@ -1878,20 +1883,22 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           Row(
             children: [
               // 天气图标
-              Icon(
-                _getWeatherIcon(log.weather),
-                size: 16,
-                color: Colors.grey[600],
-              ),
-              const SizedBox(width: 4),
-              Text(
-                log.weather,
-                style: TextStyle(
-                  fontSize: 12,
+              if (log.weather != null && log.weather!.isNotEmpty) ...[
+                Icon(
+                  _getWeatherIcon(log.weather!),
+                  size: 16,
                   color: Colors.grey[600],
                 ),
-              ),
-              const SizedBox(width: 16),
+                const SizedBox(width: 4),
+                Text(
+                  log.weather!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(width: 16),
+              ],
               
               // 时间
               Icon(
@@ -1901,7 +1908,11 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               ),
               const SizedBox(width: 4),
               Text(
-                '${log.createdAt.hour.toString().padLeft(2, '0')}:${log.createdAt.minute.toString().padLeft(2, '0')}',
+                log.logDate != null 
+                  ? '${log.logDate!.hour.toString().padLeft(2, '0')}:${log.logDate!.minute.toString().padLeft(2, '0')}'
+                  : log.createdAtDate != null
+                    ? '${log.createdAtDate!.hour.toString().padLeft(2, '0')}:${log.createdAtDate!.minute.toString().padLeft(2, '0')}'
+                    : '--:--',
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey[600],

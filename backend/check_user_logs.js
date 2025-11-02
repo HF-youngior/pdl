@@ -5,7 +5,7 @@ async function checkUserLogs() {
     const connection = await mysql.createConnection({
       host: 'localhost',
       user: 'root',
-      password: 'Zs462581379',
+      password: 'asdfgh0625YYH',
       database: 'enterprise_management',
       port: 3306,
       charset: 'utf8mb4'

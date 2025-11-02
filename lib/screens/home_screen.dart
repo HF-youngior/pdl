@@ -27,7 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
       DashboardScreen(user: widget.user),
       ViewScreen(user: widget.user),
       LogEnhancedScreen(user: widget.user),
-      const AiMapScreen(),
+      AiMapScreen(user: widget.user),
       ProfileScreen(user: widget.user),
     ]);
   }

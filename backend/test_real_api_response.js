@@ -27,7 +27,7 @@ async function testRealAPIResponse() {
   const connection = await mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: '23301144',
+    password: 'asdfgh0625YYH',
     database: 'enterprise_management',
     timezone: '+08:00'
   });

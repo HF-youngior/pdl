@@ -33,13 +33,12 @@ app.use('/', express.static(path.join(__dirname, 'public')));
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Pyx_07091817',
+  password: process.env.DB_PASSWORD || 'asdfgh0625YYH',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
   charset: 'utf8mb4',
   multipleStatements: true,
-  timezone: '+08:00'  // 设置为北京时间
-  multipleStatements: true,
+  timezone: '+08:00',  // 设置为北京时间
   waitForConnections: true,
   connectionLimit: 20,
   queueLimit: 0,
@@ -82,6 +81,21 @@ function formatDateTimeForBeijing(dateTime) {
 
   // 组合成ISO 8601格式，明确标记为+08:00时区
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+08:00`;
+}
+
+// 安全解析JSON字段的辅助函数（MySQL 2可能已自动解析JSON字段）
+function safeParseJSON(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value; // 已经是对象，直接返回
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch (e) {
+      console.warn('JSON解析失败:', e.message, 'Value type:', typeof value);
+      return value;
+    }
+  }
+  return value;
 }
 
 // 初始化数据库连接
@@ -201,7 +215,7 @@ async function createTables() {
       user_id VARCHAR(36) NOT NULL,
       title VARCHAR(200) NOT NULL DEFAULT '个人日志',
       content TEXT,
-      category VARCHAR(50) NOT NULL,
+      category VARCHAR(50) NOT NULL DEFAULT 'work',
       quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent',
       related_task_id VARCHAR(36) NULL,
       is_completed BOOLEAN DEFAULT FALSE,
@@ -212,10 +226,7 @@ async function createTables() {
       keywords VARCHAR(255) NULL,
       log_title VARCHAR(200) NULL,
       log_content TEXT NULL,
-      category VARCHAR(50) NOT NULL DEFAULT 'work',
-      quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent',
       is_archived BOOLEAN DEFAULT FALSE,
-      related_task_id VARCHAR(36) NULL,
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (related_task_id) REFERENCES tasks(id)
     )`,
@@ -290,8 +301,7 @@ async function createTables() {
       INDEX idx_analysis_date (analysis_date),
       INDEX idx_mbti_type (mbti_type),
       INDEX idx_user_analysis_date (user_id, analysis_date)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='性格分析表，存储AI性格分析结果'`
-    )`,
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='性格分析表，存储AI性格分析结果'`,
 
     `CREATE TABLE IF NOT EXISTS log_task_linkage (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -320,21 +330,24 @@ async function createTables() {
 async function ensureSchemaCompatibility() {
   try {
     // 兼容性调整（如需 MySQL 8+ 兼容，ALTER ... IF NOT EXISTS，保留原 personal_logs 相关字段）
-    // tasks表 updated_at 的 ALTER TABLE 已彻底删除
+    
+    // tasks表 updated_at 字段检查
+    try { await db.execute("ALTER TABLE tasks ADD COLUMN updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP"); } catch(e){}
 
-    // 所有 ALTER TABLE ... IF NOT EXISTS 语句外包裹 try...catch，兼容老MySQL
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_id VARCHAR(36) UNIQUE"); } catch(e){}
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS title VARCHAR(200) NOT NULL"); } catch(e){}
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS content TEXT"); } catch(e){}
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_date DATE NULL"); } catch(e){}
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS weather VARCHAR(50) NULL"); } catch(e){}
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS keywords VARCHAR(255) NULL"); } catch(e){}
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_title VARCHAR(200) NULL"); } catch(e){}
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS log_content TEXT NULL"); } catch(e){}
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL"); } catch(e){}
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent'"); } catch(e){}
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE"); } catch(e){}
-    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN IF NOT EXISTS related_task_id VARCHAR(36) NULL"); } catch(e){}
+    // 所有 ALTER TABLE 语句外包裹 try...catch，兼容老MySQL
+    // 注意：MySQL 8.0+ 支持 IF NOT EXISTS，老版本会抛出错误但被catch
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN log_id VARCHAR(36) UNIQUE"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN title VARCHAR(200) NOT NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN content TEXT"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN log_date DATE NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN weather VARCHAR(50) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN keywords VARCHAR(255) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN log_title VARCHAR(200) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN log_content TEXT NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN category VARCHAR(50) NOT NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent'"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN related_task_id VARCHAR(36) NULL"); } catch(e){}
     // 设置默认值（兼容已有库）
     try { await db.execute("ALTER TABLE personal_logs MODIFY title VARCHAR(200) NOT NULL DEFAULT '个人日志'"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs MODIFY category VARCHAR(50) NOT NULL DEFAULT 'work'"); } catch(e){}
@@ -675,8 +688,19 @@ async function syncTaskStatusFromLog(connection, taskUpdateData) {
 
     // 5. 如果有任何更改，则更新 tasks 表
     if (needsUpdate && (finalProgress !== currentTask.progress_percentage || finalStatus !== currentTask.status)) {
-      const updateSql = `UPDATE tasks SET progress_percentage = ?, status = ?, updated_at = ? WHERE id = ?`;
-      await connection.execute(updateSql, [finalProgress, finalStatus, now, task_id]);
+      // 检查 updated_at 字段是否存在，如果不存在则不更新该字段
+      try {
+        const updateSql = `UPDATE tasks SET progress_percentage = ?, status = ?, updated_at = ? WHERE id = ?`;
+        await connection.execute(updateSql, [finalProgress, finalStatus, now, task_id]);
+      } catch (error) {
+        // 如果 updated_at 字段不存在，尝试不更新该字段
+        if (error.code === 'ER_BAD_FIELD_ERROR' && error.message.includes('updated_at')) {
+          const updateSqlWithoutUpdatedAt = `UPDATE tasks SET progress_percentage = ?, status = ? WHERE id = ?`;
+          await connection.execute(updateSqlWithoutUpdatedAt, [finalProgress, finalStatus, task_id]);
+        } else {
+          throw error; // 重新抛出其他错误
+        }
+      }
       console.log(`Synced task ${task_id}: Progress=${finalProgress}, Status=${finalStatus}`);
     }
   } catch (error) {
@@ -2841,8 +2865,10 @@ app.get('/api/mbti-records', authenticateToken, async (req, res) => {
       params.push(mbti_type);
     }
 
-    query += ' ORDER BY test_date DESC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit) || 10, parseInt(offset) || 0);
+    // LIMIT 和 OFFSET 不能使用参数绑定，需要直接拼接（已确保值是整数）
+    const limitValue = parseInt(limit) || 10;
+    const offsetValue = parseInt(offset) || 0;
+    query += ` ORDER BY test_date DESC LIMIT ${limitValue} OFFSET ${offsetValue}`;
 
     const [records] = await db.execute(query, params);
 
@@ -2886,16 +2912,16 @@ app.get('/api/mbti-records/latest', authenticateToken, async (req, res) => {
 
     const record = rows[0];
 
-    // 解析JSON字段
-    record.test_scores = JSON.parse(record.test_scores);
-    record.personality_traits = JSON.parse(record.personality_traits);
-    record.ai_analysis = JSON.parse(record.ai_analysis);
-    record.work_suggestions = JSON.parse(record.work_suggestions);
+    // 解析JSON字段（使用安全解析函数）
+    record.test_scores = safeParseJSON(record.test_scores);
+    record.personality_traits = safeParseJSON(record.personality_traits);
+    record.ai_analysis = safeParseJSON(record.ai_analysis);
+    record.work_suggestions = safeParseJSON(record.work_suggestions);
     if (record.improvement_advice) {
-      record.improvement_advice = JSON.parse(record.improvement_advice);
+      record.improvement_advice = safeParseJSON(record.improvement_advice);
     }
     if (record.personal_info) {
-      record.personal_info = JSON.parse(record.personal_info);
+      record.personal_info = safeParseJSON(record.personal_info);
     }
 
     res.json(record);
@@ -2923,16 +2949,16 @@ app.get('/api/mbti-records/:id', authenticateToken, async (req, res) => {
 
     const record = rows[0];
 
-    // 解析JSON字段
-    record.test_scores = JSON.parse(record.test_scores);
-    record.personality_traits = JSON.parse(record.personality_traits);
-    record.ai_analysis = JSON.parse(record.ai_analysis);
-    record.work_suggestions = JSON.parse(record.work_suggestions);
+    // 解析JSON字段（使用安全解析函数）
+    record.test_scores = safeParseJSON(record.test_scores);
+    record.personality_traits = safeParseJSON(record.personality_traits);
+    record.ai_analysis = safeParseJSON(record.ai_analysis);
+    record.work_suggestions = safeParseJSON(record.work_suggestions);
     if (record.improvement_advice) {
-      record.improvement_advice = JSON.parse(record.improvement_advice);
+      record.improvement_advice = safeParseJSON(record.improvement_advice);
     }
     if (record.personal_info) {
-      record.personal_info = JSON.parse(record.personal_info);
+      record.personal_info = safeParseJSON(record.personal_info);
     }
 
     res.json(record);
@@ -3337,10 +3363,10 @@ app.get('/api/ai/personality-history', authenticateToken, async (req, res) => {
       id: row.id.toString(),
       userId: row.user_id,
       analysisDate: row.analysis_date,
-      personalityTraits: JSON.parse(row.personality_traits),
+      personalityTraits: safeParseJSON(row.personality_traits),
       mbtiType: row.mbti_type,
-      workSuggestions: JSON.parse(row.work_suggestions),
-      personalityChart: JSON.parse(row.personality_chart),
+      workSuggestions: safeParseJSON(row.work_suggestions),
+      personalityChart: safeParseJSON(row.personality_chart),
       aiAnalysisText: row.ai_analysis_text,
       createdAt: row.created_at,
       description: row.description,

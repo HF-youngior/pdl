@@ -1,6 +1,6 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android") version "2.0.0"
+    id("org.jetbrains.kotlin.android") version "2.1.0"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.example.testflutterproject"
     compileSdk = 36
-    ndkVersion = "27.0.12077973"
+    // ndkVersion = "27.0.12077973"  // 注释掉，避免IDE同步时的NDK注册问题
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -16,6 +16,10 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     defaultConfig {

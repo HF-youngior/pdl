@@ -8,7 +8,7 @@ async function executeUpdate() {
     connection = await mysql.createConnection({
       host: 'localhost',
       user: 'root',
-      password: '23301144',
+      password: 'asdfgh0625YYH',
       database: 'enterprise_management',
       port: 3306,
       charset: 'utf8mb4',
