@@ -135,12 +135,12 @@
 ### 导入数据
 ```bash
 cd backend
-mysql -h localhost -u root -p23301144 enterprise_management --default-character-set=utf8mb4 -e "source add_hr_head_monthly_tasks.sql"
+mysql -h localhost -u root -pPyx_07091817 enterprise_management --default-character-set=utf8mb4 -e "source add_hr_head_monthly_tasks.sql"
 ```
 
 ### 验证数据
 ```bash
-mysql -h localhost -u root -p23301144 enterprise_management --default-character-set=utf8mb4 -e "source verify_hr_tasks.sql"
+mysql -h localhost -u root -pPyx_07091817 enterprise_management --default-character-set=utf8mb4 -e "source verify_hr_tasks.sql"
 ```
 
 ### 清除数据

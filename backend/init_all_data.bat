@@ -15,7 +15,7 @@ chcp 65001 >nul
 set DB_HOST=localhost
 set DB_PORT=3306
 set DB_USER=root
-set DB_PASSWORD=23301144
+set DB_PASSWORD=Pyx_07091817
 set MYSQL_CMD=mysql
 set SCRIPT_DIR=%~dp0
 
@@ -31,22 +31,6 @@ echo   Port: %DB_PORT%
 echo   User: %DB_USER%
 echo   Database: enterprise_management
 echo ================================================
-echo.
-
-:: 检查 MySQL 是否可用
-echo [检查] 测试 MySQL 连接...
-%MYSQL_BASE% -e "SELECT 1;" >nul 2>&1
-if errorlevel 1 (
-  echo [ERROR] 无法连接到 MySQL 服务器！
-  echo   请检查：
-  echo   - MySQL 服务是否已启动
-  echo   - 数据库连接信息是否正确
-  echo   - MySQL 客户端是否已安装并在 PATH 中
-  echo.
-  pause
-  exit /b 1
-)
-echo ✓ MySQL 连接正常
 echo.
 
 :: 检查必需文件
@@ -179,8 +163,7 @@ echo    2. 测试连接: 运行 测试API连接.bat
 echo    3. 启动应用: flutter run
 echo.
 echo ================================================
-echo.
-pause
+
 exit /b 0
 
 :fail

@@ -8,7 +8,7 @@ REM 设置数据库连接参数
 set DB_HOST=localhost
 set DB_PORT=3306
 set DB_USER=root
-set DB_PASS=23301144
+set DB_PASS=Pyx_07091817H
 set DB_NAME=enterprise_management
 
 echo 正在执行 SQL 脚本...

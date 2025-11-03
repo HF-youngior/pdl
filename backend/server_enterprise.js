@@ -33,7 +33,7 @@ app.use('/', express.static(path.join(__dirname, 'public')));
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '23301144',
+  password: process.env.DB_PASSWORD || 'Pyx_07091817',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
   charset: 'utf8mb4',
@@ -1160,7 +1160,7 @@ app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     let query = `
       SELECT u.id, u.username, u.name, u.position, u.role, u.is_active, u.created_at, u.last_login_at,
-             d.name as department_name, p.name as parent_name
+             u.department_id, d.name as department_name, u.parent_id, p.name as parent_name
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN users p ON u.parent_id = p.id

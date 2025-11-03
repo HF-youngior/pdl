@@ -27,7 +27,7 @@ async function testSatisfactionAPI() {
   const connection = await mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: '23301144',
+    password: 'Pyx_07091817',
     database: 'enterprise_management',
     timezone: '+08:00'
   });
