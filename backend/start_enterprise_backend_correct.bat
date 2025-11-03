@@ -1,6 +1,11 @@
 @echo off
 chcp 65001 >nul
+
+REM 切换到脚本所在目录（backend目录）
+cd /d "%~dp0"
+
 echo Starting Enterprise Management System Backend Service...
+echo Current directory: %CD%
 echo.
 
 REM Check Node.js
@@ -35,7 +40,7 @@ set NODE_ENV=development
 set PORT=8080
 set DB_HOST=localhost
 set DB_USER=root
-set DB_PASSWORD=asdfgh0625YYH
+set DB_PASSWORD=23301144
 set DB_NAME=enterprise_management
 set DB_PORT=3306
 set JWT_SECRET=enterprise-management-secret-key-2024
@@ -44,7 +49,7 @@ echo Environment Configuration:.
 echo   Port: %PORT%
 echo   Database: %DB_NAME%
 echo   Environment: %NODE_ENV%
-echo   MySQL Password: asdfgh0625YYH
+echo   MySQL Password: 23301144
 echo.
 
 echo Starting server...

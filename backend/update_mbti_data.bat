@@ -11,7 +11,7 @@ echo.
 REM 设置数据库连接参数
 set DB_HOST=localhost
 set DB_USER=root
-set DB_PASSWORD=asdfgh0625YYH
+set DB_PASSWORD=23301144
 set DB_NAME=enterprise_management
 
 echo 连接数据库: %DB_NAME%
