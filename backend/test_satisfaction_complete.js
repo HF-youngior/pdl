@@ -28,7 +28,7 @@ async function testComplete() {
   const connection = await mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: 'asdfgh0625YYH',
+    password: 'Pyx_07091817',
     database: 'enterprise_management',
     timezone: '+08:00'
   });

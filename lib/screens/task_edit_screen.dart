@@ -185,8 +185,19 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             )
           : widget.currentUser);
       
-      // 获取责任人的 department_id
-      final departmentId = assignee.departmentId ?? assignee.department;
+      // 获取责任人的 department_id（优先使用departmentId，如果没有则使用department作为后备）
+      String? departmentId = assignee.departmentId;
+      
+      // 如果departmentId为空或无效，尝试使用department字段（可能是部门名称）
+      // 但这通常不应该发生，因为后端应该总是返回department_id
+      if (departmentId == null || departmentId.isEmpty) {
+        departmentId = assignee.department;
+      }
+      
+      // 最终验证：确保有部门信息
+      if (departmentId == null || departmentId.isEmpty) {
+        throw Exception('用户缺少部门信息，无法创建任务。请确保该用户已分配部门。');
+      }
       
       final task = Task(
         id: widget.task?.id ?? const Uuid().v4(),

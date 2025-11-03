@@ -115,7 +115,7 @@ init_all_data.bat
 - Host: localhost
 - Port: 3306
 - User: root
-- Password: asdfgh0625YYH
+- Password: Pyx_07091817
 - Database: enterprise_management
 
 如需修改，请编辑对应 bat 文件中的配置参数。
@@ -131,7 +131,7 @@ A: 检查：
 
 ### Q: 密码连接失败？
 
-A: 确认密码是 `asdfgh0625YYH`，或修改 bat 文件中的密码配置
+A: 确认密码是 `Pyx_07091817`，或修改 bat 文件中的密码配置
 
 ### Q: 需要单独初始化某个模块？
 
