@@ -11,6 +11,7 @@ class Task {
   final String status;
   final DateTime createdAt;
   final DateTime? deadline;
+  final DateTime? completedAt; // 完成时间
   final String createdBy;
   // 新增字段支持日历视图
   final DateTime startTime;
@@ -21,6 +22,10 @@ class Task {
   final int progressPercentage;
   final String? parentTaskId; // 父任务ID，支持分级派发
   final List<Task>? subtasks; // 子任务列表
+  final bool isRequest; // 是否为邀约任务
+  final String? requestType; // 请求类型
+  final String? requestResponse; // 处理结果：'approve' 或 'reject'
+  final String? specialNotes=null; // 备注信息
 
   Task({
     required this.id,
@@ -33,6 +38,7 @@ class Task {
     required this.status,
     required this.createdAt,
     this.deadline,
+    this.completedAt,
     required this.createdBy,
     required this.startTime,
     required this.endTime,
@@ -42,6 +48,9 @@ class Task {
     this.progressPercentage = 0,
     this.parentTaskId,
     this.subtasks,
+    this.isRequest = false,
+    this.requestType,
+    this.requestResponse,
   });
 
   factory Task.fromJson(Map<String, dynamic> json) {
@@ -58,6 +67,7 @@ class Task {
           ? DateTime.parse(json['created_at'])
           : (json['createdAt'] != null ? DateTime.parse(json['createdAt']) : DateTime.now()),
       deadline: json['deadline'] != null ? DateTime.parse(json['deadline']) : null,
+      completedAt: json['completed_at'] != null ? DateTime.parse(json['completed_at']) : null,
       createdBy: json['created_by'] ?? json['createdBy'] ?? '',
       startTime: json['start_time'] != null 
           ? DateTime.parse(json['start_time'])
@@ -73,6 +83,9 @@ class Task {
       subtasks: json['subtasks'] != null 
           ? (json['subtasks'] as List).map((e) => Task.fromJson(e)).toList()
           : null,
+      isRequest: json['is_request'] == true || json['is_request'] == 1 || json['isRequest'] == true,
+      requestType: json['request_type'] ?? json['requestType'],
+      requestResponse: json['request_response'] ?? json['requestResponse'],
     );
   }
 

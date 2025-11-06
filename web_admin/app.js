@@ -7,6 +7,20 @@ let currentTask = null;
 let users = [];
 let authToken = null;
 
+// 统一清理模态框遗留的遮罩与滚动锁
+function resetModalState() {
+    try {
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('padding-right');
+        document.body.style.removeProperty('overflow');
+    } catch (_) {}
+}
+
+// 通知轮询相关变量
+let notificationPollingInterval = null;
+let lastNotificationCheckTime = null;
+
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 检查是否已登录
@@ -19,9 +33,135 @@ document.addEventListener('DOMContentLoaded', function() {
             if (selectedUser) {
                 document.getElementById('taskDepartment').value = selectedUser.department;
             }
+        } else if (e.target.id === 'editTaskAssignee') {
+            const selectedUser = users.find(user => user.id === e.target.value);
+            if (selectedUser) {
+                const departmentDisplay = selectedUser.department_name || selectedUser.department || '';
+                document.getElementById('editTaskDepartment').value = departmentDisplay;
+            }
         }
     });
+    
+    // 详情页进度滑杆联动
+    const progressEl = document.getElementById('detailProgressInput');
+    if (progressEl) {
+        progressEl.addEventListener('input', function() {
+            const val = parseInt(this.value || '0');
+            const bar = document.getElementById('taskProgressBar');
+            const text = document.getElementById('taskProgressText');
+            if (bar) {
+                bar.style.width = `${val}%`;
+                bar.className = `progress-bar ${getProgressBarColor(val)}`;
+            }
+            if (text) text.textContent = `${val}%`;
+        });
+        progressEl.disabled = false;
+        progressEl.tabIndex = 0;
+    }
 });
+
+// 检查新通知并显示弹窗
+async function checkNotifications() {
+    if (!authToken || !currentUser) return;
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/notifications`, {
+            headers: getAuthHeaders()
+        });
+        
+        if (!response.ok) return;
+        
+        const notifications = await response.json();
+        
+        // 只显示未读的通知
+        const unreadNotifications = notifications.filter(n => !n.is_read);
+        
+        // 如果有新通知，显示弹窗
+        if (unreadNotifications.length > 0) {
+            unreadNotifications.forEach(notification => {
+                // 显示弹窗通知
+                showNotificationModal(notification);
+                
+                // 标记为已读
+                markNotificationAsRead(notification.id);
+            });
+        }
+    } catch (error) {
+        console.error('检查通知失败:', error);
+    }
+}
+
+// 显示通知弹窗
+function showNotificationModal(notification) {
+    // 创建通知弹窗
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.id = 'notificationModal_' + notification.id;
+    modal.setAttribute('data-bs-backdrop', 'static');
+    modal.setAttribute('data-bs-keyboard', 'false');
+    modal.innerHTML = `
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-bell-fill"></i> 新通知
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>${notification.message || notification.task_title || '您有新的通知'}</strong></p>
+                    ${notification.from_user_name ? `<p class="text-muted">来自：${notification.from_user_name}</p>` : ''}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    // 模态框关闭后移除元素
+    modal.addEventListener('hidden.bs.modal', function() {
+        modal.remove();
+    });
+}
+
+// 标记通知为已读
+async function markNotificationAsRead(notificationId) {
+    try {
+        await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+            method: 'PUT',
+            headers: getAuthHeaders()
+        });
+    } catch (error) {
+        console.error('标记通知已读失败:', error);
+    }
+}
+
+// 启动通知轮询
+function startNotificationPolling() {
+    // 清除之前的轮询
+    if (notificationPollingInterval) {
+        clearInterval(notificationPollingInterval);
+    }
+    
+    // 立即检查一次
+    checkNotifications();
+    
+    // 每5秒检查一次新通知
+    notificationPollingInterval = setInterval(checkNotifications, 5000);
+}
+
+// 停止通知轮询
+function stopNotificationPolling() {
+    if (notificationPollingInterval) {
+        clearInterval(notificationPollingInterval);
+        notificationPollingInterval = null;
+    }
+}
 
 // 检查认证状态
 function checkAuthStatus() {
@@ -86,6 +226,9 @@ async function performLogin() {
             loadDashboardData();
             loadUsers();
             
+            // 启动通知轮询
+            startNotificationPolling();
+            
             showAlert('登录成功！', 'success');
         } else {
             showLoginError(data.error || '登录失败');
@@ -117,6 +260,9 @@ async function validateToken() {
             updateUserInfo();
             loadDashboardData();
             loadUsers();
+            
+            // 启动通知轮询
+            startNotificationPolling();
         } else {
             // token无效，清除并显示登录
             localStorage.removeItem('authToken');
@@ -132,6 +278,9 @@ async function validateToken() {
 
 // 登出
 function logout() {
+    // 停止通知轮询
+    stopNotificationPolling();
+    
     localStorage.removeItem('authToken');
     sessionStorage.removeItem('authToken');
     authToken = null;
@@ -152,6 +301,16 @@ function updateUserInfo() {
     if (currentUser) {
         document.getElementById('currentUserName').textContent = currentUser.name || currentUser.username;
         document.getElementById('currentUserRole').textContent = currentUser.role || '未知角色';
+        
+        // 控制"向上邀约"按钮的显示：admin用户不显示，其他用户显示
+        const requestButton = document.getElementById('requestButton');
+        if (requestButton) {
+            if (currentUser.role === 'admin') {
+                requestButton.style.display = 'none';
+            } else {
+                requestButton.style.display = 'inline-block';
+            }
+        }
         document.getElementById('userInfo').style.display = 'block';
     } else {
         document.getElementById('userInfo').style.display = 'none';
@@ -347,27 +506,35 @@ async function loadTasks() {
             const progress = calculateTaskProgress(task);
             const isOverdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'completed';
             
-            row.innerHTML = `
-                <td>
-                    <div class="d-flex align-items-center">
-                        <div class="me-2" style="width: 12px; height: 12px; background-color: ${task.color || '#4CAF50'}; border-radius: 50%;"></div>
-                        <span class="${isOverdue ? 'text-danger fw-bold' : ''}">${task.title}</span>
-                    </div>
-                </td>
-                <td>${task.description ? (task.description.length > 50 ? task.description.substring(0, 50) + '...' : task.description) : '-'}</td>
-                <td>${task.assignee_name}</td>
-                <td>${task.department}</td>
-                <td><span class="badge bg-${getPriorityBadgeColor(task.priority)}">${getPriorityText(task.priority)}</span></td>
-                <td><span class="badge bg-${getStatusBadgeColor(task.status)}">${getStatusText(task.status)}</span></td>
-                <td>
-                    <div class="progress" style="height: 20px;">
-                        <div class="progress-bar ${getProgressBarColor(progress)}" role="progressbar" style="width: ${progress}%">
-                            ${progress}%
-                        </div>
-                    </div>
-                </td>
-                <td class="${isOverdue ? 'text-danger fw-bold' : ''}">${task.deadline ? new Date(task.deadline).toLocaleDateString() : '-'}</td>
-                <td>
+            // 判断是否为邀约任务
+            const isRequestTask = task.is_request === true || task.is_request === 1;
+            const isAssignee = currentUser && (task.assignee_id === currentUser.id || task.assignee_name === currentUser.name);
+            const isCreator = currentUser && (task.created_by === currentUser.id || task.created_by === currentUser.username);
+            const isProcessed = task.request_response; // 是否已处理（request_response不为空表示已处理）
+            
+            // 操作按钮：邀约任务显示特殊按钮，普通任务显示完整按钮
+            let actionButtons = '';
+            if (isRequestTask) {
+                // 邀约任务：只有被邀约人且未处理时显示"处理邀约"按钮（绿底白字）
+                // 其他情况（已处理、创建者等）显示"查看详情"按钮
+                if (isAssignee && !isProcessed) {
+                    // 被邀约人且未处理：显示"处理邀约"按钮（绿底白字）
+                    actionButtons = `
+                        <button class="btn btn-sm btn-success" onclick="showHandleRequestModal('${task.id}')" title="处理邀约">
+                            <i class="bi bi-check-circle"></i> 处理邀约
+                        </button>
+                    `;
+                } else {
+                    // 已处理或创建者：显示"查看详情"按钮
+                    actionButtons = `
+                        <button class="btn btn-sm btn-outline-info" onclick="viewTaskDetail('${task.id}')" title="查看详情">
+                            <i class="bi bi-eye"></i> 查看详情
+                        </button>
+                    `;
+                }
+            } else {
+                // 普通任务：显示完整操作按钮（查看详情、编辑、删除）
+                actionButtons = `
                     <button class="btn btn-sm btn-outline-info" onclick="viewTaskDetail('${task.id}')" title="查看详情">
                         <i class="bi bi-eye"></i>
                     </button>
@@ -377,6 +544,32 @@ async function loadTasks() {
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteTask('${task.id}')" title="删除">
                         <i class="bi bi-trash"></i>
                     </button>
+                `;
+            }
+            
+            row.innerHTML = `
+                <td>
+                    <div class="d-flex align-items-center">
+                        <div class="me-2" style="width: 12px; height: 12px; min-width: 12px; min-height: 12px; max-width: 12px; max-height: 12px; background-color: ${task.color || '#4CAF50'}; border-radius: 50%; flex-shrink: 0;"></div>
+                        ${isRequestTask ? '<span class="badge bg-danger me-2" style="font-size: 0.7rem;">邀约</span>' : ''}
+                        <span class="${isOverdue ? 'text-danger fw-bold' : ''}">${task.title}</span>
+                    </div>
+                </td>
+                <td>${task.description ? (task.description.length > 50 ? task.description.substring(0, 50) + '...' : task.description) : '-'}</td>
+                <td>${task.assignee_name}</td>
+                <td>${task.department}</td>
+                <td><span class="badge bg-${getPriorityBadgeColor(task.priority)}">${getPriorityText(task.priority)}</span></td>
+                <td><span class="badge bg-${getStatusBadgeColor(task.status)}">${isRequestTask && !isProcessed && task.status === 'pending' ? '待处理' : getStatusText(task.status)}</span></td>
+                <td>
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar ${getProgressBarColor(progress)}" role="progressbar" style="width: ${progress}%">
+                            ${progress}%
+                        </div>
+                    </div>
+                </td>
+                <td class="${isOverdue ? 'text-danger fw-bold' : ''}">${task.deadline ? new Date(task.deadline).toLocaleDateString() : '-'}</td>
+                <td>
+                    ${actionButtons}
                 </td>
             `;
             tbody.appendChild(row);
@@ -749,28 +942,19 @@ async function createTask() {
         return datetimeLocal.replace('T', ' ') + ':00';
     };
     
-    // 将前端优先级值转换为后端期望的格式
-    const priorityMapping = {
-        'important_urgent': 'p0',
-        'important_not_urgent': 'p1',
-        'not_important_urgent': 'p2',
-        'not_important_not_urgent': 'p3'
-    };
-    
-    const frontendPriority = document.getElementById('taskPriority').value;
-    const backendPriority = priorityMapping[frontendPriority] || 'p1';
-    
+    const parentHidden = document.getElementById('parentTaskId');
     const taskData = {
         title: document.getElementById('taskTitle').value,
         description: document.getElementById('taskDescription').value || '',
-        priority: backendPriority,
+        priority: document.getElementById('taskPriority').value || 'p1',
         assignee_id: selectedUserId,
         department_id: selectedUser.department_id,
         start_time: startTime ? formatDateTime(startTime) : null,
         end_time: deadline ? formatDateTime(deadline) : null,
         deadline: deadline ? formatDateTime(deadline) : null,
         location: document.getElementById('taskLocation').value || null,
-        is_all_day: isAllDay
+        is_all_day: isAllDay,
+        parent_task_id: parentHidden && parentHidden.value ? parentHidden.value : null
     };
     
     try {
@@ -784,7 +968,9 @@ async function createTask() {
             showAlert('任务发布成功！', 'success');
             
             // 关闭模态框
-            bootstrap.Modal.getInstance(document.getElementById('addTaskModal')).hide();
+            const addInst = bootstrap.Modal.getInstance(document.getElementById('addTaskModal'));
+            if (addInst) addInst.hide();
+            resetModalState();
             
             // 重置表单
             form.reset();
@@ -801,8 +987,13 @@ async function createTask() {
                 modalTitle.textContent = '新建任务';
             }
             
-            // 刷新任务列表
-            loadTasks();
+            // 立即刷新任务列表，确保数据是最新的
+            await loadTasks();
+            
+            // 如果是从详情页创建的子任务，刷新子任务列表
+            if (parentHidden && parentHidden.value) {
+                await loadTaskSubtasks(parentHidden.value);
+            }
         } else {
             const error = await response.json();
             showAlert(error.error || error.message || '发布任务失败', 'danger');
@@ -813,10 +1004,254 @@ async function createTask() {
     }
 }
 
+// 显示向上邀约模态框
+function showRequestModal() {
+    // 角色等级函数
+    function roleRank(role) {
+        switch(role) {
+            case 'founder':
+            case 'admin':
+                return 5;
+            case 'department_head':
+                return 4;
+            case 'team_leader':
+                return 3;
+            case 'employee':
+            default:
+                return 1;
+        }
+    }
+    
+    // 填充接收人列表（只显示同级或上级）
+    const assigneeSelect = document.getElementById('requestAssignee');
+    assigneeSelect.innerHTML = '<option value="">选择接收人</option>';
+    
+    if (currentUser) {
+        const currentUserRank = roleRank(currentUser.role);
+        
+        users.forEach(user => {
+            // 排除自己
+            if (user.id === currentUser.id) return;
+            
+            // 只显示同级或上级（角色等级 >= 当前用户等级）
+            const userRank = roleRank(user.role);
+            if (userRank >= currentUserRank) {
+                const option = document.createElement('option');
+                option.value = user.id;
+                const departmentDisplay = user.department_name || user.department || '未知部门';
+                option.textContent = `${user.name} (${departmentDisplay} · ${user.role})`;
+                assigneeSelect.appendChild(option);
+            }
+        });
+    }
+    
+    // 填充关联任务列表（只显示非邀约任务）
+    const relatedTaskSelect = document.getElementById('requestRelatedTask');
+    relatedTaskSelect.innerHTML = '<option value="">无关联任务</option>';
+    
+    // 需要先加载任务列表
+    fetch(`${API_BASE_URL}/tasks`, {
+        headers: getAuthHeaders()
+    })
+    .then(response => response.json())
+    .then(tasks => {
+        tasks.forEach(task => {
+            // 只显示非邀约任务
+            if (!task.is_request) {
+                const option = document.createElement('option');
+                option.value = task.id;
+                option.textContent = `${task.title} (${task.assignee_name})`;
+                relatedTaskSelect.appendChild(option);
+            }
+        });
+    })
+    .catch(error => {
+        console.error('加载任务列表失败:', error);
+    });
+    
+    // 设置默认期望回复时间（3天后）
+    const now = new Date();
+    const defaultDeadline = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    document.getElementById('requestDeadline').value = defaultDeadline.toISOString().slice(0, 16);
+    
+    // 重置表单
+    document.getElementById('requestForm').reset();
+    document.getElementById('requestDeadline').value = defaultDeadline.toISOString().slice(0, 16);
+    
+    const modal = new bootstrap.Modal(document.getElementById('requestModal'));
+    modal.show();
+}
+
+// 创建向上邀约请求
+async function createRequest() {
+    const form = document.getElementById('requestForm');
+    
+    // 检查表单验证
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+    
+    const requestType = document.getElementById('requestType').value;
+    const assigneeId = document.getElementById('requestAssignee').value;
+    const description = document.getElementById('requestDescription').value.trim();
+    const deadline = document.getElementById('requestDeadline').value;
+    const relatedTaskId = document.getElementById('requestRelatedTask').value;
+    
+    if (!requestType || !assigneeId || !description) {
+        showAlert('请填写所有必填项', 'warning');
+        return;
+    }
+    
+    // 对于需要关联任务的请求类型，验证是否选择了关联任务
+    const requiresRelatedTask = ['修改任务', '删除任务', '重新安排任务'];
+    if (requiresRelatedTask.includes(requestType) && !relatedTaskId) {
+        showAlert(`${requestType}类型的邀约请求必须关联一个任务`, 'warning');
+        return;
+    }
+    
+    // 格式化deadline
+    let formattedDeadline = null;
+    if (deadline) {
+        formattedDeadline = deadline.replace('T', ' ') + ':00';
+    }
+    
+    const requestData = {
+        request_type: requestType,
+        assignee_id: assigneeId,
+        description: description,
+        deadline: formattedDeadline,
+        related_task_id: relatedTaskId || null
+    };
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/tasks/request`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(requestData)
+        });
+        
+        if (response.ok || response.status === 201) {
+            showAlert('邀约请求发送成功！', 'success');
+            
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('requestModal'));
+            if (modal) modal.hide();
+            resetModalState();
+            
+            // 重置表单
+            form.reset();
+            
+            // 立即刷新任务列表，确保数据是最新的
+            await loadTasks();
+        } else {
+            const error = await response.json();
+            showAlert(error.error || error.message || '发送邀约失败', 'danger');
+        }
+    } catch (error) {
+        console.error('发送邀约失败:', error);
+        showAlert('发送邀约失败: ' + error.message, 'danger');
+    }
+}
+
+// 显示处理邀约模态框
+async function showHandleRequestModal(taskId) {
+    try {
+        // 获取任务详情
+        const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
+            headers: getAuthHeaders()
+        });
+        
+        if (!response.ok) {
+            throw new Error('获取任务详情失败');
+        }
+        
+        const task = await response.json();
+        
+        // 检查是否为邀约任务
+        if (!task.is_request) {
+            showAlert('此任务不是邀约任务', 'warning');
+            return;
+        }
+        
+        // 检查是否已处理
+        if (task.request_response) {
+            showAlert('此邀约请求已被处理', 'info');
+            return;
+        }
+        
+        // 填充模态框内容
+        document.getElementById('handleRequestTaskId').value = taskId;
+        document.getElementById('handleRequestTitle').textContent = task.title;
+        document.getElementById('handleRequestType').textContent = task.request_type || '未知';
+        document.getElementById('handleRequestDescription').textContent = task.description || '无';
+        document.getElementById('handleRequestNotes').value = '';
+        
+        // 重置单选按钮为批准
+        document.getElementById('approveAction').checked = true;
+        document.getElementById('rejectAction').checked = false;
+        
+        // 显示模态框
+        const modal = new bootstrap.Modal(document.getElementById('handleRequestModal'));
+        modal.show();
+    } catch (error) {
+        console.error('加载任务详情失败:', error);
+        showAlert('加载任务详情失败: ' + error.message, 'danger');
+    }
+}
+
+// 处理邀约请求
+async function handleRequest() {
+    const taskId = document.getElementById('handleRequestTaskId').value;
+    const action = document.querySelector('input[name="requestAction"]:checked').value;
+    const notes = document.getElementById('handleRequestNotes').value.trim();
+    
+    if (!taskId || !action) {
+        showAlert('请选择处理方式', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/request-response`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                action: action,
+                notes: notes || null
+            })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            const actionText = action === 'approve' ? '批准' : '拒绝';
+            
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('handleRequestModal'));
+            if (modal) modal.hide();
+            resetModalState();
+            
+            // 显示成功消息
+            showAlert(`邀约请求已${actionText}！任务状态已更新为已完成，进度已更新为100%。发送邀约的人已收到通知。`, 'success');
+            
+            // 立即刷新任务列表，确保数据是最新的
+            await loadTasks();
+        } else {
+            const error = await response.json();
+            showAlert(error.error || error.message || '处理邀约失败', 'danger');
+        }
+    } catch (error) {
+        console.error('处理邀约失败:', error);
+        showAlert('处理邀约失败: ' + error.message, 'danger');
+    }
+}
+
 // 查看任务详情
 async function viewTaskDetail(taskId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`);
+        resetModalState();
+        const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
+            headers: getAuthHeaders()
+        });
         if (!response.ok) {
             throw new Error('获取任务详情失败');
         }
@@ -842,9 +1277,92 @@ async function viewTaskDetail(taskId) {
         progressBar.style.width = `${progress}%`;
         progressBar.className = `progress-bar ${getProgressBarColor(progress)}`;
         progressText.textContent = `${progress}%`;
+        const progressInput = document.getElementById('detailProgressInput');
+        if (progressInput) {
+            progressInput.value = progress;
+            progressInput.disabled = false;
+        }
         
-        // 加载关联日志
-        await loadTaskLogs(taskId);
+        // 判断是否为邀约任务
+        const isRequestTask = currentTask.is_request === true || currentTask.is_request === 1;
+        
+        // 显示邀约处理结果（如果是邀约任务）
+        const requestResponseSection = document.getElementById('requestResponseSection');
+        if (isRequestTask && requestResponseSection) {
+            requestResponseSection.style.display = 'block';
+            
+            // 显示请求类型
+            const requestTypeEl = document.getElementById('detailRequestType');
+            if (requestTypeEl) {
+                requestTypeEl.textContent = currentTask.request_type || '未知';
+            }
+            
+            // 显示处理结果
+            const requestResponseEl = document.getElementById('detailRequestResponse');
+            if (requestResponseEl) {
+                if (currentTask.request_response) {
+                    const responseText = currentTask.request_response === 'approve' ? '批准' : '拒绝';
+                    const responseColor = currentTask.request_response === 'approve' ? 'success' : 'danger';
+                    requestResponseEl.innerHTML = `<span class="badge bg-${responseColor}">${responseText}</span>`;
+                } else {
+                    requestResponseEl.innerHTML = '<span class="badge bg-warning">待处理</span>';
+                }
+            }
+            
+            // 显示处理备注（如果有）
+            const requestNotesEl = document.getElementById('detailRequestNotes');
+            const requestNotesRow = document.getElementById('detailRequestNotesRow');
+            if (currentTask.special_notes && currentTask.special_notes.trim()) {
+                if (requestNotesEl) {
+                    requestNotesEl.textContent = currentTask.special_notes;
+                }
+                if (requestNotesRow) {
+                    requestNotesRow.style.display = 'block';
+                }
+            } else {
+                if (requestNotesRow) {
+                    requestNotesRow.style.display = 'none';
+                }
+            }
+        } else {
+            if (requestResponseSection) {
+                requestResponseSection.style.display = 'none';
+            }
+        }
+        
+        // 获取子任务和日志的卡片元素
+        const subtasksCard = document.getElementById('subtasksCard');
+        const logsCard = document.getElementById('logsCard');
+        
+        if (isRequestTask) {
+            // 邀约任务：隐藏子任务和日志卡片
+            if (subtasksCard) {
+                subtasksCard.style.display = 'none';
+            }
+            if (logsCard) {
+                logsCard.style.display = 'none';
+            }
+        } else {
+            // 普通任务：显示子任务和日志卡片
+            if (subtasksCard) {
+                subtasksCard.style.display = 'block';
+            }
+            if (logsCard) {
+                logsCard.style.display = 'block';
+            }
+            
+            // 加载子任务列表
+            await loadTaskSubtasks(taskId);
+            
+            // 加载关联日志
+            await loadTaskLogs(taskId);
+            
+            // 显示创建子任务按钮
+            const createBtn = document.getElementById('createSubtaskBtn');
+            if (createBtn) {
+                createBtn.style.display = 'inline-block';
+            }
+        }
         
         // 显示模态框
         const modal = new bootstrap.Modal(document.getElementById('taskDetailModal'));
@@ -855,31 +1373,91 @@ async function viewTaskDetail(taskId) {
     }
 }
 
+// 加载任务子任务列表
+async function loadTaskSubtasks(taskId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/tasks?parent_task_id=${taskId}`, {
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+            throw new Error('获取子任务列表失败');
+        }
+        const subtasks = await response.json();
+        
+        const subtasksList = document.getElementById('taskSubtasksList');
+        const createBtn = document.getElementById('createSubtaskBtn');
+        
+        if (subtasksList) {
+            subtasksList.innerHTML = '';
+            
+            if (subtasks.length === 0) {
+                subtasksList.innerHTML = '<p class="text-muted mb-0">无</p>';
+            } else {
+                subtasks.forEach(subtask => {
+                    const subtaskItem = document.createElement('div');
+                    subtaskItem.className = 'border-bottom pb-2 mb-2';
+                    const progress = calculateTaskProgress(subtask);
+                    subtaskItem.innerHTML = `
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="flex-grow-1">
+                                <h6 class="mb-1">${subtask.title}</h6>
+                                <div class="d-flex align-items-center gap-3">
+                                    <span class="badge bg-${getPriorityBadgeColor(subtask.priority)}">${getPriorityText(subtask.priority)}</span>
+                                    <span class="badge bg-${getStatusBadgeColor(subtask.status)}">${getStatusText(subtask.status)}</span>
+                                    <small class="text-muted">进度: ${progress}%</small>
+                                </div>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-outline-info" onclick="viewTaskDetail('${subtask.id}')" title="查看详情">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    subtasksList.appendChild(subtaskItem);
+                });
+            }
+        }
+        
+        // 显示创建子任务按钮（有权限的用户都可以创建子任务）
+        if (createBtn) {
+            createBtn.style.display = 'inline-block';
+        }
+    } catch (error) {
+        console.error('加载子任务列表失败:', error);
+        const subtasksList = document.getElementById('taskSubtasksList');
+        if (subtasksList) {
+            subtasksList.innerHTML = '<p class="text-muted mb-0">加载失败</p>';
+        }
+    }
+}
+
 // 加载任务关联的日志
 async function loadTaskLogs(taskId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/logs?taskId=${taskId}`);
+        const response = await fetch(`${API_BASE_URL}/logs?taskId=${taskId}`, {
+            headers: getAuthHeaders()
+        });
         const logs = await response.json();
         
         const logsList = document.getElementById('taskLogsList');
         logsList.innerHTML = '';
         
         if (logs.length === 0) {
-            logsList.innerHTML = '<p class="text-muted">暂无相关日志</p>';
+            logsList.innerHTML = '<p class="text-muted mb-0">无</p>';
             return;
         }
         
         logs.forEach(log => {
             const logItem = document.createElement('div');
-            logItem.className = 'border-bottom pb-3 mb-3';
+            logItem.className = 'border-bottom pb-2 mb-2';
             logItem.innerHTML = `
                 <div class="d-flex justify-content-between align-items-start">
-                    <div>
+                    <div class="flex-grow-1">
                         <h6 class="mb-1">${log.title || '工作日志'}</h6>
-                        <p class="mb-2 text-muted">${log.content}</p>
+                        ${log.content ? `<p class="mb-1 text-muted small">${log.content.length > 100 ? log.content.substring(0, 100) + '...' : log.content}</p>` : ''}
                         <small class="text-muted">
-                            <i class="bi bi-person"></i> ${log.user_name} 
-                            <i class="bi bi-clock ms-2"></i> ${new Date(log.created_at).toLocaleString()}
+                            <i class="bi bi-clock"></i> ${new Date(log.created_at).toLocaleString()}
                         </small>
                     </div>
                     <span class="badge bg-${getCategoryBadgeColor(log.category)}">${log.category}</span>
@@ -892,7 +1470,158 @@ async function loadTaskLogs(taskId) {
         document.getElementById('detailTaskLastActivity').textContent = logs.length > 0 ? new Date(logs[0].created_at).toLocaleString() : '无';
     } catch (error) {
         console.error('加载任务日志失败:', error);
+        const logsList = document.getElementById('taskLogsList');
+        if (logsList) {
+            logsList.innerHTML = '<p class="text-muted mb-0">加载失败</p>';
+        }
     }
+}
+
+// 打开编辑任务模态框（可从列表或详情进入）
+async function editTask(taskId) {
+    try {
+        const id = taskId || (currentTask && currentTask.id);
+        if (!id) {
+            showAlert('未选择任务', 'warning');
+            return;
+        }
+
+        // 确保有用户列表供选择
+        if (!users || users.length === 0) {
+            await loadUsers();
+        }
+
+        // 确保新弹窗在最上层：若在详情里打开，先关闭详情弹窗
+        const detailModalInst = bootstrap.Modal.getInstance(document.getElementById('taskDetailModal'));
+        if (detailModalInst) {
+            detailModalInst.hide();
+        }
+        resetModalState();
+
+        // 获取任务详情
+        const resp = await fetch(`${API_BASE_URL}/tasks/${id}`, { headers: getAuthHeaders() });
+        if (!resp.ok) throw new Error('加载任务详情失败');
+        const task = await resp.json();
+        currentTask = task;
+
+        // 填充编辑表单
+        const modalEl = document.getElementById('editTaskModal');
+        // 标题/描述
+        document.getElementById('editTaskTitle').value = task.title || '';
+        document.getElementById('editTaskDescription').value = task.description || '';
+
+        // 优先级映射：后端 p0..p3，对应编辑下拉直接用 p0..p3
+        document.getElementById('editTaskPriority').value = task.priority || 'p1';
+
+        // 状态
+        document.getElementById('editTaskStatus').value = task.status || 'pending';
+
+        // 责任人下拉
+        const assigneeSel = document.getElementById('editTaskAssignee');
+        assigneeSel.innerHTML = '<option value="">选择责任人</option>';
+        users.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u.id;
+            const deptDisp = u.department_name || u.department || '未知部门';
+            opt.textContent = `${u.name} (${deptDisp})`;
+            assigneeSel.appendChild(opt);
+        });
+        assigneeSel.value = task.assignee_id || '';
+        document.getElementById('editTaskDepartment').value = task.department_name || task.department || '';
+
+        // 时间字段
+        const toLocalInput = (dt) => dt ? new Date(dt).toISOString().slice(0,16) : '';
+        document.getElementById('editTaskStartTime').value = toLocalInput(task.start_time);
+        document.getElementById('editTaskEndTime').value = toLocalInput(task.end_time);
+        document.getElementById('editTaskDeadline').value = toLocalInput(task.deadline);
+
+        // 其他
+        document.getElementById('editTaskLocation').value = task.location || '';
+        document.getElementById('editTaskIsAllDay').checked = !!task.is_all_day;
+
+        // 显示模态框
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+    } catch (e) {
+        console.error(e);
+        showAlert(e.message || '打开编辑任务失败', 'danger');
+    }
+}
+
+// 保存编辑任务
+async function updateTask() {
+    if (!currentTask) {
+        showAlert('未选择任务', 'warning');
+        return;
+    }
+
+    const form = document.getElementById('editTaskForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    // 格式化时间
+    const fmt = (v) => v ? v.replace('T',' ') + ':00' : null;
+
+    const payload = {
+        title: document.getElementById('editTaskTitle').value.trim(),
+        description: document.getElementById('editTaskDescription').value.trim(),
+        priority: document.getElementById('editTaskPriority').value,
+        status: document.getElementById('editTaskStatus').value,
+        assignee_id: document.getElementById('editTaskAssignee').value || null,
+        start_time: fmt(document.getElementById('editTaskStartTime').value),
+        end_time: fmt(document.getElementById('editTaskEndTime').value),
+        deadline: fmt(document.getElementById('editTaskDeadline').value),
+        location: document.getElementById('editTaskLocation').value || null,
+        is_all_day: document.getElementById('editTaskIsAllDay').checked
+    };
+
+    // 若设置为已完成但未显式设置进度，则强制将进度同步到100
+    if (payload.status === 'completed') {
+        payload.progress_percentage = 100;
+    }
+
+    try {
+        const resp = await fetch(`${API_BASE_URL}/tasks/${currentTask.id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || err.message || '更新任务失败');
+        }
+
+        showAlert('任务更新成功', 'success');
+        const editInst = bootstrap.Modal.getInstance(document.getElementById('editTaskModal'));
+        if (editInst) editInst.hide();
+        resetModalState();
+        // 刷新详情与列表
+        await viewTaskDetail(currentTask.id);
+        await loadTasks();
+    } catch (e) {
+        console.error('更新任务失败:', e);
+        showAlert(e.message || '更新任务失败', 'danger');
+    }
+}
+
+// 从详情创建子任务：复用新建任务模态框并注入父任务ID
+function createSubtask(parentId) {
+    if (!parentId) return;
+    showAddTaskModal();
+    // 设置标题
+    const modalTitle = document.querySelector('#addTaskModal .modal-title');
+    if (modalTitle) modalTitle.textContent = '创建子任务';
+    // 注入隐藏域保存父任务ID
+    let hidden = document.getElementById('parentTaskId');
+    if (!hidden) {
+        hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.id = 'parentTaskId';
+        document.getElementById('addTaskForm').appendChild(hidden);
+    }
+    hidden.value = parentId;
 }
 
 // 完成任务
@@ -916,8 +1645,8 @@ async function completeTask() {
                 // 刷新任务详情
                 await viewTaskDetail(currentTask.id);
                 
-                // 刷新任务列表
-                loadTasks();
+                // 立即刷新任务列表，确保数据是最新的
+                await loadTasks();
             } else {
                 const error = await response.json();
                 showAlert(error.error || error.message || '完成任务失败', 'danger');
@@ -936,13 +1665,20 @@ async function updateTaskProgress() {
         return;
     }
     
-    const progressInput = prompt('请输入新的进度百分比 (0-100):', currentTask.progress_percentage || 0);
-    if (progressInput === null) return; // 用户取消
-    
-    const progress = parseInt(progressInput);
+    // 优先从详情页滑杆读取
+    const slider = document.getElementById('detailProgressInput');
+    const progress = slider ? parseInt(slider.value) : parseInt(prompt('请输入新的进度百分比 (0-100):', currentTask.progress_percentage || 0));
     if (isNaN(progress) || progress < 0 || progress > 100) {
         showAlert('请输入有效的进度值 (0-100)', 'warning');
         return;
+    }
+    
+    // 根据进度自动设置状态：1-99%为进行中，100%为已完成，0%保持原状态
+    let status = currentTask.status;
+    if (progress >= 1 && progress < 100) {
+        status = 'in_progress';
+    } else if (progress === 100) {
+        status = 'completed';
     }
     
     try {
@@ -951,7 +1687,7 @@ async function updateTaskProgress() {
             headers: getAuthHeaders(),
             body: JSON.stringify({
                 progress_percentage: progress,
-                status: progress === 100 ? 'completed' : (progress > 0 ? 'in_progress' : 'pending')
+                status: status
             })
         });
         
@@ -959,6 +1695,10 @@ async function updateTaskProgress() {
             showAlert('进度更新成功！', 'success');
             // 刷新任务详情
             await viewTaskDetail(currentTask.id);
+            // 更新“最后更新”时间显示
+            const nowStr = new Date().toLocaleString();
+            const last = document.getElementById('lastProgressUpdate');
+            if (last) last.textContent = nowStr;
             // 刷新任务列表
             loadTasks();
         } else {
@@ -969,6 +1709,11 @@ async function updateTaskProgress() {
         console.error('更新进度失败:', error);
         showAlert('更新进度失败: ' + error.message, 'danger');
     }
+}
+
+// 详情页保存进度按钮
+function saveDetailProgress() {
+    updateTaskProgress();
 }
 
 // 删除任务
@@ -991,12 +1736,13 @@ async function deleteTask(taskId) {
                 if (detailModalInstance) {
                     detailModalInstance.hide();
                 }
+                resetModalState();
                 
                 // 清除当前任务
                 currentTask = null;
                 
-                // 刷新任务列表
-                loadTasks();
+                // 立即刷新任务列表，确保数据是最新的
+                await loadTasks();
             } else {
                 const error = await response.json();
                 showAlert(error.error || error.message || '删除任务失败', 'danger');
@@ -1025,6 +1771,10 @@ function getRoleBadgeColor(role) {
 
 function getPriorityBadgeColor(priority) {
     switch(priority) {
+        case 'p0': return 'danger';
+        case 'p1': return 'warning';
+        case 'p2': return 'primary';
+        case 'p3': return 'secondary';
         case 'important_urgent': return 'danger';
         case 'important_not_urgent': return 'primary';
         case 'not_important_urgent': return 'warning';
@@ -1039,6 +1789,10 @@ function getPriorityBadgeColor(priority) {
 
 function getPriorityText(priority) {
     switch(priority) {
+        case 'p0': return '重要且紧急';
+        case 'p1': return '重要不紧急';
+        case 'p2': return '不重要紧急';
+        case 'p3': return '不重要不紧急';
         case 'important_urgent': return '重要且紧急';
         case 'important_not_urgent': return '重要不紧急';
         case 'not_important_urgent': return '紧急不重要';
@@ -1069,12 +1823,13 @@ function getProgressBarColor(progress) {
 }
 
 function calculateTaskProgress(task) {
-    // 根据任务状态计算进度
+    if (typeof task.progress_percentage === 'number') {
+        return Math.max(0, Math.min(100, task.progress_percentage));
+    }
+    // 兼容：若没有明确百分比，根据状态给个大致值
     switch(task.status) {
-        case 'pending': return 0;
-        case 'in_progress': return 50;
         case 'completed': return 100;
-        case 'cancelled': return 0;
+        case 'in_progress': return 50;
         default: return 0;
     }
 }
