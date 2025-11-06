@@ -97,6 +97,24 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
     );
   }
 
+  // 格式化日志日期，处理时区问题
+  String _formatLogDate(String timeStr) {
+    try {
+      // 如果时间字符串包含时区信息（+08:00），直接解析
+      if (timeStr.contains('+') || timeStr.contains('Z')) {
+        final dateTime = DateTime.parse(timeStr);
+        return DateFormat('yyyy-MM-dd').format(dateTime);
+      }
+      
+      // 如果没有时区信息，当作本地时间（北京时间）
+      // 解析为UTC后再转换为本地时间
+      final dateTime = DateTime.parse(timeStr).toLocal();
+      return DateFormat('yyyy-MM-dd').format(dateTime);
+    } catch (e) {
+      return timeStr;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -145,7 +163,7 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                DateFormat('yyyy-MM-dd').format(DateTime.parse(log.createdAt ?? '')),
+                                _formatLogDate(log.createdAt ?? ''),
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,

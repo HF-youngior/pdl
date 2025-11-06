@@ -212,7 +212,7 @@ personal   16    12.7%
 SHOW VARIABLES LIKE 'character%';
 
 -- 导入时指定字符集
-mysql -u root -pPyx_07091817 enterprise_management --default-character-set=utf8mb4 < rich_hr_data_oct_nov_2025.sql
+mysql -u root -p23301144 enterprise_management --default-character-set=utf8mb4 < rich_hr_data_oct_nov_2025.sql
 ```
 
 ---
