@@ -10,7 +10,7 @@ echo   - 每天2-3条日志
 echo   - 约150条日志
 echo.
 
-mysql -u root -pasdfgh0625YYH < insert_hr_head_rich_logs.sql
+mysql -u root -pZs462581379 < insert_hr_head_rich_logs.sql
 
 echo.
 if %ERRORLEVEL% EQU 0 (

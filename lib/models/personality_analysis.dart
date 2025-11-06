@@ -9,6 +9,7 @@ class PersonalityAnalysis {
   final DateTime createdAt;
   final String? description;
   final String? aiAnalysisText; // DeepSeek API返回的原始分析文本
+  final bool? isDeepSeek; // 标识是否使用DeepSeek API分析
 
   PersonalityAnalysis({
     required this.id,
@@ -21,6 +22,7 @@ class PersonalityAnalysis {
     required this.createdAt,
     this.description,
     this.aiAnalysisText,
+    this.isDeepSeek,
   });
 
   factory PersonalityAnalysis.fromJson(Map<String, dynamic> json) {
@@ -35,6 +37,7 @@ class PersonalityAnalysis {
       createdAt: DateTime.parse(json['created_at'] ?? json['createdAt']),
       description: json['description'],
       aiAnalysisText: json['ai_analysis_text'] ?? json['aiAnalysisText'],
+      isDeepSeek: json['isDeepSeek'] ?? json['is_deep_seek'],
     );
   }
 

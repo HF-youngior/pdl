@@ -9,9 +9,11 @@ import '../models/personality_analysis.dart';
 import '../models/personal_log.dart';
 import '../models/mbti_test_result.dart';
 import '../models/user.dart';
+import '../models/task.dart';
 import '../widgets/enhanced_wordcloud.dart';
 import '../widgets/personality_chart.dart';
 import 'mbti_test_screen.dart';
+import 'log_enhanced_screen.dart';
 
 class AiMapScreen extends StatefulWidget {
   final User user;
@@ -88,9 +90,21 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     try {
       final allLogs = await ApiService.getPersonalLogs(widget.user.id);
       final today = DateTime.now();
+      
+      // 优先使用log_date字段，如果为空则使用created_at
       final todayLogs = allLogs.where((log) {
-        final logDate = log.logDate ?? log.createdAtDate;
+        // 优先使用logDate字段
+        DateTime? logDate = log.logDate;
+        
+        // 如果logDate为空，使用createdAtDate
+        if (logDate == null) {
+          logDate = log.createdAtDate;
+        }
+        
+        // 如果仍然为空，跳过这条日志
         if (logDate == null) return false;
+        
+        // 比较年月日
         return logDate.year == today.year &&
                logDate.month == today.month &&
                logDate.day == today.day;
@@ -105,6 +119,9 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         _loadingTodayLogs = false;
       });
       print('加载今日日志失败: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('加载今日日志失败: $e')),
+      );
     }
   }
 
@@ -369,16 +386,32 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   }
   
   Future<void> _analyzeAndSave() async {
-                    setState(() { _loading = true; });
-                    try {
-                      final result = await AiService.analyzeToday(topK: 30);
-                      setState(() {
-                        _keywords = result.keywords;
-                        _wordFreq = result.wordFrequencies;
-                      });
+    setState(() { _loading = true; });
+    try {
+      // 先刷新今日日志
+      await _loadTodayLogs();
       
-      if (_wordFreq.isNotEmpty) {
-        // 保存分析结果
+      // 调用后端API分析今日日志
+      final result = await AiService.analyzeToday(topK: 30);
+      
+      if (result.wordFrequencies.isEmpty) {
+        setState(() {
+          _keywords = [];
+          _wordFreq = [];
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('今日没有可分析的日志，请先记录一些日志')),
+        );
+        return;
+      }
+      
+      setState(() {
+        _keywords = result.keywords;
+        _wordFreq = result.wordFrequencies;
+      });
+      
+      // 保存分析结果到历史记录
+      try {
         final savedAnalysis = await AiService.saveWordCloudAnalysis(
           analysisDate: DateTime.now(),
           keywords: result.keywords,
@@ -391,19 +424,25 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         });
         
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('今日日志分析完成并已保存')),
+          const SnackBar(content: Text('今日日志分析完成并已保存到历史记录')),
         );
-      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('今日没有可分析的日志')),
-                        );
-                      }
-                    } catch (e) {
-      // 如果API不可用，使用测试数据
-      _generateTestAnalysis();
+      } catch (saveError) {
+        // 保存失败不影响分析结果的显示
+        print('保存分析结果失败: $saveError');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('分析完成，但保存失败: $saveError')),
+        );
+      }
+    } catch (e) {
+      print('分析今日日志失败: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('使用测试数据进行分析')),
+        SnackBar(content: Text('分析失败: $e')),
       );
+      // 清空之前的结果
+      setState(() {
+        _keywords = [];
+        _wordFreq = [];
+      });
     } finally {
       setState(() { _loading = false; });
     }
@@ -492,14 +531,18 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => MbtiTestScreen(
-          onTestCompleted: (result) {
+          onTestCompleted: (result) async {
             setState(() {
               _latestMbtiResult = result;
             });
+            // 刷新MBTI记录列表
+            await _loadMbtiRecords();
+            // 重新加载最新的MBTI结果
+            await _loadLatestMbtiResult();
             // 测试完成后不自动开始性格分析，让用户手动选择
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('MBTI测试完成！现在可以进行AI性格分析。'),
+                content: Text('MBTI测试完成！类型：${result.mbtiType}。现在可以进行AI性格分析。'),
                 duration: Duration(seconds: 3),
               ),
             );
@@ -1020,24 +1063,86 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF3B82F6).withOpacity(0.1),
+                              color: (_currentPersonalityAnalysis!.isDeepSeek == true 
+                                ? const Color(0xFF10B981) 
+                                : const Color(0xFF3B82F6)).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Icon(
-                              Icons.auto_awesome,
-                              color: Color(0xFF3B82F6),
+                            child: Icon(
+                              _currentPersonalityAnalysis!.isDeepSeek == true 
+                                ? Icons.psychology 
+                                : Icons.auto_awesome,
+                              color: _currentPersonalityAnalysis!.isDeepSeek == true 
+                                ? const Color(0xFF10B981) 
+                                : const Color(0xFF3B82F6),
                               size: 20,
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'AI分析结果',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E3A8A),
-                              ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _currentPersonalityAnalysis!.isDeepSeek == true 
+                                    ? 'DeepSeek AI 分析结果' 
+                                    : '本地算法分析结果',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1E3A8A),
+                                  ),
+                                ),
+                                if (_currentPersonalityAnalysis!.isDeepSeek == true)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 4),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF10B981).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      '由 DeepSeek AI 生成',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF10B981),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                if (_currentPersonalityAnalysis!.mbtiType != null && _currentPersonalityAnalysis!.mbtiType!.isNotEmpty)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 8),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.person_outline,
+                                          size: 16,
+                                          color: Color(0xFF8B5CF6),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'MBTI类型: ${_currentPersonalityAnalysis!.mbtiType}',
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            color: Color(0xFF8B5CF6),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ],
@@ -1049,7 +1154,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(
+                        child: SelectableText(
                           _currentPersonalityAnalysis!.aiAnalysisText!,
                           style: const TextStyle(
                             fontSize: 14,
@@ -1626,14 +1731,89 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('${analysis.mbtiType} - 性格分析详情'),
+        title: Row(
+          children: [
+            Icon(
+              analysis.isDeepSeek == true ? Icons.psychology : Icons.auto_awesome,
+              color: analysis.isDeepSeek == true 
+                ? const Color(0xFF10B981) 
+                : const Color(0xFF3B82F6),
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('${analysis.mbtiType} - 性格分析详情'),
+            ),
+          ],
+        ),
         content: SizedBox(
           width: double.maxFinite,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('分析日期: ${analysis.analysisDate.toString().split(' ')[0]}'),
+                Row(
+                  children: [
+                    Text('分析日期: ${analysis.analysisDate.toString().split(' ')[0]}'),
+                    const SizedBox(width: 12),
+                    if (analysis.isDeepSeek == true)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'DeepSeek AI',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF10B981),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3B82F6).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '本地算法',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF3B82F6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (analysis.aiAnalysisText != null && analysis.aiAnalysisText!.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: (analysis.isDeepSeek == true 
+                          ? const Color(0xFF10B981) 
+                          : const Color(0xFF3B82F6)).withOpacity(0.3),
+                      ),
+                    ),
+                    child: SelectableText(
+                      analysis.aiAnalysisText!,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF374151),
+                        height: 1.6,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 PersonalityChart(
                   personalityData: analysis.personalityChart,
@@ -1759,19 +1939,20 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             Icons.note_add_outlined,
-            size: 48,
+            size: 64,
             color: Colors.grey[400],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Text(
             '今日还没有日志记录',
             style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w500,
+              fontSize: 18,
+              color: Colors.grey[700],
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 8),
@@ -1782,8 +1963,80 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               color: Colors.grey[500],
             ),
           ),
+          const SizedBox(height: 24),
+          // 添加跳转按钮
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF3B82F6), Color(0xFF1E40AF)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF3B82F6).withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ElevatedButton.icon(
+              onPressed: () => _navigateToAddLog(),
+              icon: const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
+              label: const Text(
+                '去添加日志',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
+    );
+  }
+  
+  // 跳转到添加日志页面 - 使用与日志模块相同的对话框
+  Future<void> _navigateToAddLog() async {
+    // 加载任务列表
+    List<Task> tasks = [];
+    try {
+      tasks = await ApiService.getTasks();
+    } catch (e) {
+      print('加载任务列表失败: $e');
+    }
+    
+    // 使用LogEnhancedScreen的公共静态方法显示添加日志对话框
+    // 这与日志模块使用的对话框完全相同
+    LogEnhancedScreen.showAddLogDialog(
+      context: context,
+      user: widget.user,
+      tasks: tasks,
+      onLogAdded: () async {
+        // 日志添加成功后，刷新今日日志列表
+        await _loadTodayLogs();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('日志添加成功！'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      },
     );
   }
   
