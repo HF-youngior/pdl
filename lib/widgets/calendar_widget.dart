@@ -423,13 +423,13 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                 ),
                 // 日期网格 - 简约版
                 Container(
-                  height: 300,
+                  height: 400,
                   padding: const EdgeInsets.all(4),
                   child: GridView.builder(
                     physics: const NeverScrollableScrollPhysics(),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 7,
-                      childAspectRatio: 1.1,
+                      childAspectRatio: 0.85,
                     ),
                     itemCount: days.length,
                     itemBuilder: (context, index) {
@@ -459,22 +459,42 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                 : null,
                           ),
                           child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                '${day.day}',
-                                style: TextStyle(
-                                  color: isCurrentMonth
-                                      ? (isToday ? Colors.blue.shade700 : Colors.grey.shade800)
-                                      : Colors.grey.shade300,
-                                  fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                                  fontSize: 15,
+                              // 日期显示
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
+                                child: Text(
+                                  '${day.day}',
+                                  style: TextStyle(
+                                    color: isCurrentMonth
+                                        ? (isToday ? Colors.blue.shade700 : Colors.grey.shade800)
+                                        : Colors.grey.shade300,
+                                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                                    fontSize: 15,
+                                  ),
                                 ),
                               ),
-                              // 数据指示器 - 简约版
-                              if (hasData) ...[
-                                const SizedBox(height: 3),
-                                _buildBeautifiedDataIndicators(dayData),
+                              // 浅色横线 - 使用更浅的颜色
+                              if (hasData && dayData != null && (dayData.tasks.isNotEmpty || dayData.logs.isNotEmpty)) ...[
+                                const SizedBox(height: 2),
+                                Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                                  height: 1,
+                                  color: Colors.grey.shade100,
+                                ),
+                                const SizedBox(height: 2),
+                              ],
+                              // 任务和日志标题列表 - 限制数量避免溢出
+                              if (hasData && dayData != null && (dayData.tasks.isNotEmpty || dayData.logs.isNotEmpty)) ...[
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    child: _buildTaskAndLogList(dayData),
+                                  ),
+                                ),
                               ],
                             ],
                           ),
@@ -497,6 +517,85 @@ class _CalendarWidgetState extends State<CalendarWidget> {
           const SizedBox(height: 20),
         ],
       ),
+    );
+  }
+
+  // 构建任务和日志列表，使用不同颜色区分
+  Widget _buildTaskAndLogList(DayData dayData) {
+    // 合并任务和日志，并标记类型
+    final List<Map<String, dynamic>> items = [];
+    
+    // 添加任务
+    for (var task in dayData.tasks) {
+      items.add({'type': 'task', 'data': task});
+    }
+    
+    // 添加日志
+    for (var log in dayData.logs) {
+      items.add({'type': 'log', 'data': log});
+    }
+    
+    // 限制显示数量，避免溢出
+    final displayItems = items.take(3).toList();
+    
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: displayItems.length,
+      itemBuilder: (context, index) {
+        final item = displayItems[index];
+        final isTask = item['type'] == 'task';
+        
+        if (isTask) {
+          final task = item['data'] as CalendarTask;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50, // 浅红色背景
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: Text(
+                task.title ?? '无标题',
+                style: TextStyle(
+                  fontSize: 9,
+                  color: Colors.red.shade700, // 深红色字体
+                  decoration: (task.status == 'completed' || task.status == 'done')
+                      ? TextDecoration.lineThrough
+                      : null,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          );
+        } else {
+          final log = item['data'] as CalendarLog;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50, // 浅蓝色背景
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: Text(
+                log.title ?? '无标题',
+                style: TextStyle(
+                  fontSize: 9,
+                  color: Colors.blue.shade700, // 深蓝色字体
+                  decoration: log.isCompleted
+                      ? TextDecoration.lineThrough
+                      : null,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          );
+        }
+      },
     );
   }
 
