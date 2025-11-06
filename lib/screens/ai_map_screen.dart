@@ -12,6 +12,7 @@ import '../models/user.dart';
 import '../models/task.dart';
 import '../widgets/enhanced_wordcloud.dart';
 import '../widgets/personality_chart.dart';
+import '../utils/time_utils.dart';
 import 'mbti_test_screen.dart';
 import 'log_enhanced_screen.dart';
 
@@ -42,6 +43,13 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   Map<String, dynamic>? _selectedMbtiRecord;
   String _searchQuery = '';
   String _selectedMbtiType = '全部';
+  Map<String, int> _mbtiTypeCounts = {}; // 每个MBTI类型的记录数量
+  // 所有16种MBTI类型
+  static const List<String> _allMbtiTypes = [
+    '全部',
+    'ENFP', 'INTJ', 'ISFJ', 'ISTJ', 'ENFJ', 'INFP', 'ENTJ', 'INTP',
+    'ESTJ', 'ESFJ', 'ISTP', 'ISFP', 'ESTP', 'ESFP', 'ENTP', 'INFJ'
+  ];
   
   // 今日日志相关状态
   List<PersonalLog> _todayLogs = [];
@@ -157,33 +165,105 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   Future<void> _loadMbtiRecords() async {
     setState(() { _loadingMbtiRecords = true; });
     try {
-      String url = '${ApiService.baseUrl}/mbti-records';
-      if (_selectedMbtiType != '全部') {
-        url += '?mbti_type=$_selectedMbtiType';
-      }
-      
-      final response = await http.get(
-        Uri.parse(url),
+      // 先获取所有记录以计算统计信息
+      final allRecordsResponse = await http.get(
+        Uri.parse('${ApiService.baseUrl}/mbti-records'),
         headers: ApiService.getAuthHeaders(),
       );
       
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        List<Map<String, dynamic>> records = List<Map<String, dynamic>>.from(data['records'] ?? []);
+      if (allRecordsResponse.statusCode == 200) {
+        final allData = jsonDecode(allRecordsResponse.body);
+        List<Map<String, dynamic>> allRecords = List<Map<String, dynamic>>.from(allData['records'] ?? []);
+        
+        // 计算每个MBTI类型的数量
+        Map<String, int> counts = {};
+        for (var record in allRecords) {
+          final type = record['mbti_type']?.toString() ?? '未知';
+          counts[type] = (counts[type] ?? 0) + 1;
+        }
+        
+        // 应用类型筛选
+        List<Map<String, dynamic>> filteredRecords = allRecords;
+        if (_selectedMbtiType != '全部') {
+          filteredRecords = allRecords.where((record) {
+            return record['mbti_type']?.toString() == _selectedMbtiType;
+          }).toList();
+        }
         
         // 应用搜索过滤
         if (_searchQuery.isNotEmpty) {
-          records = records.where((record) {
+          filteredRecords = filteredRecords.where((record) {
             return record['mbti_type'].toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
                    record['test_date'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
           }).toList();
         }
         
+        // 去重：基于测试日期和MBTI类型去重，保留最新的记录
+        // 使用 "日期_MBTI类型" 作为唯一键
+        Map<String, Map<String, dynamic>> uniqueRecords = {};
+        for (var record in filteredRecords) {
+          final mbtiType = record['mbti_type']?.toString() ?? '';
+          final testDate = record['test_date']?.toString() ?? '';
+          
+          if (mbtiType.isEmpty || testDate.isEmpty) continue;
+          
+          try {
+            // 解析日期，只取日期部分（忽略时间）
+            final dateTime = DateTime.parse(testDate);
+            final dateKey = '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}_$mbtiType';
+            
+            if (!uniqueRecords.containsKey(dateKey)) {
+              uniqueRecords[dateKey] = record;
+            } else {
+              // 如果同一天有多个相同类型的记录，比较创建时间，保留最新的
+              final existingRecord = uniqueRecords[dateKey]!;
+              final existingCreatedAt = existingRecord['created_at']?.toString();
+              final currentCreatedAt = record['created_at']?.toString();
+              
+              if (currentCreatedAt != null && existingCreatedAt != null) {
+                try {
+                  final existing = DateTime.parse(existingCreatedAt);
+                  final current = DateTime.parse(currentCreatedAt);
+                  if (current.isAfter(existing)) {
+                    uniqueRecords[dateKey] = record;
+                  }
+                } catch (e) {
+                  // 如果解析失败，比较test_date
+                  final existingTestDate = DateTime.parse(existingRecord['test_date']?.toString() ?? '');
+                  final currentTestDate = DateTime.parse(testDate);
+                  if (currentTestDate.isAfter(existingTestDate)) {
+                    uniqueRecords[dateKey] = record;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            // 如果日期解析失败，使用ID作为备用去重键
+            final id = record['id']?.toString();
+            if (id != null && !uniqueRecords.containsKey(id)) {
+              uniqueRecords[id] = record;
+            }
+          }
+        }
+        
+        // 按测试日期降序排序
+        List<Map<String, dynamic>> sortedRecords = uniqueRecords.values.toList();
+        sortedRecords.sort((a, b) {
+          try {
+            final dateA = DateTime.parse(a['test_date']?.toString() ?? '');
+            final dateB = DateTime.parse(b['test_date']?.toString() ?? '');
+            return dateB.compareTo(dateA);
+          } catch (e) {
+            return 0;
+          }
+        });
+        
         setState(() { 
-          _mbtiRecords = records;
+          _mbtiRecords = sortedRecords;
+          _mbtiTypeCounts = counts;
         });
       } else {
-        print('加载MBTI记录失败: ${response.statusCode}');
+        print('加载MBTI记录失败: ${allRecordsResponse.statusCode}');
       }
     } catch (e) {
       print('加载MBTI记录失败: $e');
@@ -283,8 +363,8 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
             children: [
               _buildDetailSection('基本信息', [
                 'MBTI类型: ${_selectedMbtiRecord!['mbti_type']}',
-                '测试日期: ${_selectedMbtiRecord!['test_date']}',
-                '置信度: ${(_selectedMbtiRecord!['confidence_score'] * 100).toStringAsFixed(1)}%',
+                '测试日期: ${_formatTestDate(_selectedMbtiRecord!['test_date'])}',
+                '置信度: ${_formatConfidenceScore(_selectedMbtiRecord!['confidence_score'])}%',
               ]),
               _buildDetailSection('测试分数', _formatTestScores(_selectedMbtiRecord!['test_scores'])),
               _buildDetailSection('性格特质', _formatPersonalityTraits(_selectedMbtiRecord!['personality_traits'])),
@@ -455,16 +535,36 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       return;
     }
     
+    // 检查Widget是否仍然挂载
+    if (!mounted) return;
+    
     setState(() { _loading = true; });
+    
     try {
+      // 确保MBTI类型存在且有效
+      final mbtiType = _latestMbtiResult?.mbtiType;
+      if (mbtiType == null || mbtiType.isEmpty) {
+        throw Exception('MBTI类型无效，请先完成MBTI测试');
+      }
+      
+      print('开始性格分析，MBTI类型: $mbtiType');
+      
       // 获取用户日志内容
       final logText = await AiService.getUserLogsText(days: 30);
+      
+      // 再次检查Widget是否仍然挂载
+      if (!mounted) return;
+      
+      print('日志内容长度: ${logText.length} 字符');
       
       // 调用DeepSeek API进行性格分析，使用MBTI测试结果
       final analysis = await AiService.analyzePersonalityWithDeepSeek(
         logText: logText,
-        mbtiType: _latestMbtiResult!.mbtiType,
+        mbtiType: mbtiType,
       );
+      
+      // 再次检查Widget是否仍然挂载
+      if (!mounted) return;
       
       setState(() {
         _currentPersonalityAnalysis = analysis;
@@ -475,15 +575,32 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       print('性格分析结果: ${analysis.personalityChart}');
       print('MBTI类型: ${analysis.mbtiType}');
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('性格分析完成（MBTI: ${_latestMbtiResult!.mbtiType}）')),
-      );
+      // 检查Widget是否仍然挂载后再显示SnackBar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('性格分析完成（MBTI: ${_latestMbtiResult!.mbtiType}）'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('性格分析失败: $e')),
-      );
+      print('性格分析错误: $e');
+      // 检查Widget是否仍然挂载后再显示错误信息
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('性格分析失败: ${e.toString()}'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
-      setState(() { _loading = false; });
+      // 检查Widget是否仍然挂载后再更新状态
+      if (mounted) {
+        setState(() { _loading = false; });
+      }
     }
   }
 
@@ -967,7 +1084,13 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 ],
               ),
               child: ElevatedButton.icon(
-                onPressed: _loading ? null : _analyzePersonality,
+                onPressed: (_loading || _loadingMbtiResult) 
+                    ? null 
+                    : () {
+                        // 确保在点击时关闭键盘，避免输入法相关错误
+                        FocusScope.of(context).unfocus();
+                        _analyzePersonality();
+                      },
                 icon: const Icon(Icons.psychology, color: Colors.white),
                 label: Text(
                   _loading ? '分析中...' : _getPersonalityAnalysisButtonText(),
@@ -1025,7 +1148,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                       ),
                     ),
                     Text(
-                      '测试时间：${_latestMbtiResult!.testDate.toString().split(' ')[0]}',
+                      '测试时间：${TimeUtils.formatDate(_latestMbtiResult!.testDate)}',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.blue[600],
@@ -1353,35 +1476,90 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                     },
                   ),
                   const SizedBox(height: 12),
-                  // MBTI类型过滤器
+                  // MBTI类型过滤器 - 下拉菜单
                   Row(
                     children: [
-                      const Text('MBTI类型: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text('MBTI类型筛选: ', style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: ['全部', 'ENFP', 'INTJ', 'ISFJ', 'ISTJ', 'ENFJ'].map((type) {
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8.0),
-                                child: FilterChip(
-                                  label: Text(type),
-                                  selected: _selectedMbtiType == type,
-                                  onSelected: (selected) {
-                                    setState(() { _selectedMbtiType = type; });
-                                    _loadMbtiRecords();
-                                  },
-                                  selectedColor: const Color(0xFF10B981).withOpacity(0.2),
-                                  checkmarkColor: const Color(0xFF10B981),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: DropdownButton<String>(
+                            value: _selectedMbtiType,
+                            isExpanded: true,
+                            underline: const SizedBox(),
+                            icon: const Icon(Icons.arrow_drop_down),
+                            items: _allMbtiTypes.map((type) {
+                              // 获取该类型的记录数量
+                              int count = 0;
+                              if (type == '全部') {
+                                count = _mbtiTypeCounts.values.fold(0, (sum, c) => sum + c);
+                              } else {
+                                count = _mbtiTypeCounts[type] ?? 0;
+                              }
+                              
+                              return DropdownMenuItem<String>(
+                                value: type,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(type),
+                                    if (count > 0)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF10B981).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          '$count',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Color(0xFF10B981),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               );
                             }).toList(),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                setState(() {
+                                  _selectedMbtiType = newValue;
+                                });
+                                _loadMbtiRecords();
+                              }
+                            },
                           ),
                         ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  // 显示统计信息
+                  if (_mbtiTypeCounts.isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: _allMbtiTypes.where((type) => type != '全部').map((type) {
+                        final count = _mbtiTypeCounts[type] ?? 0;
+                        if (count == 0) return const SizedBox.shrink();
+                        return Chip(
+                          label: Text('$type: $count'),
+                          labelStyle: const TextStyle(fontSize: 12),
+                          backgroundColor: _selectedMbtiType == type
+                              ? const Color(0xFF10B981).withOpacity(0.2)
+                              : Colors.grey[100],
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                        );
+                      }).toList(),
+                    ),
                 ],
               ),
             ),
@@ -1492,8 +1670,8 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('测试日期: ${record['test_date']}'),
-                              Text('置信度: ${(record['confidence_score'] * 100).toStringAsFixed(1)}%'),
+                              Text('测试日期: ${_formatTestDate(record['test_date'])}'),
+                              Text('置信度: ${_formatConfidenceScore(record['confidence_score'])}%'),
                             ],
                           ),
                           trailing: IconButton(
@@ -1522,6 +1700,60 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       'ENFJ': const Color(0xFFEF4444),
     };
     return colors[mbtiType] ?? const Color(0xFF6B7280);
+  }
+
+  // 格式化测试日期
+  String _formatTestDate(dynamic dateValue) {
+    if (dateValue == null) return '未知';
+    
+    try {
+      DateTime dateTime;
+      if (dateValue is DateTime) {
+        dateTime = dateValue;
+      } else if (dateValue is String) {
+        // 尝试解析字符串日期
+        dateTime = DateTime.parse(dateValue);
+      } else {
+        return dateValue.toString();
+      }
+      return TimeUtils.formatDate(dateTime);
+    } catch (e) {
+      // 如果解析失败，尝试提取日期部分
+      final dateStr = dateValue.toString();
+      if (dateStr.contains(' ')) {
+        return dateStr.split(' ')[0];
+      }
+      return dateStr;
+    }
+  }
+
+  // 格式化置信度分数
+  String _formatConfidenceScore(dynamic scoreValue) {
+    if (scoreValue == null) return '0.0';
+    
+    try {
+      double score;
+      if (scoreValue is double) {
+        score = scoreValue;
+      } else if (scoreValue is int) {
+        score = scoreValue.toDouble();
+      } else if (scoreValue is String) {
+        score = double.tryParse(scoreValue) ?? 0.0;
+      } else {
+        return '0.0';
+      }
+      
+      // 确保分数在0-1范围内，然后转换为百分比
+      if (score > 1.0) {
+        // 如果已经是百分比形式（0-100），直接使用
+        return score.toStringAsFixed(1);
+      } else {
+        // 如果是0-1的小数，转换为百分比
+        return (score * 100).toStringAsFixed(1);
+      }
+    } catch (e) {
+      return '0.0';
+    }
   }
   
   Widget _buildHistoryTab() {
