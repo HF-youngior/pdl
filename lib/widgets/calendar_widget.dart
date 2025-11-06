@@ -635,18 +635,40 @@ class _CalendarWidgetState extends State<CalendarWidget> {
 
   // 构建甘特图任务条
   Widget _buildGanttTaskBar(CalendarTask task, List<DateTime> weekDays, {VoidCallback? onTap}) {
-    if (task.startTime == null || task.endTime == null) {
+    DateTime? taskStartDateOnly;
+    DateTime? taskEndDateOnly;
+
+    // 如果有开始和结束时间，使用它们
+    if (task.startTime != null && task.endTime != null) {
+      try {
+        // 解析任务时间并转换为北京时间（加8小时）
+        final taskStartDate = _parseTaskTime(task.startTime!);
+        final taskEndDate = _parseTaskTime(task.endTime!);
+        // 提取日期部分用于比较
+        taskStartDateOnly = DateTime(taskStartDate.year, taskStartDate.month, taskStartDate.day);
+        taskEndDateOnly = DateTime(taskEndDate.year, taskEndDate.month, taskEndDate.day);
+      } catch (e) {
+        print('Error parsing task start/end time: $e');
+        return const SizedBox.shrink();
+      }
+    } 
+    // 如果只有截止时间，使用截止时间作为单日任务
+    else if (task.deadline != null) {
+      try {
+        final deadlineDate = _parseTaskTime(task.deadline!);
+        taskStartDateOnly = DateTime(deadlineDate.year, deadlineDate.month, deadlineDate.day);
+        taskEndDateOnly = taskStartDateOnly;
+      } catch (e) {
+        print('Error parsing task deadline: $e');
+        return const SizedBox.shrink();
+      }
+    } 
+    // 如果都没有，不显示
+    else {
       return const SizedBox.shrink();
     }
 
     try {
-      // 解析任务时间并转换为北京时间（加8小时）
-      final taskStartDate = _parseTaskTime(task.startTime!);
-      final taskEndDate = _parseTaskTime(task.endTime!);
-      // 提取日期部分用于比较
-      final taskStartDateOnly = DateTime(taskStartDate.year, taskStartDate.month, taskStartDate.day);
-      final taskEndDateOnly = DateTime(taskEndDate.year, taskEndDate.month, taskEndDate.day);
-
       // 找出任务在本周的起始和结束位置
       int? startIndex;
       int? endIndex;
@@ -656,9 +678,10 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         final dayOnly = DateTime(day.year, day.month, day.day);
 
         // 检查任务是否覆盖这一天
-        if (dayOnly.isAtSameMomentAs(taskStartDateOnly) ||
-            (dayOnly.isAfter(taskStartDateOnly) && dayOnly.isBefore(taskEndDateOnly)) ||
-            dayOnly.isAtSameMomentAs(taskEndDateOnly)) {
+        if (dayOnly.isAtSameMomentAs(taskStartDateOnly!) ||
+            (taskEndDateOnly != null && dayOnly.isAtSameMomentAs(taskEndDateOnly)) ||
+            (taskStartDateOnly != null && taskEndDateOnly != null &&
+             dayOnly.isAfter(taskStartDateOnly) && dayOnly.isBefore(taskEndDateOnly))) {
           startIndex ??= i;
           endIndex = i;
         }
@@ -679,7 +702,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         onTap: onTap,
       );
     } catch (e) {
-      print('Error parsing task dates: $e');
+      print('Error building gantt task bar: $e');
       return const SizedBox.shrink();
     }
   }
@@ -691,9 +714,9 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     }
 
     try {
-      // 解析日志时间并转换为北京时间（减8小时）
-      final logDateTime = _parseLogTime(log.createdAt!);
-      final logDate = DateTime(logDateTime.year, logDateTime.month, logDateTime.day);
+      // 直接从ISO字符串提取日期部分，不进行时区转换
+      // 因为日志已经按日期分组返回，我们只需要比较日期部分
+      final logDate = _extractDateFromISO(log.createdAt!);
 
       // 找出日志在本周的位置
       int? dayIndex;
@@ -3047,65 +3070,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                           ),
                       ],
                     ),
-                  ),
-                ),
-
-                // 底部按钮栏
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[50],
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(20),
-                      bottomRight: Radius.circular(20),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            widget.onTaskAdd(day);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: const Icon(Icons.add_task),
-                          label: const Text(
-                            '添加任务',
-                            style: TextStyle(fontSize: 16),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            widget.onLogAdd(day);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: const Icon(Icons.edit_note),
-                          label: const Text(
-                            '添加日志',
-                            style: TextStyle(fontSize: 16),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               ],
