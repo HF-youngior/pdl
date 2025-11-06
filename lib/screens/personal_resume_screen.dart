@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import '../models/personal_info.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+// 移除未使用的 Log 导入
+import '../widgets/data_panel.dart';
+import '../services/mbti_test_service.dart';
+import '../models/mbti_test_result.dart';
+import '../models/personal_log.dart';
 
 class PersonalResumeScreen extends StatefulWidget {
   final User user;
@@ -14,8 +19,10 @@ class PersonalResumeScreen extends StatefulWidget {
 
 class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
   List<PersonalInfo> _personalInfo = [];
+  List<PersonalInfo> _autoPersonalInfo = [];
   bool _isLoading = true;
   String? _error;
+  MbtiTestResult? _latestMbti;
 
   @override
   void initState() {
@@ -31,8 +38,15 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
       });
 
       final info = await ApiService.getPersonalInfo(widget.user.id);
+      // 并行获取日志并自动提炼Top10个人信息
+      final logs = await ApiService.getPersonalLogs(widget.user.id);
+      final autoTop = _extractTopPersonalInfoFromLogs(logs, widget.user.id);
+      // 获取最新一次MBTI
+      final mbti = await MbtiTestService.getUserLatestMbti();
       setState(() {
         _personalInfo = info;
+        _autoPersonalInfo = autoTop;
+        _latestMbti = mbti;
         _isLoading = false;
       });
     } catch (e) {
@@ -41,6 +55,72 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  // 从日志自动生成个人信息Top10（基于action/category/quadrant的代表性与近期性）
+  List<PersonalInfo> _extractTopPersonalInfoFromLogs(List<PersonalLog> personalLogs, String userId) {
+    // 仅取近90天
+    final DateTime cutoff = DateTime.now().subtract(const Duration(days: 90));
+    final recent = personalLogs.where((pl) {
+      final dt = pl.createdAtDate ?? pl.logDate ?? DateTime.now();
+      return dt.isAfter(cutoff);
+    }).toList();
+
+    // 以(quad, category, title)为key聚合；PersonalLog无quadrant，使用默认 important_not_urgent
+    const String defaultQuadrant = 'important_not_urgent';
+    final Map<String, List<PersonalLog>> group = {};
+    for (final pl in recent) {
+      final String quadrant = defaultQuadrant;
+      final String category = (pl.category ?? '').toLowerCase();
+      final String title = (pl.title ?? '').toLowerCase();
+      final key = quadrant + '|' + category + '|' + title;
+      group.putIfAbsent(key, () => []).add(pl);
+    }
+
+    final entries = group.entries.map((e) {
+      final items = e.value;
+      items.sort((a, b) {
+        final ad = a.createdAtDate ?? a.logDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bd = b.createdAtDate ?? b.logDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bd.compareTo(ad);
+      });
+      final latest = items.first;
+      final completedCount = items.where((x) => x.isCompleted).length;
+      final latestDate = latest.createdAtDate ?? latest.logDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return {
+        'latest': latest,
+        'count': items.length,
+        'completed': completedCount,
+        'latestDate': latestDate,
+      };
+    }).toList();
+
+    // 排序策略：完成数优先，其次出现频次，其次最近时间
+    entries.sort((a, b) {
+      final int c = (b['completed'] as int).compareTo(a['completed'] as int);
+      if (c != 0) return c;
+      final int d = (b['count'] as int).compareTo(a['count'] as int);
+      if (d != 0) return d;
+      return (b['latestDate'] as DateTime).compareTo(a['latestDate'] as DateTime);
+    });
+
+    final top = entries.take(10).map((m) {
+      final PersonalLog latest = m['latest'] as PersonalLog;
+      final dt = latest.createdAtDate ?? latest.logDate ?? DateTime.now();
+      return PersonalInfo(
+        id: latest.id,
+        userId: userId,
+        title: latest.title ?? '个人日志',
+        description: latest.content ?? '',
+        category: latest.category ?? '',
+        quadrant: defaultQuadrant,
+        createdAt: dt,
+        updatedAt: dt,
+        relatedTaskId: null,
+        isCompleted: latest.isCompleted,
+      );
+    }).toList();
+    return top;
   }
 
   String _getQuadrantText(String quadrant) {
@@ -160,6 +240,12 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
           
           // 四象限信息展示
           _buildQuadrantSections(),
+
+          // 数据面板（今日/近7日）
+          _buildDataPanelSection(),
+
+          // MBTI摘要
+          _buildMbtiSummarySection(),
           
           // 技能和成就
           _buildSkillsAndAchievements(),
@@ -258,9 +344,20 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
   }
 
   Widget _buildQuadrantSections() {
-    // 按象限分组信息
+    // 合并：优先展示后端返回，其次自动提炼
+    final combined = <PersonalInfo>[];
+    combined.addAll(_personalInfo);
+    // 避免重复（以title+quadrant为键）
+    final seen = <String>{ for (final i in _personalInfo) (i.title + '|' + i.quadrant) };
+    for (final i in _autoPersonalInfo) {
+      final key = i.title + '|' + i.quadrant;
+      if (!seen.contains(key)) combined.add(i);
+    }
+    // 仅取Top10
+    final displayList = combined.take(10).toList();
+    // 按象限分组
     final quadrantGroups = <String, List<PersonalInfo>>{};
-    for (final info in _personalInfo) {
+    for (final info in displayList) {
       quadrantGroups.putIfAbsent(info.quadrant, () => []).add(info);
     }
 
@@ -393,6 +490,113 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildDataPanelSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          const Text(
+            '近期数据面板',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          DataPanel(userId: widget.user.id),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMbtiSummarySection() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'MBTI 最近一次测试',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: _latestMbti == null
+                  ? const Text(
+                      '暂无MBTI记录，前往「日志/测试」完成一次评测。',
+                      style: TextStyle(color: Colors.grey),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.psychology, color: Theme.of(context).primaryColor),
+                            const SizedBox(width: 8),
+                            Text(
+                              _latestMbti!.mbtiType,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              _latestMbti!.testDate.toIso8601String().split('T').first,
+                              style: const TextStyle(color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _buildChip('优势', Colors.green),
+                            _buildChip('劣势', Colors.red),
+                            _buildChip('置信度 ${( (_latestMbti!.confidenceScore * 100).toStringAsFixed(0))}%', Colors.blue),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '特征：' + (_latestMbti!.personalityTraits.values.take(2).join('；')),
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 12),
       ),
     );
   }

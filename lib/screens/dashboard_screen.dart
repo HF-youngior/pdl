@@ -6,6 +6,9 @@ import 'company_tasks_enhanced_screen.dart';
 import 'personal_resume_screen.dart';
 import 'log_enhanced_screen.dart';
 import 'task_edit_screen.dart';
+import '../services/app_settings.dart';
+import '../services/task_service.dart';
+import '../models/task.dart';
 
 class DashboardScreen extends StatefulWidget {
   final User user;
@@ -17,6 +20,36 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  final AppSettings _settings = AppSettings.instance;
+  int _highPriorityPendingCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBadgeCount();
+    _settings.addListener(_onSettingsChanged);
+  }
+
+  @override
+  void dispose() {
+    _settings.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
+
+  void _onSettingsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadBadgeCount() async {
+    try {
+      final List<Task> tasks = await TaskService.getTasks();
+      final myTasks = tasks.where((t) => t.assigneeId == widget.user.id).toList();
+      final count = myTasks.where((t) => (t.priority.toLowerCase() == 'p0' || t.priority.toLowerCase() == 'p1') && t.status != 'completed').length;
+      if (mounted) setState(() { _highPriorityPendingCount = count; });
+    } catch (_) {
+      if (mounted) setState(() { _highPriorityPendingCount = 0; });
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -26,11 +59,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications),
-            onPressed: () {
-              // 通知功能
-            },
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.notifications),
+                  onPressed: () {
+                    _loadBadgeCount();
+                  },
+                ),
+                if (_settings.notificationsEnabled && _highPriorityPendingCount > 0)
+                  Positioned(
+                    right: 10,
+                    top: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      constraints: const BoxConstraints(minWidth: 18),
+                      child: Text(
+                        _highPriorityPendingCount > 99 ? '99+' : _highPriorityPendingCount.toString(),
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
