@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import '../models/task.dart';
 import '../services/calendar_service.dart';
+import '../utils/time_utils.dart';
 
 enum CalendarView { month, week, day }
 
@@ -32,7 +33,7 @@ class CalendarWidget extends StatefulWidget {
 
 class _CalendarWidgetState extends State<CalendarWidget> {
   CalendarView _currentView = CalendarView.month;
-  DateTime _currentDate = DateTime.now();
+  DateTime _currentDate = TimeUtils.getBeijingTime();
   MonthViewData? _monthViewData;
   Map<String, DayDetailData> _weekViewData = {}; // 周视图数据
   DayDetailData? _dayViewData; // 日视图数据
@@ -434,7 +435,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                     itemBuilder: (context, index) {
                       final day = days[index];
                       final isCurrentMonth = day.month == _currentDate.month;
-                      final isToday = _isSameDay(day, DateTime.now());
+                      final isToday = TimeUtils.isToday(day);
 
                       // 获取该日期的数据
                       final dayData = _getDayData(day);
@@ -548,7 +549,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
           ),
           child: Row(
             children: weekDays.map((day) {
-              final isToday = _isSameDay(day, DateTime.now());
+              final isToday = TimeUtils.isToday(day);
               return Expanded(
                 child: Column(
                   children: [
@@ -639,9 +640,12 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     }
 
     try {
-      // 直接从ISO字符串提取日期部分，避免时区转换
-      final taskStartDate = _extractDateFromISO(task.startTime!);
-      final taskEndDate = _extractDateFromISO(task.endTime!);
+      // 解析任务时间并转换为北京时间（加8小时）
+      final taskStartDate = _parseTaskTime(task.startTime!);
+      final taskEndDate = _parseTaskTime(task.endTime!);
+      // 提取日期部分用于比较
+      final taskStartDateOnly = DateTime(taskStartDate.year, taskStartDate.month, taskStartDate.day);
+      final taskEndDateOnly = DateTime(taskEndDate.year, taskEndDate.month, taskEndDate.day);
 
       // 找出任务在本周的起始和结束位置
       int? startIndex;
@@ -652,9 +656,9 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         final dayOnly = DateTime(day.year, day.month, day.day);
 
         // 检查任务是否覆盖这一天
-        if (dayOnly.isAtSameMomentAs(taskStartDate) ||
-            (dayOnly.isAfter(taskStartDate) && dayOnly.isBefore(taskEndDate)) ||
-            dayOnly.isAtSameMomentAs(taskEndDate)) {
+        if (dayOnly.isAtSameMomentAs(taskStartDateOnly) ||
+            (dayOnly.isAfter(taskStartDateOnly) && dayOnly.isBefore(taskEndDateOnly)) ||
+            dayOnly.isAtSameMomentAs(taskEndDateOnly)) {
           startIndex ??= i;
           endIndex = i;
         }
@@ -687,8 +691,9 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     }
 
     try {
-      // 日志只显示在创建当天
-      final logDate = _extractDateFromISO(log.createdAt!);
+      // 解析日志时间并转换为北京时间（减8小时）
+      final logDateTime = _parseLogTime(log.createdAt!);
+      final logDate = DateTime(logDateTime.year, logDateTime.month, logDateTime.day);
 
       // 找出日志在本周的位置
       int? dayIndex;
@@ -732,6 +737,18 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       int.parse(parts[1]),
       int.parse(parts[2]),
     );
+  }
+
+  // 解析任务时间并转换为北京时间（加8小时）
+  DateTime _parseTaskTime(String timeStr) {
+    final dateTime = DateTime.parse(timeStr);
+    return dateTime.add(const Duration(hours: 8));
+  }
+
+  // 解析日志时间并转换为北京时间（减8小时）
+  DateTime _parseLogTime(String timeStr) {
+    final dateTime = DateTime.parse(timeStr);
+    return dateTime.subtract(const Duration(hours: 8));
   }
 
   // 构建甘特图横条
@@ -1223,41 +1240,59 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+            color: Colors.grey.withOpacity(0.15),
+            spreadRadius: 2,
+            blurRadius: 8,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
+      clipBehavior: Clip.hardEdge,
       child: Row(
         children: [
           // 时间轴
           Container(
-            width: 60,
+            width: 65,
             decoration: BoxDecoration(
-              color: Colors.grey.shade50,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.blue.shade50,
+                  Colors.blue.shade100.withOpacity(0.3),
+                ],
+              ),
               border: Border(
-                right: BorderSide(color: Colors.grey.shade200),
+                right: BorderSide(color: Colors.blue.shade200, width: 1.5),
               ),
             ),
             child: Column(
               children: hours.map((hour) {
+                final beijingNow = TimeUtils.getBeijingTime();
+                final isCurrentHour = beijingNow.hour == hour &&
+                    TimeUtils.isSameDay(beijingNow, _currentDate);
+                
                 return Container(
                   height: 60,
                   alignment: Alignment.topCenter,
-                  padding: const EdgeInsets.only(top: 4),
+                  padding: const EdgeInsets.only(top: 6),
                   decoration: BoxDecoration(
+                    color: isCurrentHour ? Colors.blue.shade100.withOpacity(0.3) : null,
                     border: Border(
-                      bottom: BorderSide(color: Colors.grey.shade200),
+                      bottom: BorderSide(
+                        color: hour % 3 == 0 
+                            ? Colors.blue.shade300 
+                            : Colors.grey.shade200,
+                        width: hour % 3 == 0 ? 1.5 : 0.5,
+                      ),
                     ),
                   ),
                   child: Text(
                     '${hour.toString().padLeft(2, '0')}:00',
                     style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
+                      fontSize: isCurrentHour ? 12 : 11,
+                      color: isCurrentHour ? Colors.blue.shade800 : Colors.grey[700],
+                      fontWeight: isCurrentHour ? FontWeight.bold : FontWeight.w500,
                     ),
                   ),
                 );
@@ -1274,15 +1309,26 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                     return Container(
                       height: 60,
                       decoration: BoxDecoration(
+                        color: hour % 2 == 0 
+                            ? Colors.grey.shade50 
+                            : Colors.white,
                         border: Border(
-                          bottom: BorderSide(color: Colors.grey.shade200),
+                          bottom: BorderSide(
+                            color: hour % 3 == 0 
+                                ? Colors.grey.shade300 
+                                : Colors.grey.shade100,
+                            width: hour % 3 == 0 ? 1.0 : 0.5,
+                          ),
                         ),
                       ),
                     );
                   }).toList(),
                 ),
-                // 任务和日志
-                ...tasks.map((task) => _buildTaskInTimeline(task)),
+                // 当前时间线
+                if (TimeUtils.isToday(_currentDate))
+                  _buildCurrentTimeLine(),
+                // 任务和日志（使用改进的布局算法）
+                ..._buildTasksWithLayout(tasks),
                 ...logs.map((log) => _buildLogInTimeline(log)),
               ],
             ),
@@ -1292,22 +1338,359 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     );
   }
 
-  // 在时间轴中显示任务
+  // 为任务计算布局（避免重叠）
+  List<Widget> _buildTasksWithLayout(List<CalendarTask> tasks) {
+    if (tasks.isEmpty) return [];
+    
+    // 为每个任务计算时间范围
+    List<Map<String, dynamic>> taskInfos = [];
+    for (var task in tasks) {
+      if (task.startTime == null || task.endTime == null) continue;
+      
+      try {
+        final taskStartTime = _parseTaskTime(task.startTime!);
+        final taskEndTime = _parseTaskTime(task.endTime!);
+        
+        final currentViewDate = _currentDate;
+        final dayStart = DateTime(currentViewDate.year, currentViewDate.month, currentViewDate.day, 0, 0, 0);
+        final dayEnd = DateTime(currentViewDate.year, currentViewDate.month, currentViewDate.day, 23, 59, 59);
+        
+        DateTime displayStartTime;
+        DateTime displayEndTime;
+        
+        if (taskStartTime.isBefore(dayStart)) {
+          displayStartTime = dayStart;
+        } else {
+          displayStartTime = taskStartTime;
+        }
+        
+        if (taskEndTime.isAfter(dayEnd)) {
+          displayEndTime = dayEnd;
+        } else {
+          displayEndTime = taskEndTime;
+        }
+        
+        if (displayStartTime.isAfter(dayEnd) || displayEndTime.isBefore(dayStart)) {
+          continue;
+        }
+        
+        final startHour = displayStartTime.hour + displayStartTime.minute / 60.0;
+        final endHour = displayEndTime.hour + displayEndTime.minute / 60.0;
+        
+        taskInfos.add({
+          'task': task,
+          'startHour': startHour,
+          'endHour': endHour,
+          'displayStartTime': displayStartTime,
+          'displayEndTime': displayEndTime,
+          'column': 0, // 将在下面分配
+          'maxColumns': 1,
+        });
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    // 按开始时间排序
+    taskInfos.sort((a, b) => a['startHour'].compareTo(b['startHour']));
+    
+    // 分配列（避免重叠）
+    for (int i = 0; i < taskInfos.length; i++) {
+      final currentTask = taskInfos[i];
+      int column = 0;
+      
+      // 检查与之前任务的重叠
+      for (int j = 0; j < i; j++) {
+        final previousTask = taskInfos[j];
+        
+        // 如果时间重叠
+        if (currentTask['startHour'] < previousTask['endHour']) {
+          // 尝试下一列
+          if (previousTask['column'] == column) {
+            column++;
+          }
+        }
+      }
+      
+      currentTask['column'] = column;
+      
+      // 更新所有重叠任务的最大列数
+      int maxColumns = column + 1;
+      for (int j = 0; j < taskInfos.length; j++) {
+        final otherTask = taskInfos[j];
+        if (i != j && 
+            currentTask['startHour'] < otherTask['endHour'] && 
+            currentTask['endHour'] > otherTask['startHour']) {
+          otherTask['maxColumns'] = maxColumns > otherTask['maxColumns'] ? maxColumns : otherTask['maxColumns'];
+          currentTask['maxColumns'] = maxColumns;
+        }
+      }
+    }
+    
+    // 生成 Widget
+    return taskInfos.map((info) {
+      return _buildTaskInTimelineWithPosition(
+        info['task'],
+        info['startHour'],
+        info['endHour'],
+        info['displayStartTime'],
+        info['displayEndTime'],
+        info['column'],
+        info['maxColumns'],
+      );
+    }).toList();
+  }
+
+  // 在时间轴中显示任务（带位置信息）
+  Widget _buildTaskInTimelineWithPosition(
+    CalendarTask task,
+    double startHour,
+    double endHour,
+    DateTime displayStartTime,
+    DateTime displayEndTime,
+    int column,
+    int maxColumns,
+  ) {
+    try {
+      final taskStartTime = _parseTaskTime(task.startTime!);
+      final taskEndTime = _parseTaskTime(task.endTime!);
+      
+      final duration = endHour - startHour;
+      if (duration <= 0) return const SizedBox.shrink();
+      
+      // 判断是否为跨天任务
+      final isMultiDay = taskStartTime.day != taskEndTime.day || 
+                         taskStartTime.month != taskEndTime.month || 
+                         taskStartTime.year != taskEndTime.year;
+      
+      // 根据优先级和状态选择颜色
+      Color cardColor;
+      Color borderColor;
+      List<Color> gradientColors;
+      
+      if (task.status == 'completed') {
+        cardColor = Colors.green.shade400;
+        borderColor = Colors.green.shade600;
+        gradientColors = [Colors.green.shade300, Colors.green.shade500];
+      } else {
+        switch (task.priority) {
+          case 'high':
+            cardColor = Colors.red.shade400;
+            borderColor = Colors.red.shade700;
+            gradientColors = [Colors.red.shade300, Colors.red.shade600];
+            break;
+          case 'medium':
+            cardColor = Colors.orange.shade400;
+            borderColor = Colors.orange.shade700;
+            gradientColors = [Colors.orange.shade300, Colors.orange.shade600];
+            break;
+          default:
+            cardColor = Colors.blue.shade400;
+            borderColor = Colors.blue.shade300;
+            gradientColors = [Colors.blue.shade50, Colors.blue.shade100];
+        }
+      }
+      
+      // 使用 Align 和 FractionallySizedBox 来处理相对宽度和位置
+      return Positioned(
+        top: startHour * 60,
+        left: 0,
+        right: 0,
+        height: duration * 60 - 4,
+        child: Align(
+          alignment: Alignment((column / maxColumns) * 2 - 1 + (1.0 / maxColumns), 0),
+          child: FractionallySizedBox(
+            widthFactor: (1.0 / maxColumns) * 0.95,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: gradientColors,
+                ),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: borderColor,
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: borderColor.withOpacity(0.3),
+                    spreadRadius: 1,
+                    blurRadius: 4,
+                    offset: const Offset(1, 2),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 标题行
+                    Row(
+                      children: [
+                        Icon(
+                          task.status == 'completed' 
+                              ? Icons.check_circle_rounded
+                              : Icons.circle_outlined,
+                          size: 14,
+                          color: Colors.blue.shade900,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            task.title,
+                            style: TextStyle(
+                              color: Colors.blue.shade900,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              decoration: task.status == 'completed' 
+                                  ? TextDecoration.lineThrough 
+                                  : null,
+                            ),
+                            maxLines: duration * 60 > 40 ? 2 : 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // 如果是跨天任务，显示标记
+                        if (isMultiDay)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade100.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: Colors.blue.shade300,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              '跨天',
+                              style: TextStyle(
+                                color: Colors.blue.shade900,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    // 时间范围
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.access_time_rounded,
+                          size: 12,
+                          color: Colors.blue.shade800,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            '${displayStartTime.hour.toString().padLeft(2, '0')}:${displayStartTime.minute.toString().padLeft(2, '0')} - ${displayEndTime.hour.toString().padLeft(2, '0')}:${displayEndTime.minute.toString().padLeft(2, '0')}',
+                            style: TextStyle(
+                              color: Colors.blue.shade800,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    // 如果是跨天任务，显示总时间范围
+                    if (isMultiDay && duration * 60 > 35)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            '总: ${DateFormat('M/d HH:mm').format(taskStartTime)} - ${DateFormat('M/d HH:mm').format(taskEndTime)}',
+                            style: TextStyle(
+                              color: Colors.blue.shade800,
+                              fontSize: 10,
+                            ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    // 描述（如果有足够高度）
+                    if (duration * 60 > 60 && task.description.isNotEmpty)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            task.description,
+                            style: TextStyle(
+                              color: Colors.blue.shade800,
+                              fontSize: 11,
+                              height: 1.3,
+                            ),
+                            maxLines: ((duration * 60 - 60) / 15).floor(),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      print('显示任务时出错: $e');
+      return const SizedBox.shrink();
+    }
+  }
+
+  // 在时间轴中显示任务（支持跨天任务）
   Widget _buildTaskInTimeline(CalendarTask task) {
     if (task.startTime == null || task.endTime == null) {
       return const SizedBox.shrink();
     }
     
     try {
-      final startTime = DateTime.parse(task.startTime!);
-      final endTime = DateTime.parse(task.endTime!);
+      final taskStartTime = _parseTaskTime(task.startTime!);
+      final taskEndTime = _parseTaskTime(task.endTime!);
       
-      final startHour = startTime.hour + startTime.minute / 60.0;
-      final endHour = endTime.hour + endTime.minute / 60.0;
+      // 当前查看的日期（日视图的日期）
+      final currentViewDate = _currentDate;
+      final dayStart = DateTime(currentViewDate.year, currentViewDate.month, currentViewDate.day, 0, 0, 0);
+      final dayEnd = DateTime(currentViewDate.year, currentViewDate.month, currentViewDate.day, 23, 59, 59);
+      
+      // 计算任务在当天应该显示的时间段
+      DateTime displayStartTime;
+      DateTime displayEndTime;
+      
+      // 如果任务在当天开始之前就开始了，从00:00开始显示
+      if (taskStartTime.isBefore(dayStart)) {
+        displayStartTime = dayStart;
+      } else {
+        displayStartTime = taskStartTime;
+      }
+      
+      // 如果任务在当天结束之后才结束，显示到23:59
+      if (taskEndTime.isAfter(dayEnd)) {
+        displayEndTime = dayEnd;
+      } else {
+        displayEndTime = taskEndTime;
+      }
+      
+      // 如果任务不在当天的时间范围内，不显示
+      if (displayStartTime.isAfter(dayEnd) || displayEndTime.isBefore(dayStart)) {
+        return const SizedBox.shrink();
+      }
+      
+      final startHour = displayStartTime.hour + displayStartTime.minute / 60.0;
+      final endHour = displayEndTime.hour + displayEndTime.minute / 60.0;
       final duration = endHour - startHour;
       
       if (duration <= 0) return const SizedBox.shrink();
 
+      // 判断是否为跨天任务
+      final isMultiDay = taskStartTime.day != taskEndTime.day || 
+                         taskStartTime.month != taskEndTime.month || 
+                         taskStartTime.year != taskEndTime.year;
+      
       return Positioned(
         top: startHour * 60,
         left: 4,
@@ -1357,16 +1740,42 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    // 如果是跨天任务，显示一个标记
+                    if (isMultiDay)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: const Text(
+                          '跨天',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')} - ${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}',
+                  '${displayStartTime.hour.toString().padLeft(2, '0')}:${displayStartTime.minute.toString().padLeft(2, '0')} - ${displayEndTime.hour.toString().padLeft(2, '0')}:${displayEndTime.minute.toString().padLeft(2, '0')}',
                   style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 10,
                   ),
                 ),
+                // 如果是跨天任务，显示总时间范围
+                if (isMultiDay && duration * 60 > 30)
+                  Text(
+                    '总时间: ${DateFormat('M/d HH:mm').format(taskStartTime)} - ${DateFormat('M/d HH:mm').format(taskEndTime)}',
+                    style: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 9,
+                    ),
+                  ),
                 if (duration * 60 > 50 && task.description.isNotEmpty)
                   Expanded(
                     child: Padding(
@@ -1388,6 +1797,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         ),
       );
     } catch (e) {
+      print('显示任务时出错: $e');
       return const SizedBox.shrink();
     }
   }
@@ -1396,6 +1806,85 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   Widget _buildLogInTimeline(CalendarLog log) {
     // 日志当前没有时间字段，所以不在时间轴中显示
     return const SizedBox.shrink();
+  }
+
+  // 显示当前时间线
+  Widget _buildCurrentTimeLine() {
+    final now = TimeUtils.getBeijingTime();
+    final currentHour = TimeUtils.getHourWithMinutes(now);
+    final topPosition = (currentHour * 60).clamp(0.0, 60.0 * 24 - 1.0);
+    
+    return Positioned(
+      top: topPosition,
+      left: 0,
+      right: 0,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth <= 0) {
+            return const SizedBox.shrink();
+          }
+          return Row(
+            children: [
+              // 时间标签
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.red.withOpacity(0.5),
+                      spreadRadius: 1,
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+                child: Text(
+                  '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              // 时间线
+              Expanded(
+                child: Container(
+                  height: 2,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        Colors.red,
+                        Colors.red.withOpacity(0.3),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // 圆点
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.red.withOpacity(0.5),
+                      spreadRadius: 2,
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   // 无时间段区域
@@ -3479,14 +3968,11 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     }
 
     try {
-      // 解析 ISO 8601 格式的字符串 (例如: 2025-10-01T02:00:00.000Z)
-      final dateTime = DateTime.parse(dateTimeStr);
-
-      // 转换为本地时区
-      final localDateTime = dateTime.toLocal();
+      // 解析任务时间并转换为北京时间（加8小时）
+      final dateTime = _parseTaskTime(dateTimeStr);
 
       // 格式化为中文格式: 2025年10月1日 10:00
-      return DateFormat('yyyy年M月d日 HH:mm', 'zh_CN').format(localDateTime);
+      return DateFormat('yyyy年M月d日 HH:mm', 'zh_CN').format(dateTime);
     } catch (e) {
       // 如果解析失败，返回原字符串
       return dateTimeStr;
@@ -3739,9 +4225,9 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   // 格式化日志创建时间
   String _formatLogCreatedTime(String timeStr) {
     try {
-      final dateTime = DateTime.parse(timeStr);
-      final localDateTime = dateTime.toLocal();
-      return DateFormat('HH:mm', 'zh_CN').format(localDateTime);
+      // 解析日志时间并转换为北京时间（减8小时）
+      final dateTime = _parseLogTime(timeStr);
+      return DateFormat('HH:mm', 'zh_CN').format(dateTime);
     } catch (e) {
       return '';
     }
@@ -4134,11 +4620,17 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
     );
   }
 
+  // 解析日志时间并转换为北京时间（减8小时）
+  DateTime _parseLogTime(String timeStr) {
+    final dateTime = DateTime.parse(timeStr);
+    return dateTime.subtract(const Duration(hours: 8));
+  }
+
   String _formatLogTime(String timeStr) {
     try {
-      final dateTime = DateTime.parse(timeStr);
-      final localDateTime = dateTime.toLocal();
-      return DateFormat('HH:mm', 'zh_CN').format(localDateTime);
+      // 解析日志时间并转换为北京时间（减8小时）
+      final dateTime = _parseLogTime(timeStr);
+      return DateFormat('HH:mm', 'zh_CN').format(dateTime);
     } catch (e) {
       return '';
     }
@@ -4662,7 +5154,7 @@ class _MonthlyTasksDialogState extends State<_MonthlyTasksDialog> {
                               Text(
                                 task.isAllDay == true
                                     ? '全天'
-                                    : '${DateFormat('HH:mm').format(DateTime.parse(task.startTime!))} - ${DateFormat('HH:mm').format(DateTime.parse(task.endTime!))}',
+                                    : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!))} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!))}',
                                 style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                               ),
                             ],
@@ -4684,5 +5176,11 @@ class _MonthlyTasksDialogState extends State<_MonthlyTasksDialog> {
         ),
       ),
     );
+  }
+
+  // 解析任务时间并转换为北京时间（加8小时）
+  DateTime _parseTaskTime(String timeStr) {
+    final dateTime = DateTime.parse(timeStr);
+    return dateTime.add(const Duration(hours: 8));
   }
 }

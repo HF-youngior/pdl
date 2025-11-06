@@ -12,7 +12,7 @@ chcp 65001 >nul
 set DB_HOST=localhost
 set DB_PORT=3306
 set DB_USER=root
-set DB_PASSWORD=Pyx_07091817
+set DB_PASSWORD=23301144
 set SCRIPT_DIR=%~dp0
 
 :: 连接字符串

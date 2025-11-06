@@ -104,7 +104,7 @@ curl http://localhost:3000/api/important-items
 
 ### 如果数据库检查失败
 1. 确认MySQL服务正在运行
-2. 确认密码 `Pyx_07091817` 正确
+2. 确认密码 `23301144` 正确
 3. 重新运行 `init_enterprise_db_final.bat`
 
 ### 如果API测试失败

@@ -33,7 +33,7 @@ app.use('/', express.static(path.join(__dirname, 'public')));
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Pyx_07091817',
+  password: process.env.DB_PASSWORD || '23301144',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
   charset: 'utf8mb4',
@@ -1478,7 +1478,17 @@ app.get('/api/tasks/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: '任务不存在或无权限查看' });
     }
 
-    res.json(rows[0]);
+    // 处理时区 - 将所有时间字段转换为北京时间格式
+    const taskWithTimezone = {
+      ...rows[0],
+      start_time: formatDateTimeForBeijing(rows[0].start_time),
+      end_time: formatDateTimeForBeijing(rows[0].end_time),
+      deadline: formatDateTimeForBeijing(rows[0].deadline),
+      created_at: formatDateTimeForBeijing(rows[0].created_at),
+      updated_at: formatDateTimeForBeijing(rows[0].updated_at)
+    };
+
+    res.json(taskWithTimezone);
   } catch (error) {
     console.error('获取任务详情错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
@@ -2326,11 +2336,57 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
       };
     }
     
-    // 填充任务数据
+    // 填充任务数据（处理跨天任务）
     tasks.forEach(task => {
-      if (task.task_date) {
-        const dateKey = task.task_date;
-        console.log(`  任务 "${task.title}" 的日期: ${dateKey}, 日历中是否存在: ${!!calendar[dateKey]}`);
+      // 如果任务有开始和结束时间，在每一天都显示
+      if (task.start_time && task.end_time) {
+        const startDate = new Date(task.start_time);
+        const endDate = new Date(task.end_time);
+        
+        // 生成从开始日期到结束日期的所有日期
+        const currentDate = new Date(startDate);
+        currentDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        
+        while (currentDate <= endDate) {
+          const year = currentDate.getFullYear();
+          const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+          const day = String(currentDate.getDate()).padStart(2, '0');
+          const dateKey = `${year}-${month}-${day}`;
+          
+          if (calendar[dateKey]) {
+            // 检查是否已添加该任务（避免重复）
+            const exists = calendar[dateKey].tasks.some(t => t.id === task.id);
+            if (!exists) {
+              calendar[dateKey].tasks.push({
+                id: task.id,
+                title: task.title,
+                description: task.description,
+                status: task.status,
+                priority: task.priority,
+                color: task.color,
+                start_time: formatDateTimeForBeijing(task.start_time),
+                end_time: formatDateTimeForBeijing(task.end_time),
+                deadline: formatDateTimeForBeijing(task.deadline),
+                is_all_day: task.is_all_day,
+                assignee_name: task.assignee_name
+              });
+              calendar[dateKey].hasData = true;
+            }
+          }
+          
+          // 移动到下一天
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+      } 
+      // 如果只有截止日期，在截止日期显示
+      else if (task.deadline) {
+        const deadlineDate = new Date(task.deadline);
+        const year = deadlineDate.getFullYear();
+        const month = String(deadlineDate.getMonth() + 1).padStart(2, '0');
+        const day = String(deadlineDate.getDate()).padStart(2, '0');
+        const dateKey = `${year}-${month}-${day}`;
+        
         if (calendar[dateKey]) {
           calendar[dateKey].tasks.push({
             id: task.id,
@@ -2339,9 +2395,29 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
             status: task.status,
             priority: task.priority,
             color: task.color,
-            start_time: task.start_time,
-            end_time: task.end_time,
-            deadline: task.deadline,
+            start_time: formatDateTimeForBeijing(task.start_time),
+            end_time: formatDateTimeForBeijing(task.end_time),
+            deadline: formatDateTimeForBeijing(task.deadline),
+            is_all_day: task.is_all_day,
+            assignee_name: task.assignee_name
+          });
+          calendar[dateKey].hasData = true;
+        }
+      }
+      // 如果只有开始时间，在开始日期显示
+      else if (task.task_date) {
+        const dateKey = task.task_date;
+        if (calendar[dateKey]) {
+          calendar[dateKey].tasks.push({
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            status: task.status,
+            priority: task.priority,
+            color: task.color,
+            start_time: formatDateTimeForBeijing(task.start_time),
+            end_time: formatDateTimeForBeijing(task.end_time),
+            deadline: formatDateTimeForBeijing(task.deadline),
             is_all_day: task.is_all_day,
             assignee_name: task.assignee_name
           });
@@ -2363,7 +2439,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
             category: log.category,
             quadrant: log.quadrant,
             is_completed: log.is_completed,
-            created_at: log.created_at
+            created_at: formatDateTimeForBeijing(log.created_at)
           });
           calendar[dateKey].hasData = true;
         }
@@ -2527,7 +2603,7 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
     const startDate = `${date} 00:00:00`;
     const endDate = `${date} 23:59:59`;
     
-    // 获取该日期的所有任务
+    // 获取该日期的所有任务（包括跨天任务）
     let taskQuery = `
       SELECT 
         t.*,
@@ -2538,20 +2614,16 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
       LEFT JOIN users u ON t.created_by = u.id
       WHERE t.assignee_id = ?
       AND (
-        (t.start_time >= ? AND t.start_time <= ?)
-        OR (t.end_time >= ? AND t.end_time <= ?)
-        OR (t.deadline >= ? AND t.deadline <= ?)
-        OR (DATE(t.start_time) = ? OR DATE(t.end_time) = ? OR DATE(t.deadline) = ?)
+        (DATE(t.start_time) <= ? AND DATE(t.end_time) >= ?)
+        OR (t.deadline IS NOT NULL AND DATE(t.deadline) = ?)
       )
       ORDER BY t.start_time, t.priority
     `;
     
     const [tasks] = await db.execute(taskQuery, [
       req.user.id,
-      startDate, endDate,
-      startDate, endDate,
-      startDate, endDate,
-      date, date, date
+      date, date,
+      date
     ]);
     
     // 获取该日期的所有日志
@@ -2582,9 +2654,9 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         status: t.status,
         priority: t.priority,
         color: t.color,
-        start_time: t.start_time,
-        end_time: t.end_time,
-        deadline: t.deadline,
+        start_time: formatDateTimeForBeijing(t.start_time),
+        end_time: formatDateTimeForBeijing(t.end_time),
+        deadline: formatDateTimeForBeijing(t.deadline),
         is_all_day: t.is_all_day,
         assignee_name: t.assignee_name
       })),
@@ -2595,7 +2667,7 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         category: l.category,
         quadrant: l.quadrant,
         is_completed: l.is_completed,
-        created_at: l.created_at
+        created_at: formatDateTimeForBeijing(l.created_at)
       })),
       summary: {
         totalTasks: tasks.length,

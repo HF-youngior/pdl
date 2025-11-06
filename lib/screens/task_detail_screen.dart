@@ -179,6 +179,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
+  // 格式化日期时间，处理时区问题
+  String _formatDateTime(DateTime dateTime) {
+    // DateTime 对象已经是正确的时区，直接格式化即可
+    return DateFormat('yyyy-MM-dd HH:mm').format(dateTime);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_currentTask == null) {
@@ -372,20 +378,20 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         _buildInfoRow(
                           icon: Icons.play_arrow,
                           label: '开始时间',
-                          value: DateFormat('yyyy-MM-dd HH:mm').format(task.startTime),
+                          value: _formatDateTime(task.startTime),
                         ),
                       if (task.startTime != null) const SizedBox(height: 8),
                       if (task.deadline != null)
                         _buildInfoRow(
                           icon: Icons.schedule,
                           label: '截止时间',
-                          value: DateFormat('yyyy-MM-dd HH:mm').format(task.deadline!),
+                          value: _formatDateTime(task.deadline!),
                         ),
                       if (task.deadline != null) const SizedBox(height: 8),
                       _buildInfoRow(
                         icon: Icons.access_time,
                         label: '创建时间',
-                        value: DateFormat('yyyy-MM-dd HH:mm').format(task.createdAt),
+                        value: _formatDateTime(task.createdAt),
                       ),
                       if (task.location != null && task.location!.isNotEmpty) ...[
                         const SizedBox(height: 8),

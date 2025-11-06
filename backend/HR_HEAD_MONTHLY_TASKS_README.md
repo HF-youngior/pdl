@@ -100,7 +100,7 @@
 ### 方法1：使用MySQL命令行
 ```bash
 cd backend
-mysql -h localhost -u root -pPyx_07091817 enterprise_management --default-character-set=utf8mb4 -e "source add_hr_head_monthly_tasks.sql"
+mysql -h localhost -u root -p23301144 enterprise_management --default-character-set=utf8mb4 -e "source add_hr_head_monthly_tasks.sql"
 ```
 
 ### 方法2：使用批处理文件（需要修改密码）
