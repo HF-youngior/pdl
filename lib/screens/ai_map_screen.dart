@@ -272,53 +272,178 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     }
   }
 
-  // 创建MBTI记录
-  Future<void> _createMbtiRecord() async {
-    setState(() { _loading = true; });
-    try {
-      // 模拟MBTI测试数据
-      final testData = {
-        'mbti_type': 'ENFP',
-        'test_scores': {
-          'E': 75,
-          'N': 80,
-          'F': 70,
-          'P': 65,
-          'total_score': 290
-        },
-        'personality_traits': {
-          'extroversion': '外向型，善于社交和沟通',
-          'intuition': '直觉型，喜欢探索新可能性',
-          'feeling': '情感型，重视人际关系和价值观',
-          'perceiving': '感知型，灵活适应环境变化'
-        },
-        'personal_info': {
-          'full_name': '测试用户',
-          'birth_date': '1990-01-01',
-          'address': '测试地址'
-        }
-      };
+  // 清理不完整的MBTI记录
+  Future<void> _cleanIncompleteMbtiRecords() async {
+    // 确认对话框
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认清理'),
+        content: const Text(
+          '将删除以下不完整的MBTI记录：\n'
+          '• 缺少MBTI类型的记录\n'
+          '• 缺少测试日期的记录\n'
+          '• 缺少测试分数的记录\n'
+          '• 同一天同一类型的重复记录（保留最新的）\n\n'
+          '此操作不可恢复，确定要继续吗？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('确定清理', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
 
-      final response = await http.post(
+    if (confirmed != true) return;
+
+    setState(() { _loading = true; });
+
+    try {
+      // 获取所有记录
+      final allRecordsResponse = await http.get(
         Uri.parse('${ApiService.baseUrl}/mbti-records'),
         headers: ApiService.getAuthHeaders(),
-        body: jsonEncode(testData),
       );
 
-      if (response.statusCode == 201) {
+      if (allRecordsResponse.statusCode != 200) {
+        throw Exception('获取记录失败');
+      }
+
+      final allData = jsonDecode(allRecordsResponse.body);
+      List<Map<String, dynamic>> allRecords = List<Map<String, dynamic>>.from(allData['records'] ?? []);
+
+      // 找出需要删除的记录
+      List<String> recordsToDelete = [];
+      Map<String, Map<String, dynamic>> dateTypeMap = {}; // 用于去重：日期_MBTI类型 -> 记录
+
+      for (var record in allRecords) {
+        final mbtiType = record['mbti_type']?.toString() ?? '';
+        final testDate = record['test_date']?.toString() ?? '';
+        final testScores = record['test_scores'];
+        final id = record['id']?.toString() ?? '';
+
+        // 检查是否不完整
+        bool isIncomplete = false;
+        if (mbtiType.isEmpty) {
+          isIncomplete = true;
+        } else if (testDate.isEmpty) {
+          isIncomplete = true;
+        } else if (testScores == null) {
+          isIncomplete = true;
+        }
+
+        if (isIncomplete) {
+          recordsToDelete.add(id);
+          continue;
+        }
+
+        // 检查重复：同一天同一类型只保留最新的
+        try {
+          final dateTime = DateTime.parse(testDate);
+          final dateKey = '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}_$mbtiType';
+
+          if (!dateTypeMap.containsKey(dateKey)) {
+            dateTypeMap[dateKey] = record;
+          } else {
+            // 比较创建时间，保留最新的
+            final existingRecord = dateTypeMap[dateKey]!;
+            final existingCreatedAt = existingRecord['created_at']?.toString();
+            final currentCreatedAt = record['created_at']?.toString();
+
+            if (currentCreatedAt != null && existingCreatedAt != null) {
+              try {
+                final existing = DateTime.parse(existingCreatedAt);
+                final current = DateTime.parse(currentCreatedAt);
+                if (current.isAfter(existing)) {
+                  // 当前记录更新，删除旧的
+                  recordsToDelete.add(existingRecord['id']?.toString() ?? '');
+                  dateTypeMap[dateKey] = record;
+                } else {
+                  // 旧记录更新，删除当前的
+                  recordsToDelete.add(id);
+                }
+              } catch (e) {
+                // 解析失败，比较test_date
+                try {
+                  final existingTestDate = DateTime.parse(existingRecord['test_date']?.toString() ?? '');
+                  final currentTestDate = DateTime.parse(testDate);
+                  if (currentTestDate.isAfter(existingTestDate)) {
+                    recordsToDelete.add(existingRecord['id']?.toString() ?? '');
+                    dateTypeMap[dateKey] = record;
+                  } else {
+                    recordsToDelete.add(id);
+                  }
+                } catch (e2) {
+                  // 如果都解析失败，保留第一个
+                  recordsToDelete.add(id);
+                }
+              }
+            } else {
+              // 如果无法比较，保留第一个
+              recordsToDelete.add(id);
+            }
+          }
+        } catch (e) {
+          // 日期解析失败，标记为不完整
+          recordsToDelete.add(id);
+        }
+      }
+
+      // 删除记录
+      int deletedCount = 0;
+      int failedCount = 0;
+
+      for (var id in recordsToDelete) {
+        if (id.isEmpty) continue;
+        try {
+          final deleteResponse = await http.delete(
+            Uri.parse('${ApiService.baseUrl}/mbti-records/$id'),
+            headers: ApiService.getAuthHeaders(),
+          );
+
+          if (deleteResponse.statusCode == 200) {
+            deletedCount++;
+          } else {
+            failedCount++;
+          }
+        } catch (e) {
+          failedCount++;
+        }
+      }
+
+      // 重新加载记录列表
+      await _loadMbtiRecords();
+
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('MBTI记录创建成功')),
-        );
-        _loadMbtiRecords(); // 重新加载记录列表
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('创建失败: ${response.body}')),
+          SnackBar(
+            content: Text(
+              deletedCount > 0
+                  ? '清理完成：已删除 $deletedCount 条记录${failedCount > 0 ? "，$failedCount 条删除失败" : ""}'
+                  : '没有需要清理的记录',
+            ),
+            backgroundColor: deletedCount > 0 ? Colors.green : Colors.blue,
+          ),
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('创建失败: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('清理失败: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       setState(() { _loading = false; });
     }
@@ -859,7 +984,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
             Tab(text: '词云分析', icon: Icon(Icons.cloud, size: 20)),
             Tab(text: '性格分析', icon: Icon(Icons.psychology, size: 20)),
             Tab(text: 'MBTI记录', icon: Icon(Icons.assessment, size: 20)),
-            Tab(text: '历史记录', icon: Icon(Icons.history, size: 20)),
+            Tab(text: '词云历史', icon: Icon(Icons.history, size: 20)),
           ],
         ),
       ),
@@ -1390,29 +1515,29 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 创建MBTI记录按钮
+            // 清理不完整记录按钮
             Container(
               width: double.infinity,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF10B981), Color(0xFF059669)],
+                  colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF10B981).withOpacity(0.3),
+                    color: const Color(0xFFEF4444).withOpacity(0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
                 ],
               ),
               child: ElevatedButton.icon(
-                onPressed: _loading ? null : _createMbtiRecord,
-                icon: const Icon(Icons.add, color: Colors.white),
+                onPressed: _loading ? null : _cleanIncompleteMbtiRecords,
+                icon: const Icon(Icons.cleaning_services, color: Colors.white),
                 label: Text(
-                  _loading ? '创建中...' : '创建MBTI记录',
+                  _loading ? '清理中...' : '清理不完整记录',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -1627,7 +1752,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              '点击上方按钮创建您的第一条MBTI记录',
+                              '完成MBTI测试后，记录将自动显示在这里',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey[500],
@@ -1757,58 +1882,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   }
   
   Widget _buildHistoryTab() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: DefaultTabController(
-        length: 2,
-        child: Column(
-          children: [
-            Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFF1E3A8A),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-              ),
-              child: const TabBar(
-                indicatorColor: Colors.white,
-                indicatorWeight: 3,
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white70,
-                labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                unselectedLabelStyle: TextStyle(fontWeight: FontWeight.normal, fontSize: 14),
-                tabs: [
-                  Tab(text: '词云历史', icon: Icon(Icons.cloud, size: 18)),
-                  Tab(text: '性格历史', icon: Icon(Icons.psychology, size: 18)),
-                ],
-              ),
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _buildWordCloudHistory(),
-                  _buildPersonalityHistory(),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return _buildWordCloudHistory();
   }
   
   Widget _buildWordCloudHistory() {
