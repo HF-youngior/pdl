@@ -33,7 +33,7 @@ class CalendarWidget extends StatefulWidget {
 
 class _CalendarWidgetState extends State<CalendarWidget> {
   CalendarView _currentView = CalendarView.month;
-  DateTime _currentDate = TimeUtils.getBeijingTime();
+  DateTime _currentDate = TimeUtils.getSystemTime();
   MonthViewData? _monthViewData;
   Map<String, DayDetailData> _weekViewData = {}; // 周视图数据
   DayDetailData? _dayViewData; // 日视图数据
@@ -740,7 +740,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     // 如果有开始和结束时间，使用它们
     if (task.startTime != null && task.endTime != null) {
       try {
-        // 解析任务时间并转换为北京时间（加8小时）
+  // 解析任务时间并转换为系统本地时间
         final taskStartDate = _parseTaskTime(task.startTime!);
         final taskEndDate = _parseTaskTime(task.endTime!);
         // 提取日期部分用于比较
@@ -861,16 +861,16 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     );
   }
 
-  // 解析任务时间并转换为北京时间（加8小时）
+  // 解析任务时间并转换为系统本地时间
   DateTime _parseTaskTime(String timeStr) {
     final dateTime = DateTime.parse(timeStr);
-    return dateTime.add(const Duration(hours: 8));
+    return dateTime.toLocal();
   }
 
-  // 解析日志时间并转换为北京时间（减8小时）
+  // 解析日志时间并转换为系统本地时间
   DateTime _parseLogTime(String timeStr) {
     final dateTime = DateTime.parse(timeStr);
-    return dateTime.subtract(const Duration(hours: 8));
+    return dateTime.toLocal();
   }
 
   // 构建甘特图横条
@@ -1403,9 +1403,9 @@ class _CalendarWidgetState extends State<CalendarWidget> {
             ),
             child: Column(
               children: hours.map((hour) {
-                final beijingNow = TimeUtils.getBeijingTime();
-                final isCurrentHour = beijingNow.hour == hour &&
-                    TimeUtils.isSameDay(beijingNow, _currentDate);
+                final systemNow = TimeUtils.getSystemTime();
+                final isCurrentHour = systemNow.hour == hour &&
+                    TimeUtils.isSameDay(systemNow, _currentDate);
                 
                 return Container(
                   height: 60,
@@ -1739,7 +1739,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                           child: Text(
-                            '总: ${DateFormat('M/d HH:mm').format(taskStartTime)} - ${DateFormat('M/d HH:mm').format(taskEndTime)}',
+                            '总: ${DateFormat('M/d HH:mm').format(taskStartTime.add(const Duration(hours: 8)))} - ${DateFormat('M/d HH:mm').format(taskEndTime.add(const Duration(hours: 8)))}',
                             style: TextStyle(
                               color: Colors.blue.shade800,
                               fontSize: 10,
@@ -1905,7 +1905,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                 // 如果是跨天任务，显示总时间范围
                 if (isMultiDay && duration * 60 > 30)
                   Text(
-                    '总时间: ${DateFormat('M/d HH:mm').format(taskStartTime)} - ${DateFormat('M/d HH:mm').format(taskEndTime)}',
+                    '总时间: ${DateFormat('M/d HH:mm').format(taskStartTime.add(const Duration(hours: 8)))} - ${DateFormat('M/d HH:mm').format(taskEndTime.add(const Duration(hours: 8)))}',
                     style: const TextStyle(
                       color: Colors.white60,
                       fontSize: 9,
@@ -1945,7 +1945,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
 
   // 显示当前时间线
   Widget _buildCurrentTimeLine() {
-    final now = TimeUtils.getBeijingTime();
+    final now = TimeUtils.getSystemTime();
     final currentHour = TimeUtils.getHourWithMinutes(now);
     final topPosition = (currentHour * 60).clamp(0.0, 60.0 * 24 - 1.0);
     
@@ -4037,18 +4037,20 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     }
   }
 
-  // 格式化时间字符串为易读的中文格式
+  // 格式化时间字符串为易读的中文格式（增加8小时）
   String _formatDateTimeString(String? dateTimeStr) {
     if (dateTimeStr == null || dateTimeStr.isEmpty) {
       return '';
     }
 
     try {
-      // 解析任务时间并转换为北京时间（加8小时）
+      // 解析任务时间并转换为系统本地时间
       final dateTime = _parseTaskTime(dateTimeStr);
+      // 增加8小时
+      final adjustedDateTime = dateTime.add(const Duration(hours: 8));
 
       // 格式化为 YYYY-MM-DD HH:MM:SS 格式
-      return DateFormat('yyyy-MM-dd HH:mm:ss').format(dateTime);
+      return DateFormat('yyyy-MM-dd HH:mm:ss').format(adjustedDateTime);
     } catch (e) {
       // 如果解析失败，返回原字符串
       return dateTimeStr;
@@ -4299,7 +4301,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                 Text(
                                   task.isAllDay == true
                                       ? '全天任务'
-                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!))} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!))}',
+                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!).add(const Duration(hours: 8)))} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!).add(const Duration(hours: 8)))}',
                                   style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                                 ),
                               ],
@@ -4539,7 +4541,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                 Text(
                                   task.isAllDay == true
                                       ? '全天任务'
-                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!))} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!))}',
+                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!).add(const Duration(hours: 8)))} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!).add(const Duration(hours: 8)))}',
                                   style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                                 ),
                               ],
@@ -4990,13 +4992,15 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     );
   }
 
-  // 格式化日志创建时间
+  // 格式化日志创建时间（增加8小时）
   String _formatLogCreatedTime(String timeStr) {
     try {
-      // 解析日志时间并转换为北京时间（减8小时）
+      // 解析日志时间并转换为系统本地时间
       final dateTime = _parseLogTime(timeStr);
+      // 增加8小时
+      final adjustedDateTime = dateTime.add(const Duration(hours: 8));
       // 格式化为 YYYY-MM-DD HH:MM:SS 格式
-      return DateFormat('yyyy-MM-dd HH:mm:ss').format(dateTime);
+      return DateFormat('yyyy-MM-dd HH:mm:ss').format(adjustedDateTime);
     } catch (e) {
       return '';
     }
@@ -5370,15 +5374,7 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
                         ),
                       ),
                     const Spacer(),
-                    // 时间
-                    if (log.createdAt != null)
-                      Text(
-                        _formatLogTime(log.createdAt.toString()),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: textColor.withOpacity(0.8),
-                        ),
-                      ),
+                    // 时间 - 已移除
                   ],
                 ),
               ],
@@ -5389,15 +5385,15 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
     );
   }
 
-  // 解析日志时间并转换为北京时间（减8小时）
+  // 解析日志时间并转换为系统本地时间
   DateTime _parseLogTime(String timeStr) {
     final dateTime = DateTime.parse(timeStr);
-    return dateTime.subtract(const Duration(hours: 8));
+    return dateTime.toLocal();
   }
 
   String _formatLogTime(String timeStr) {
     try {
-      // 解析日志时间并转换为北京时间（减8小时）
+      // 解析日志时间并转换为系统本地时间
       final dateTime = _parseLogTime(timeStr);
       // 格式化为 YYYY-MM-DD HH:MM:SS 格式
       return DateFormat('yyyy-MM-dd HH:mm:ss').format(dateTime);
@@ -5948,9 +5944,9 @@ class _MonthlyTasksDialogState extends State<_MonthlyTasksDialog> {
     );
   }
 
-  // 解析任务时间并转换为北京时间（加8小时）
+  // 解析任务时间并转换为系统本地时间
   DateTime _parseTaskTime(String timeStr) {
     final dateTime = DateTime.parse(timeStr);
-    return dateTime.add(const Duration(hours: 8));
+    return dateTime.toLocal();
   }
 }

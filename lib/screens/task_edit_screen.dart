@@ -158,9 +158,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       _endTime = widget.task!.endTime;
       _isAllDay = widget.task!.isAllDay;
         } else {
-      // 创建新任务，设置默认值
-      _startTime = DateTime.now();
-      _endTime = DateTime.now().add(const Duration(hours: 1));
+      // 创建新任务，设置默认值（增加8小时）
+      _startTime = DateTime.now().add(const Duration(hours: 8));
+      _endTime = DateTime.now().add(const Duration(hours: 9));
     }
   }
 
@@ -645,7 +645,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         ),
         child: Text(
           value != null
-              ? DateFormat('yyyy-MM-dd HH:mm').format(value)
+              ? DateFormat('yyyy-MM-dd HH:mm').format(value.add(const Duration(hours: 8)))
               : isOptional
                   ? '未设置'
                   : '请选择',

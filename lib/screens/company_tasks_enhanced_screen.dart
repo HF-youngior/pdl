@@ -753,31 +753,19 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
                       ),
               )
             else
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // 创建子任务按钮（仅当任务接收者可以派发任务时显示）
-                  if (isReceived && _canCreateTask && task.status != 'completed')
-                    OutlinedButton.icon(
-                      onPressed: () => _createSubtask(task),
-                      icon: const Icon(Icons.add_task, size: 16),
-                      label: const Text('创建子任务'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Theme.of(context).primaryColor,
-                      ),
+              // 创建子任务按钮（仅当任务接收者可以派发任务时显示）
+              if (isReceived && _canCreateTask && task.status != 'completed')
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _createSubtask(task),
+                    icon: const Icon(Icons.add_task, size: 16),
+                    label: const Text('创建子任务'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).primaryColor,
                     ),
-                  // 完成任务按钮
-                  if (isReceived && task.status != 'completed')
-                    TextButton.icon(
-                      onPressed: () => _completeTask(task),
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('完成任务'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.green,
-                      ),
-                    ),
-              ],
-            ),
+                  ),
+                ),
           ],
         ),
         ),
@@ -786,7 +774,9 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
   }
 
   String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
+    // 增加8小时
+    final adjustedDateTime = dateTime.add(const Duration(hours: 8));
+    return '${adjustedDateTime.year}-${adjustedDateTime.month.toString().padLeft(2, '0')}-${adjustedDateTime.day.toString().padLeft(2, '0')}';
   }
 
   Future<void> _saveTask(Task task) async {

@@ -430,4 +430,32 @@ class ApiService {
       rethrow;
     }
   }
+
+  // 更新向上邀约请求
+  static Future<bool> updateRequest({
+    required String taskId,
+    required String requestType,
+    required String assigneeId,
+    required String description,
+    String? deadline,
+    String? relatedTaskId,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/tasks/$taskId/request'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'request_type': requestType,
+          'assignee_id': assigneeId,
+          'description': description,
+          'deadline': deadline,
+          'related_task_id': relatedTaskId,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('更新邀约请求错误: $e');
+      rethrow;
+    }
+  }
 }

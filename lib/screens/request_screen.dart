@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/user.dart';
+import '../models/task.dart';
 import '../services/api_service.dart';
 
 class RequestScreen extends StatefulWidget {
   final User currentUser;
+  final Task? task; // 如果传入task，则为编辑模式
 
   const RequestScreen({
     super.key,
     required this.currentUser,
+    this.task,
   });
 
   @override
@@ -43,6 +48,17 @@ class _RequestScreenState extends State<RequestScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // 如果是编辑模式，初始化表单数据
+    if (widget.task != null) {
+      _selectedRequestType = widget.task!.requestType;
+      _selectedAssigneeId = widget.task!.assigneeId;
+      _descriptionController.text = widget.task!.description;
+      _selectedDeadline = widget.task!.deadline;
+      // related_task_id 需要从API返回的JSON中获取，Task模型中没有这个字段
+      // 暂时设为null，后续可以通过API获取
+      _selectedRelatedTaskId = null;
+    }
     
     _loadUsers();
     _loadTasks();
@@ -120,11 +136,37 @@ class _RequestScreenState extends State<RequestScreen> {
         }).toList();
         _isLoadingTasks = false;
       });
+      
+      // 如果是编辑模式，尝试从API获取related_task_id
+      if (widget.task != null && _selectedRelatedTaskId == null) {
+        _loadRelatedTaskId();
+      }
     } catch (e) {
       print('加载任务列表失败: $e');
       setState(() {
         _isLoadingTasks = false;
       });
+    }
+  }
+
+  // 从API获取related_task_id
+  Future<void> _loadRelatedTaskId() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/tasks/${widget.task!.id}'),
+        headers: ApiService.getAuthHeaders(),
+      );
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['related_task_id'] != null) {
+          setState(() {
+            _selectedRelatedTaskId = data['related_task_id'];
+          });
+        }
+      }
+    } catch (e) {
+      print('获取关联任务ID失败: $e');
     }
   }
 
@@ -196,28 +238,51 @@ class _RequestScreenState extends State<RequestScreen> {
         deadlineStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(_selectedDeadline!);
       }
 
-      await ApiService.createRequest(
-        requestType: _selectedRequestType!,
-        assigneeId: _selectedAssigneeId!,
-        description: _descriptionController.text.trim(),
-        deadline: deadlineStr,
-        relatedTaskId: _selectedRelatedTaskId,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('邀约请求发送成功！'),
-            backgroundColor: Colors.green,
-          ),
+      // 如果是编辑模式，调用更新接口
+      if (widget.task != null) {
+        await ApiService.updateRequest(
+          taskId: widget.task!.id,
+          requestType: _selectedRequestType!,
+          assigneeId: _selectedAssigneeId!,
+          description: _descriptionController.text.trim(),
+          deadline: deadlineStr,
+          relatedTaskId: _selectedRelatedTaskId,
         );
-        Navigator.of(context).pop(true);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('邀约请求更新成功！'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.of(context).pop(true);
+        }
+      } else {
+        // 创建模式
+        await ApiService.createRequest(
+          requestType: _selectedRequestType!,
+          assigneeId: _selectedAssigneeId!,
+          description: _descriptionController.text.trim(),
+          deadline: deadlineStr,
+          relatedTaskId: _selectedRelatedTaskId,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('邀约请求发送成功！'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.of(context).pop(true);
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('发送邀约失败: $e'),
+            content: Text(widget.task != null ? '更新邀约失败: $e' : '发送邀约失败: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -235,7 +300,7 @@ class _RequestScreenState extends State<RequestScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('向上邀约'),
+        title: Text(widget.task != null ? '编辑邀约' : '向上邀约'),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
       ),
@@ -353,7 +418,7 @@ class _RequestScreenState extends State<RequestScreen> {
                   ),
                   child: Text(
                     _selectedDeadline != null
-                        ? DateFormat('yyyy-MM-dd HH:mm').format(_selectedDeadline!)
+                        ? DateFormat('yyyy-MM-dd HH:mm').format(_selectedDeadline!.add(const Duration(hours: 8)))
                         : '点击选择（默认3天后）',
                     style: TextStyle(
                       color: _selectedDeadline != null ? Colors.black87 : Colors.grey,
@@ -411,9 +476,9 @@ class _RequestScreenState extends State<RequestScreen> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text(
-                          '发送邀约',
-                          style: TextStyle(fontSize: 16),
+                      : Text(
+                          widget.task != null ? '更新邀约' : '发送邀约',
+                          style: const TextStyle(fontSize: 16),
                         ),
                 ),
               ),

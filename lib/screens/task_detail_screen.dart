@@ -5,6 +5,7 @@ import '../models/user.dart';
 import '../services/task_service.dart';
 import '../services/api_service.dart';
 import 'task_edit_screen.dart';
+import 'request_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
   final Task task;
@@ -234,26 +235,51 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   // 编辑任务
   Future<void> _editTask() async {
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => TaskEditScreen(
-          task: _currentTask,
-          currentUser: widget.currentUser,
-          onSave: (task) {
-            setState(() {
-              _currentTask = task;
-            });
-            _loadSubtasks();
-          },
+    // 如果是邀约任务，使用RequestScreen编辑
+    if (_currentTask!.isRequest) {
+      final result = await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => RequestScreen(
+            currentUser: widget.currentUser,
+            task: _currentTask,
+          ),
         ),
-      ),
-    );
+      );
 
-    if (result != null) {
-      setState(() {
-        _currentTask = result;
-      });
-      _loadSubtasks();
+      if (result == true && mounted) {
+        // 刷新任务信息
+        try {
+          final updatedTask = await TaskService.getTaskById(_currentTask!.id);
+          setState(() {
+            _currentTask = updatedTask;
+          });
+        } catch (e) {
+          print('刷新任务信息失败: $e');
+        }
+      }
+    } else {
+      // 普通任务，使用TaskEditScreen编辑
+      final result = await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => TaskEditScreen(
+            task: _currentTask,
+            currentUser: widget.currentUser,
+            onSave: (task) {
+              setState(() {
+                _currentTask = task;
+              });
+              _loadSubtasks();
+            },
+          ),
+        ),
+      );
+
+      if (result != null) {
+        setState(() {
+          _currentTask = result;
+        });
+        _loadSubtasks();
+      }
     }
   }
 
@@ -321,10 +347,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
-  // 格式化日期时间，处理时区问题
+  // 格式化日期时间，处理时区问题（增加8小时）
   String _formatDateTime(DateTime dateTime) {
-    // DateTime 对象已经是正确的时区，直接格式化即可
-    return DateFormat('yyyy-MM-dd HH:mm').format(dateTime);
+    // 增加8小时
+    final adjustedDateTime = dateTime.add(const Duration(hours: 8));
+    return DateFormat('yyyy-MM-dd HH:mm').format(adjustedDateTime);
   }
 
   @override
@@ -351,9 +378,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           // 邀约任务：只有创建者可以编辑，被邀约人不能编辑
           // 普通任务：根据权限显示编辑按钮
           if (_currentTask!.isRequest) ...[
-            // 邀约任务：只有创建者可以编辑
-            if (_currentTask!.createdBy == widget.currentUser.id || 
-                _currentTask!.createdBy == widget.currentUser.username)
+            // 邀约任务：只有创建者可以编辑，且未审批时才能编辑
+            if ((_currentTask!.createdBy == widget.currentUser.id || 
+                _currentTask!.createdBy == widget.currentUser.username) &&
+                _currentTask!.requestResponse == null &&
+                _currentTask!.status != 'completed')
               IconButton(
                 icon: const Icon(Icons.edit),
                 onPressed: _editTask,
@@ -534,14 +563,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           _buildInfoRow(
                             icon: Icons.access_time,
                             label: '处理时间',
-                            value: DateFormat('yyyy-MM-dd HH:mm').format(task.completedAt!),
+                            value: _formatDateTime(task.completedAt!),
                           ),
                           const SizedBox(height: 8),
                         ],
                         _buildInfoRow(
                           icon: Icons.access_time,
                           label: '创建时间',
-                          value: DateFormat('yyyy-MM-dd HH:mm').format(task.createdAt),
+                          value: _formatDateTime(task.createdAt),
                         ),
                       ],
                     ),
@@ -1016,7 +1045,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    DateFormat('MM-dd HH:mm').format(subtask.deadline!),
+                    _formatDateTime(subtask.deadline!),
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey[600],

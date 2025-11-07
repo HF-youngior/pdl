@@ -1,26 +1,22 @@
 /// 时间工具类
 /// 用于处理时区转换和时间格式化
 class TimeUtils {
-  // 北京时区偏移（UTC+8）
-  static const int beijingOffset = 8;
-  
-  /// 获取北京时间
-  static DateTime getBeijingTime() {
-    final now = DateTime.now().toUtc();
-    return now.add(const Duration(hours: beijingOffset));
+  /// 获取系统本地时间
+  static DateTime getSystemTime() {
+    return DateTime.now();
   }
   
-  /// 检查两个日期是否是同一天（北京时间）
+  /// 检查两个日期是否是同一天（本地时间）
   static bool isSameDay(DateTime date1, DateTime date2) {
     return date1.year == date2.year &&
            date1.month == date2.month &&
            date1.day == date2.day;
   }
   
-  /// 检查日期是否是今天（北京时间）
+  /// 检查日期是否是今天（本地时间）
   static bool isToday(DateTime date) {
-    final beijingNow = getBeijingTime();
-    return isSameDay(date, beijingNow);
+    final now = getSystemTime();
+    return isSameDay(date, now);
   }
   
   /// 格式化时间为 HH:mm
@@ -38,26 +34,26 @@ class TimeUtils {
     return '${formatDate(dateTime)} ${formatTime(dateTime)}';
   }
   
-  /// 将UTC时间转换为北京时间
-  static DateTime utcToBeijing(DateTime utcTime) {
-    return utcTime.add(const Duration(hours: beijingOffset));
+  /// 将UTC时间转换为本地时间
+  static DateTime utcToLocal(DateTime utcTime) {
+    return utcTime.toLocal();
   }
   
-  /// 将北京时间转换为UTC时间
-  static DateTime beijingToUtc(DateTime beijingTime) {
-    return beijingTime.subtract(const Duration(hours: beijingOffset));
+  /// 将本地时间转换为UTC时间
+  static DateTime localToUtc(DateTime localTime) {
+    return localTime.toUtc();
   }
   
-  /// 获取今天的开始时间（北京时间 00:00:00）
+  /// 获取今天的开始时间（本地时间 00:00:00）
   static DateTime getTodayStart() {
-    final beijingNow = getBeijingTime();
-    return DateTime(beijingNow.year, beijingNow.month, beijingNow.day, 0, 0, 0);
+    final now = getSystemTime();
+    return DateTime(now.year, now.month, now.day, 0, 0, 0);
   }
   
-  /// 获取今天的结束时间（北京时间 23:59:59）
+  /// 获取今天的结束时间（本地时间 23:59:59）
   static DateTime getTodayEnd() {
-    final beijingNow = getBeijingTime();
-    return DateTime(beijingNow.year, beijingNow.month, beijingNow.day, 23, 59, 59);
+    final now = getSystemTime();
+    return DateTime(now.year, now.month, now.day, 23, 59, 59);
   }
   
   /// 获取指定日期的开始时间（00:00:00）
