@@ -102,18 +102,6 @@ class _ViewScreenState extends State<ViewScreen> {
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_task),
-            onPressed: () => _createTask(null),
-            tooltip: '创建任务',
-          ),
-          IconButton(
-            icon: const Icon(Icons.edit_note),
-            onPressed: () => _addLog(DateTime.now()),
-            tooltip: '添加日志',
-          ),
-        ],
       ),
       body: CalendarWidget(
         tasks: const [], // CalendarWidget内部会加载数据

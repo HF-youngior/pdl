@@ -161,7 +161,7 @@ curl http://localhost:8080/api/month-view/dept-head-001/2025/11
 
 ```bash
 # Windows PowerShell
-Get-Content D:\pdl\backend\add_more_test_data_fixed.sql -Encoding UTF8 | mysql -h localhost -u root -pZs462581379 enterprise_management
+Get-Content D:\pdl\backend\add_more_test_data_fixed.sql -Encoding UTF8 | mysql -h localhost -u root -p23301144 enterprise_management
 ```
 
 脚本会自动清理旧数据并导入新数据。
@@ -188,6 +188,7 @@ Get-Content D:\pdl\backend\add_more_test_data_fixed.sql -Encoding UTF8 | mysql -
 **导入状态**: ✅ 成功  
 **最后更新**: 2025-10-22  
 **维护者**: PDL Team
+
 
 
 
