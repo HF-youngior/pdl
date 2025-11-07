@@ -33,7 +33,7 @@ app.use('/', express.static(path.join(__dirname, 'public')));
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '23301144',
+  password: process.env.DB_PASSWORD || 'Pyx_07091817',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
   charset: 'utf8mb4',
@@ -187,10 +187,15 @@ async function createTables() {
       location VARCHAR(200) NULL,
       is_all_day BOOLEAN DEFAULT FALSE,
       special_notes TEXT NULL,
+      is_request BOOLEAN DEFAULT FALSE,
+      request_type VARCHAR(50) NULL,
+      request_response VARCHAR(20) NULL,
+      related_task_id VARCHAR(36) NULL,
       FOREIGN KEY (parent_task_id) REFERENCES tasks(id),
       FOREIGN KEY (assignee_id) REFERENCES users(id),
       FOREIGN KEY (department_id) REFERENCES departments(id),
-      FOREIGN KEY (created_by) REFERENCES users(id)
+      FOREIGN KEY (created_by) REFERENCES users(id),
+      FOREIGN KEY (related_task_id) REFERENCES tasks(id)
     )`,
     
     // 任务通知表
@@ -351,6 +356,11 @@ async function ensureSchemaCompatibility() {
     // 设置默认值（兼容已有库）
     try { await db.execute("ALTER TABLE personal_logs MODIFY title VARCHAR(200) NOT NULL DEFAULT '个人日志'"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs MODIFY category VARCHAR(50) NOT NULL DEFAULT 'work'"); } catch(e){}
+    // tasks表邀约相关字段
+    try { await db.execute("ALTER TABLE tasks ADD COLUMN is_request BOOLEAN DEFAULT FALSE"); } catch(e){}
+    try { await db.execute("ALTER TABLE tasks ADD COLUMN request_type VARCHAR(50) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE tasks ADD COLUMN request_response VARCHAR(20) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE tasks ADD COLUMN related_task_id VARCHAR(36) NULL"); } catch(e){}
     // 索引、关联关系等原有包裹不变
     try { await db.execute("CREATE INDEX IF NOT EXISTS idx_personal_logs_user_id ON personal_logs(user_id)"); } catch (_) {}
     try { await db.execute("CREATE INDEX IF NOT EXISTS idx_personal_logs_log_date ON personal_logs(log_date)"); } catch (_) {}
@@ -1381,24 +1391,13 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
     `;
     let params = [];
 
-    // 根据用户角色限制可见范围
-    if (req.user.role === 'admin') {
-      // 管理员可以看到所有任务
-    } else if (req.user.role === 'founder') {
-      // 创始人可以看到所有任务
-    } else if (req.user.role === 'department_head') {
-      // 部门老总只能看到本部门任务
-      query += ' AND t.department_id = ?';
-      params.push(req.user.department_id);
-    } else if (req.user.role === 'team_leader') {
-      // 团队长只能看到分配给自己的任务和分配给下属的任务
-      query += ' AND (t.assignee_id = ? OR t.assignee_id IN (SELECT id FROM users WHERE parent_id = ?))';
-      params.push(req.user.id, req.user.id);
-    } else if (req.user.role === 'employee') {
-      // 员工只能看到分配给自己的任务
-      query += ' AND t.assignee_id = ?';
-      params.push(req.user.id);
-    }
+    // 邀约任务权限过滤：只有创建者（发送邀约的人）和被邀约人（接收人）可以看到
+    // 普通任务：所有人都可以看到
+    query += ` AND (
+      t.is_request = 0
+      OR (t.is_request = 1 AND (t.created_by = ? OR t.assignee_id = ?))
+    )`;
+    params.push(req.user.id, req.user.id);
 
     // 日期范围过滤
     if (startDate && endDate) {
@@ -1418,7 +1417,11 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
       params.push(req.query.parent_task_id);
     }
 
-    query += ' ORDER BY t.priority, t.created_at DESC';
+    // 排序逻辑：未处理的邀约任务排在最上面，按ddl排序；已处理的邀约任务和普通任务按创建时间排序
+    query += ` ORDER BY
+      CASE WHEN t.is_request = 1 AND (t.request_response IS NULL OR t.request_response = '') THEN 0 ELSE 1 END,
+      CASE WHEN t.is_request = 1 AND (t.request_response IS NULL OR t.request_response = '') THEN t.deadline ELSE NULL END ASC,
+      t.created_at DESC`;
 
     const [rows] = await db.execute(query, params);
 
@@ -1453,31 +1456,26 @@ app.get('/api/tasks/:id', authenticateToken, async (req, res) => {
     `;
     let params = [id];
 
-    // 根据用户角色限制可见范围
-    if (req.user.role === 'admin') {
-      // 管理员可以看到所有任务
-    } else if (req.user.role === 'founder') {
-      // 创始人可以看到所有任务
-    } else if (req.user.role === 'department_head') {
-      // 部门老总只能看到本部门任务
-      query += ' AND t.department_id = ?';
-      params.push(req.user.department_id);
-    } else if (req.user.role === 'team_leader') {
-      // 团队长只能看到分配给自己的任务和分配给下属的任务
-      query += ' AND (t.assignee_id = ? OR t.assignee_id IN (SELECT id FROM users WHERE parent_id = ?))';
-      params.push(req.user.id, req.user.id);
-    } else if (req.user.role === 'employee') {
-      // 员工只能看到分配给自己的任务
-      query += ' AND t.assignee_id = ?';
-      params.push(req.user.id);
-    }
-
+    // 所有人可以查看所有任务（不限制可见范围）
     const [rows] = await db.execute(query, params);
 
     if (rows.length === 0) {
-      return res.status(404).json({ error: '任务不存在或无权限查看' });
+      return res.status(404).json({ error: '任务不存在' });
     }
 
+    const task = rows[0];
+
+    // 邀约任务权限检查：只有创建者（发送邀约的人）和被邀约人（接收人）可以看到
+    if (task.is_request) {
+      const isCreator = task.created_by === req.user.id;
+      const isAssignee = task.assignee_id === req.user.id;
+
+      if (!isCreator && !isAssignee) {
+        return res.status(403).json({ error: '无权查看此邀约任务' });
+      }
+    }
+
+    res.json(task);
     // 处理时区 - 将所有时间字段转换为北京时间格式
     const taskWithTimezone = {
       ...rows[0],
@@ -1597,8 +1595,8 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
   }
 });
 
-// 更新任务状态
-app.put('/api/tasks/:id/status', authenticateToken, async (req, res) => {
+  // 更新任务状态（进度）
+  app.put('/api/tasks/:id/status', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { status, progress_percentage, special_notes } = req.body;
@@ -1615,21 +1613,60 @@ app.put('/api/tasks/:id/status', authenticateToken, async (req, res) => {
 
     const task = taskRows[0];
 
-    // 权限检查：只有被分配人才能更新任务状态
-    if (task.assignee_id !== req.user.id) {
-      return res.status(403).json({ error: '无权更新此任务' });
+    // 权限检查：允许 1) 被分配人 2) 创建者 3) 与创建者同级或下级且同部门 的用户 更新进度
+    const [creatorRows] = await db.execute(
+      'SELECT id, role, department_id FROM users WHERE id = ?',
+      [task.created_by]
+    );
+
+    const creator = creatorRows.length > 0 ? creatorRows[0] : null;
+
+    function roleRank(role) {
+      switch (role) {
+        case 'founder':
+          return 5;
+        case 'admin':
+          return 5;
+        case 'department_head':
+          return 4;
+        case 'team_leader':
+          return 3;
+        case 'employee':
+        default:
+          return 1;
+      }
+    }
+
+    const isAssignee = task.assignee_id === req.user.id;
+    const isCreator = task.created_by === req.user.id;
+    const isAdminLike = req.user.role === 'admin' || req.user.role === 'founder';
+    const sameDept = creator && creator.department_id === req.user.department_id;
+    const sameOrLowerThanCreator = creator && roleRank(req.user.role) <= roleRank(creator.role);
+
+    if (!(isAssignee || isCreator || isAdminLike || (sameDept && sameOrLowerThanCreator))) {
+      return res.status(403).json({ error: '无权更新此任务进度' });
     }
 
     const updateData = { status };
-    if (progress_percentage !== undefined) updateData.progress_percentage = progress_percentage;
+    if (progress_percentage !== undefined) updateData.progress_percentage = Number(progress_percentage);
     if (special_notes !== undefined) updateData.special_notes = special_notes;
     if (status === 'completed') updateData.completed_at = new Date();
+
+    let finalProgress = Number.isFinite(updateData.progress_percentage)
+      ? Math.max(0, Math.min(100, updateData.progress_percentage))
+      : (typeof task.progress_percentage === 'number' ? task.progress_percentage : 0);
+    // 若状态为完成且未显式传进度，则强制置为100%
+    if (status === 'completed' && !Number.isFinite(updateData.progress_percentage)) {
+      finalProgress = 100;
+    }
+    const finalNotes = updateData.special_notes ?? null;
+    const finalCompletedAt = updateData.completed_at ?? null;
 
     await db.execute(
       `UPDATE tasks SET 
        status = ?, progress_percentage = ?, special_notes = ?, completed_at = ?
        WHERE id = ?`,
-      [status, updateData.progress_percentage ?? task.progress_percentage, updateData.special_notes, updateData.completed_at, id]
+      [status, finalProgress, finalNotes, finalCompletedAt, id]
     );
 
     // 如果这个任务有父任务，更新父任务的进度
@@ -1651,8 +1688,8 @@ app.put('/api/tasks/:id/status', authenticateToken, async (req, res) => {
   }
 });
 
-// 更新任务（完整更新，用于日历编辑）
-app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
+  // 更新任务（完整更新，仅允许被分配人编辑）
+  app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -1683,9 +1720,39 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
 
     const task = taskRows[0];
 
-    // 权限检查：只有被分配人或创建者才能更新任务
-    if (task.assignee_id !== req.user.id && task.created_by !== req.user.id) {
-      return res.status(403).json({ error: '无权更新此任务' });
+    // 权限检查：
+    // - admin 可编辑所有任务
+    // - 其他角色：允许编辑 1) 自己的任务 2) 分配给平级或下级(同部门)的任务
+    if (req.user.role !== 'admin') {
+      if (task.assignee_id !== req.user.id) {
+        // 检查被分配人的角色与部门
+        const [assigneeRows] = await db.execute('SELECT role, department_id FROM users WHERE id = ?', [task.assignee_id]);
+        if (assigneeRows.length === 0) {
+          return res.status(400).json({ error: '被分配人不存在' });
+        }
+        const assignee = assigneeRows[0];
+
+        function roleRank(role) {
+          switch (role) {
+            case 'founder':
+            case 'admin':
+              return 5;
+            case 'department_head':
+              return 4;
+            case 'team_leader':
+              return 3;
+            case 'employee':
+            default:
+              return 1;
+          }
+        }
+
+        const sameDept = assignee.department_id === req.user.department_id;
+        const canEditSubOrPeer = sameDept && roleRank(req.user.role) >= roleRank(assignee.role);
+        if (!canEditSubOrPeer) {
+          return res.status(403).json({ error: '无权更新此任务' });
+        }
+      }
     }
 
     // 辅助函数：清理值（将undefined和空字符串转为null）
@@ -1737,6 +1804,10 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
     if (progress_percentage !== undefined) {
       updates.push('progress_percentage = ?');
       values.push(progress_percentage);
+    } else if (status === 'completed') {
+      // 状态改为完成且未显式给进度，则强制置为100
+      updates.push('progress_percentage = ?');
+      values.push(100);
     }
 
     if (start_time !== undefined) {
@@ -1820,17 +1891,370 @@ app.delete('/api/tasks/:id', authenticateToken, async (req, res) => {
 
     const task = taskRows[0];
 
-    // 权限检查：只有创建者才能删除任务
-    if (task.created_by !== req.user.id) {
-      return res.status(403).json({ error: '无权删除此任务' });
+    // 权限检查：
+    // - admin 可删除所有任务
+    // - 其他角色：只能删除自己创建的任务、分配给自己的任务，或分配给下属的任务
+    if (req.user.role !== 'admin') {
+      // 1. 自己创建的任务，可以删除
+      const isCreator = task.created_by === req.user.id;
+
+      // 2. 分配给自己的任务，可以删除
+      const isAssignee = task.assignee_id === req.user.id;
+
+      // 3. 检查任务的责任人是否是自己的下属
+      let isSubordinate = false;
+      if (!isCreator && !isAssignee && task.assignee_id) {
+        try {
+          const [assigneeRows] = await db.execute('SELECT role, department_id, parent_id FROM users WHERE id = ?', [task.assignee_id]);
+          if (assigneeRows.length === 0) {
+            // 被分配人不存在，不允许删除
+            return res.status(403).json({ error: '无权删除此任务，被分配人不存在' });
+          }
+          const assignee = assigneeRows[0];
+
+          // 判断是否为下属：通过parent_id直接关系或递归查找，或同部门且角色等级更低
+          function roleRank(role) {
+            switch (role) {
+              case 'founder':
+              case 'admin':
+                return 5;
+              case 'department_head':
+                return 4;
+              case 'team_leader':
+                return 3;
+              case 'employee':
+              default:
+                return 1;
+            }
+          }
+
+          // 直接下属（parent_id指向自己）
+          const isDirectSubordinate = assignee.parent_id === req.user.id;
+
+          // 同部门且角色等级更低（间接下属）
+          const sameDept = assignee.department_id && req.user.department_id && assignee.department_id === req.user.department_id;
+          const isLowerRank = sameDept && roleRank(req.user.role) > roleRank(assignee.role);
+
+          // 递归查找：检查assignee的parent_id链中是否有req.user.id
+          let foundInChain = false;
+          if (assignee.parent_id) {
+            let currentParentId = assignee.parent_id;
+            const checkedIds = new Set([task.assignee_id]);
+
+            while (currentParentId && !foundInChain && checkedIds.size < 100) {
+              if (currentParentId === req.user.id) {
+                foundInChain = true;
+                break;
+              }
+              if (checkedIds.has(currentParentId)) {
+                // 检测到循环，停止查找
+                break;
+              }
+              checkedIds.add(currentParentId);
+
+              try {
+                const [parentRows] = await db.execute('SELECT parent_id FROM users WHERE id = ?', [currentParentId]);
+                if (parentRows.length > 0 && parentRows[0].parent_id) {
+                  currentParentId = parentRows[0].parent_id;
+                } else {
+                  break;
+                }
+              } catch (err) {
+                console.error('递归查找父级用户时出错:', err);
+                break;
+              }
+            }
+          }
+
+          isSubordinate = isDirectSubordinate || isLowerRank || foundInChain;
+        } catch (err) {
+          console.error('检查下属关系时出错:', err);
+          // 如果检查下属关系时出错，不允许删除
+          return res.status(403).json({ error: '无权删除此任务，权限检查失败' });
+        }
+      }
+
+      // 如果都不满足，则无权删除
+      if (!isCreator && !isAssignee && !isSubordinate) {
+        return res.status(403).json({ error: '无权删除此任务，只能删除自己创建的任务、分配给自己的任务，或分配给下属的任务' });
+      }
     }
 
-    // 删除任务
+    // 删除任务前，先处理关联数据
+
+    // 1. 处理子任务：将子任务的parent_task_id设置为NULL，保留子任务
+    try {
+      await db.execute('UPDATE tasks SET parent_task_id = NULL WHERE parent_task_id = ?', [id]);
+    } catch (err) {
+      console.error('更新子任务parent_task_id时出错:', err);
+      // 如果更新失败，尝试删除子任务
+      try {
+        await db.execute('DELETE FROM tasks WHERE parent_task_id = ?', [id]);
+      } catch (deleteErr) {
+        console.error('删除子任务时出错:', deleteErr);
+        // 如果都失败，返回错误
+        return res.status(500).json({ error: '删除任务失败，无法处理子任务' });
+      }
+    }
+
+    // 2. 删除任务相关的通知
+    try {
+      await db.execute('DELETE FROM task_notifications WHERE task_id = ?', [id]);
+    } catch (err) {
+      console.error('删除任务通知时出错:', err);
+      // 通知删除失败不影响任务删除，继续执行
+    }
+
+    // 3. 删除任务
     await db.execute('DELETE FROM tasks WHERE id = ?', [id]);
 
     res.json({ message: '任务删除成功' });
   } catch (error) {
     console.error('删除任务错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 创建向上邀约请求
+app.post('/api/tasks/request', authenticateToken, async (req, res) => {
+  try {
+    const {
+      request_type,
+      assignee_id,
+      description,
+      deadline,
+      related_task_id
+    } = req.body;
+
+    // 允许的请求类型
+    const allowedRequestTypes = [
+      '修改任务',
+      '删除任务',
+      '重新安排任务',
+      '请假',
+      '请来办公室',
+      '其他'
+    ];
+
+    // 参数验证
+    if (!request_type || !request_type.trim()) {
+      return res.status(400).json({ error: '请求类型不能为空' });
+    }
+
+    // 验证请求类型是否在允许列表中
+    if (!allowedRequestTypes.includes(request_type.trim())) {
+      return res.status(400).json({
+        error: `请求类型无效。允许的类型：${allowedRequestTypes.join('、')}`
+      });
+    }
+
+    if (!assignee_id) {
+      return res.status(400).json({ error: '必须指定接收人' });
+    }
+
+    if (!description || !description.trim()) {
+      return res.status(400).json({ error: '请求详情不能为空' });
+    }
+
+    // 对于需要关联任务的请求类型，验证是否提供了关联任务ID
+    const requiresRelatedTask = ['修改任务', '删除任务', '重新安排任务'];
+    if (requiresRelatedTask.includes(request_type.trim()) && !related_task_id) {
+      return res.status(400).json({
+        error: `${request_type}类型的邀约请求必须关联一个任务`
+      });
+    }
+
+    // 如果提供了关联任务ID，验证任务是否存在
+    let relatedTaskTitle = null;
+    if (related_task_id) {
+      const [taskRows] = await db.execute(
+        'SELECT id, title, assignee_id, is_request FROM tasks WHERE id = ?',
+        [related_task_id]
+      );
+
+      if (taskRows.length === 0) {
+        return res.status(400).json({ error: '关联的任务不存在' });
+      }
+
+      // 验证关联的任务不是邀约任务
+      if (taskRows[0].is_request) {
+        return res.status(400).json({ error: '不能关联邀约任务' });
+      }
+
+      relatedTaskTitle = taskRows[0].title;
+    }
+
+    // 获取接收人信息
+    const [assigneeRows] = await db.execute(
+      'SELECT name, department_id FROM users WHERE id = ?',
+      [assignee_id]
+    );
+
+    if (assigneeRows.length === 0) {
+      return res.status(400).json({ error: '接收人不存在' });
+    }
+
+    const assignee_name = assigneeRows[0].name;
+    const department_id = assigneeRows[0].department_id;
+
+    if (!department_id) {
+      return res.status(400).json({ error: '无法确定接收人部门，请确保用户有部门信息' });
+    }
+
+    // 验证不能向自己发送邀约
+    if (assignee_id === req.user.id) {
+      return res.status(400).json({ error: '不能向自己发送邀约请求' });
+    }
+
+    // 生成任务标题
+    const taskTitle = `邀约请求：${request_type}`;
+
+    const taskId = require('crypto').randomUUID();
+
+    // 将 undefined 和空字符串转换为 null
+    const cleanValue = (value) => {
+      if (value === undefined || value === '') return null;
+      return value;
+    };
+
+    // 格式化deadline
+    let formattedDeadline = null;
+    if (deadline) {
+      try {
+        // 支持多种日期格式
+        const deadlineDate = new Date(deadline);
+        if (isNaN(deadlineDate.getTime())) {
+          return res.status(400).json({ error: '期望回复时间格式无效' });
+        }
+        formattedDeadline = deadlineDate.toISOString().slice(0, 19).replace('T', ' ');
+      } catch (e) {
+        return res.status(400).json({ error: '期望回复时间格式无效' });
+      }
+    }
+
+    // 计算默认结束时间（如果没有deadline，默认3天后）
+    const defaultEndTime = formattedDeadline
+      ? new Date(formattedDeadline)
+      : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+
+    // 创建邀约任务：状态为pending（待处理），进度为0%
+    await db.execute(
+      `INSERT INTO tasks (
+        id, title, description, assignee_id, assignee_name,
+        department_id, priority, deadline, created_by,
+        start_time, end_time, is_all_day, progress_percentage, status,
+        is_request, request_type, related_task_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        taskId,
+        taskTitle,
+        description.trim(),
+        assignee_id,
+        assignee_name,
+        department_id,
+        'p0', // 邀约请求优先级为p0（重要且紧急）
+        formattedDeadline,
+        req.user.id,
+        new Date(),
+        defaultEndTime,
+        false,
+        0, // 进度为0%
+        'pending', // 状态为pending（待处理）
+        true, // 标记为邀约任务
+        request_type.trim(),
+        cleanValue(related_task_id)
+      ]
+    );
+
+    // 创建通知
+    const notificationMessage = related_task_id && relatedTaskTitle
+      ? `您收到了邀约请求：${request_type}（关联任务：${relatedTaskTitle}）`
+      : `您收到了邀约请求：${request_type}`;
+    await createNotification(taskId, req.user.id, assignee_id, 'task_assigned', notificationMessage);
+
+    res.status(201).json({
+      message: '邀约请求创建成功',
+      id: taskId,
+      task: {
+        id: taskId,
+        title: taskTitle,
+        request_type: request_type.trim(),
+        status: 'pending'
+      }
+    });
+  } catch (error) {
+    console.error('创建邀约请求错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 处理邀约请求（批准/拒绝）
+app.put('/api/tasks/:id/request-response', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action, notes } = req.body; // action: 'approve' 或 'reject'
+
+    // 参数验证
+    if (!action || !['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ error: 'action必须是approve或reject' });
+    }
+
+    // 获取任务信息
+    const [taskRows] = await db.execute(
+      'SELECT * FROM tasks WHERE id = ?',
+      [id]
+    );
+
+    if (taskRows.length === 0) {
+      return res.status(404).json({ error: '任务不存在' });
+    }
+
+    const task = taskRows[0];
+
+    // 检查是否为邀约任务
+    if (!task.is_request) {
+      return res.status(400).json({ error: '此任务不是邀约任务' });
+    }
+
+    // 权限检查：只有被邀约人可以处理
+    if (task.assignee_id !== req.user.id) {
+      return res.status(403).json({ error: '只有被邀约人可以处理此邀约请求' });
+    }
+
+    // 检查是否已处理
+    if (task.request_response) {
+      return res.status(400).json({ error: '此邀约请求已被处理' });
+    }
+
+    // 更新任务状态：处理后任务状态变成已完成，进度变成100%
+    const requestResponse = action === 'approve' ? 'approve' : 'reject';
+    const newStatus = 'completed'; // 处理后状态统一为已完成
+    const specialNotes = notes ? notes.trim() : null;
+    const progressPercentage = 100; // 进度统一为100%
+
+    await db.execute(
+      `UPDATE tasks SET
+       request_response = ?, status = ?, progress_percentage = ?, special_notes = ?, completed_at = ?
+       WHERE id = ?`,
+      [requestResponse, newStatus, progressPercentage, specialNotes, new Date(), id]
+    );
+
+    // 创建通知给创建者（发送邀约的人）
+    const responseText = action === 'approve' ? '批准' : '拒绝';
+    await createNotification(id, req.user.id, task.created_by, 'task_progress_update',
+      `您的邀约请求"${task.title}"已被${responseText}${specialNotes ? '，备注：' + specialNotes : ''}`);
+
+    res.json({
+      message: `邀约请求已${responseText}`,
+      task: {
+        id: id,
+        status: newStatus,
+        progress_percentage: progressPercentage,
+        request_response: requestResponse
+      }
+    });
+  } catch (error) {
+    console.error('处理邀约请求错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
@@ -2336,77 +2760,11 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
       };
     }
     
-    // 填充任务数据（处理跨天任务）
+    // 填充任务数据
     tasks.forEach(task => {
-      // 如果任务有开始和结束时间，在每一天都显示
-      if (task.start_time && task.end_time) {
-        const startDate = new Date(task.start_time);
-        const endDate = new Date(task.end_time);
-        
-        // 生成从开始日期到结束日期的所有日期
-        const currentDate = new Date(startDate);
-        currentDate.setHours(0, 0, 0, 0);
-        endDate.setHours(23, 59, 59, 999);
-        
-        while (currentDate <= endDate) {
-          const year = currentDate.getFullYear();
-          const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-          const day = String(currentDate.getDate()).padStart(2, '0');
-          const dateKey = `${year}-${month}-${day}`;
-          
-          if (calendar[dateKey]) {
-            // 检查是否已添加该任务（避免重复）
-            const exists = calendar[dateKey].tasks.some(t => t.id === task.id);
-            if (!exists) {
-              calendar[dateKey].tasks.push({
-                id: task.id,
-                title: task.title,
-                description: task.description,
-                status: task.status,
-                priority: task.priority,
-                color: task.color,
-                start_time: formatDateTimeForBeijing(task.start_time),
-                end_time: formatDateTimeForBeijing(task.end_time),
-                deadline: formatDateTimeForBeijing(task.deadline),
-                is_all_day: task.is_all_day,
-                assignee_name: task.assignee_name
-              });
-              calendar[dateKey].hasData = true;
-            }
-          }
-          
-          // 移动到下一天
-          currentDate.setDate(currentDate.getDate() + 1);
-        }
-      } 
-      // 如果只有截止日期，在截止日期显示
-      else if (task.deadline) {
-        const deadlineDate = new Date(task.deadline);
-        const year = deadlineDate.getFullYear();
-        const month = String(deadlineDate.getMonth() + 1).padStart(2, '0');
-        const day = String(deadlineDate.getDate()).padStart(2, '0');
-        const dateKey = `${year}-${month}-${day}`;
-        
-        if (calendar[dateKey]) {
-          calendar[dateKey].tasks.push({
-            id: task.id,
-            title: task.title,
-            description: task.description,
-            status: task.status,
-            priority: task.priority,
-            color: task.color,
-            start_time: formatDateTimeForBeijing(task.start_time),
-            end_time: formatDateTimeForBeijing(task.end_time),
-            deadline: formatDateTimeForBeijing(task.deadline),
-            is_all_day: task.is_all_day,
-            assignee_name: task.assignee_name
-          });
-          calendar[dateKey].hasData = true;
-        }
-      }
-      // 如果只有开始时间，在开始日期显示
-      else if (task.task_date) {
+      if (task.task_date) {
         const dateKey = task.task_date;
+        console.log(`  任务 "${task.title}" 的日期: ${dateKey}, 日历中是否存在: ${!!calendar[dateKey]}`);
         if (calendar[dateKey]) {
           calendar[dateKey].tasks.push({
             id: task.id,
@@ -2415,9 +2773,9 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
             status: task.status,
             priority: task.priority,
             color: task.color,
-            start_time: formatDateTimeForBeijing(task.start_time),
-            end_time: formatDateTimeForBeijing(task.end_time),
-            deadline: formatDateTimeForBeijing(task.deadline),
+            start_time: task.start_time,
+            end_time: task.end_time,
+            deadline: task.deadline,
             is_all_day: task.is_all_day,
             assignee_name: task.assignee_name
           });
@@ -2439,7 +2797,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
             category: log.category,
             quadrant: log.quadrant,
             is_completed: log.is_completed,
-            created_at: formatDateTimeForBeijing(log.created_at)
+            created_at: log.created_at
           });
           calendar[dateKey].hasData = true;
         }
@@ -2603,7 +2961,7 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
     const startDate = `${date} 00:00:00`;
     const endDate = `${date} 23:59:59`;
     
-    // 获取该日期的所有任务（包括跨天任务）
+    // 获取该日期的所有任务
     let taskQuery = `
       SELECT 
         t.*,
@@ -2614,16 +2972,20 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
       LEFT JOIN users u ON t.created_by = u.id
       WHERE t.assignee_id = ?
       AND (
-        (DATE(t.start_time) <= ? AND DATE(t.end_time) >= ?)
-        OR (t.deadline IS NOT NULL AND DATE(t.deadline) = ?)
+        (t.start_time >= ? AND t.start_time <= ?)
+        OR (t.end_time >= ? AND t.end_time <= ?)
+        OR (t.deadline >= ? AND t.deadline <= ?)
+        OR (DATE(t.start_time) = ? OR DATE(t.end_time) = ? OR DATE(t.deadline) = ?)
       )
       ORDER BY t.start_time, t.priority
     `;
     
     const [tasks] = await db.execute(taskQuery, [
       req.user.id,
-      date, date,
-      date
+      startDate, endDate,
+      startDate, endDate,
+      startDate, endDate,
+      date, date, date
     ]);
     
     // 获取该日期的所有日志
@@ -2654,9 +3016,9 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         status: t.status,
         priority: t.priority,
         color: t.color,
-        start_time: formatDateTimeForBeijing(t.start_time),
-        end_time: formatDateTimeForBeijing(t.end_time),
-        deadline: formatDateTimeForBeijing(t.deadline),
+        start_time: t.start_time,
+        end_time: t.end_time,
+        deadline: t.deadline,
         is_all_day: t.is_all_day,
         assignee_name: t.assignee_name
       })),
@@ -2667,7 +3029,7 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         category: l.category,
         quadrant: l.quadrant,
         is_completed: l.is_completed,
-        created_at: formatDateTimeForBeijing(l.created_at)
+        created_at: l.created_at
       })),
       summary: {
         totalTasks: tasks.length,

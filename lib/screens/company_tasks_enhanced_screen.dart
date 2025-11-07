@@ -5,6 +5,7 @@ import '../models/user.dart';
 import '../services/task_service.dart';
 import 'task_edit_screen.dart';
 import 'task_detail_screen.dart';
+import 'request_screen.dart';
 
 class CompanyTasksEnhancedScreen extends StatefulWidget {
   final User user;
@@ -44,17 +45,45 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
 
       final tasks = await ApiService.getTasks();
       
-      // 根据用户角色和任务关系分类任务
+      // 排序函数：邀约任务排在最上面，按ddl排序；其他任务按优先级和创建时间排序
+      int compareTasks(Task a, Task b) {
+        // 邀约任务优先
+        if (a.isRequest && !b.isRequest) return -1;
+        if (!a.isRequest && b.isRequest) return 1;
+        
+        // 如果都是邀约任务，按ddl排序
+        if (a.isRequest && b.isRequest) {
+          if (a.deadline != null && b.deadline != null) {
+            return a.deadline!.compareTo(b.deadline!);
+          }
+          if (a.deadline != null) return -1;
+          if (b.deadline != null) return 1;
+          return 0;
+        }
+        
+        // 非邀约任务按优先级排序（p0 > p1 > p2 > p3）
+        final priorityOrder = {'p0': 0, 'p1': 1, 'p2': 2, 'p3': 3};
+        final aPriority = priorityOrder[a.priority] ?? 4;
+        final bPriority = priorityOrder[b.priority] ?? 4;
+        if (aPriority != bPriority) {
+          return aPriority.compareTo(bPriority);
+        }
+        
+        // 相同优先级按创建时间倒序
+        return b.createdAt.compareTo(a.createdAt);
+      }
+      
+      // 根据用户角色和任务关系分类任务，并排序
       setState(() {
         _receivedTasks = tasks.where((task) => 
           task.assigneeId == widget.user.id || 
           task.assigneeName == widget.user.name
-        ).toList();
+        ).toList()..sort(compareTasks);
         
         _assignedTasks = tasks.where((task) => 
           task.createdBy == widget.user.id || 
           task.createdBy == widget.user.username
-        ).toList();
+        ).toList()..sort(compareTasks);
         
         _isLoading = false;
       });
@@ -74,13 +103,13 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
   String _getPriorityText(String priority) {
     switch (priority) {
       case 'p0':
-        return 'P0 - 最高优先级';
+        return '重要且紧急';
       case 'p1':
-        return 'P1 - 高优先级';
+        return '重要不紧急';
       case 'p2':
-        return 'P2 - 中优先级';
+        return '不重要紧急';
       case 'p3':
-        return 'P3 - 低优先级';
+        return '不重要不紧急';
       default:
         return priority;
     }
@@ -159,6 +188,24 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
             icon: const Icon(Icons.refresh),
             onPressed: _loadTasks,
             tooltip: '刷新',
+          ),
+          // 向上邀约按钮（所有用户都可以使用）
+          IconButton(
+            icon: const Icon(Icons.send),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => RequestScreen(
+                    currentUser: widget.user,
+                  ),
+                ),
+              ).then((result) {
+                if (result == true) {
+                  _loadTasks();
+                }
+              });
+            },
+            tooltip: '向上邀约',
           ),
           // 加号按钮在刷新按钮左边（仅非员工角色显示）
           if (_canCreateTask)
@@ -494,29 +541,77 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
             
             // 操作按钮
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // 创建子任务按钮（仅当任务接收者可以派发任务时显示）
-                if (isReceived && _canCreateTask && task.status != 'completed')
-                  OutlinedButton.icon(
-                    onPressed: () => _createSubtask(task),
-                    icon: const Icon(Icons.add_task, size: 16),
-                    label: const Text('创建子任务'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Theme.of(context).primaryColor,
+            // 邀约任务且当前用户是被邀约人时，根据状态显示不同按钮
+            if (task.isRequest && isReceived && task.assigneeId == widget.user.id)
+              SizedBox(
+                width: double.infinity,
+                child: task.status == 'completed'
+                    ? OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => TaskDetailScreen(
+                                task: task,
+                                currentUser: widget.user,
+                              ),
+                            ),
+                          ).then((_) {
+                            _loadTasks();
+                          });
+                        },
+                        icon: const Icon(Icons.visibility, size: 18),
+                        label: const Text('查看详情'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      )
+                    : ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => TaskDetailScreen(
+                                task: task,
+                                currentUser: widget.user,
+                              ),
+                            ),
+                          ).then((_) {
+                            _loadTasks();
+                          });
+                        },
+                        icon: const Icon(Icons.check_circle, size: 18),
+                        label: const Text('处理邀约'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+              )
+            else
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // 创建子任务按钮（仅当任务接收者可以派发任务时显示）
+                  if (isReceived && _canCreateTask && task.status != 'completed')
+                    OutlinedButton.icon(
+                      onPressed: () => _createSubtask(task),
+                      icon: const Icon(Icons.add_task, size: 16),
+                      label: const Text('创建子任务'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Theme.of(context).primaryColor,
+                      ),
                     ),
-                  ),
-                // 完成任务按钮
-                if (isReceived && task.status != 'completed')
-                  TextButton.icon(
-                    onPressed: () => _completeTask(task),
-                    icon: const Icon(Icons.check, size: 16),
-                    label: const Text('完成任务'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.green,
+                  // 完成任务按钮
+                  if (isReceived && task.status != 'completed')
+                    TextButton.icon(
+                      onPressed: () => _completeTask(task),
+                      icon: const Icon(Icons.check, size: 16),
+                      label: const Text('完成任务'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.green,
+                      ),
                     ),
-                  ),
               ],
             ),
           ],

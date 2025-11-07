@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/task.dart';
 import '../models/user.dart';
 import '../services/task_service.dart';
+import '../services/api_service.dart';
 import 'task_edit_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -23,12 +24,22 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   Task? _currentTask;
   List<Task> _subtasks = [];
   bool _isLoadingSubtasks = false;
+  final TextEditingController _notesController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _currentTask = widget.task;
+    // 邀约任务不加载子任务
+    if (!_currentTask!.isRequest) {
     _loadSubtasks();
+    }
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
   }
 
   // 加载子任务
@@ -56,6 +67,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   // 检查是否可以创建子任务
   bool get _canCreateSubtask {
+    // 邀约任务且当前用户是被邀约人时，不能创建子任务
+    if (_currentTask!.isRequest && _currentTask!.assigneeId == widget.currentUser.id) {
+      return false;
+    }
     // 只有任务接收者且不是普通员工才能创建子任务
     final isAssignee = _currentTask!.assigneeId == widget.currentUser.id;
     final canCreateTask = widget.currentUser.role != 'employee';
@@ -87,6 +102,123 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         ),
       );
       _loadSubtasks();
+    }
+  }
+
+  // 处理邀约请求（批准/反驳）
+  Future<void> _handleRequestResponse(String action) async {
+    if (!_currentTask!.isRequest) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('此任务不是邀约任务'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_currentTask!.assigneeId != widget.currentUser.id) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('只有被邀约人可以处理此邀约请求'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_currentTask!.status == 'completed') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('此邀约请求已被处理'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final actionText = action == 'approve' ? '批准' : '反驳';
+    final notes = _notesController.text.trim();
+
+    // 确认对话框
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('${actionText}邀约请求'),
+        content: Text('确定要${actionText}此邀约请求吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(actionText),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      final success = await ApiService.handleRequestResponse(
+        taskId: _currentTask!.id,
+        action: action,
+        notes: notes.isEmpty ? null : notes,
+      );
+
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('邀约请求已${actionText}！'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // 更新任务状态
+        setState(() {
+          _currentTask = Task(
+            id: _currentTask!.id,
+            title: _currentTask!.title,
+            description: _currentTask!.description,
+            assigneeId: _currentTask!.assigneeId,
+            assigneeName: _currentTask!.assigneeName,
+            department: _currentTask!.department,
+            priority: _currentTask!.priority,
+            status: 'completed',
+            createdAt: _currentTask!.createdAt,
+            deadline: _currentTask!.deadline,
+            createdBy: _currentTask!.createdBy,
+            startTime: _currentTask!.startTime,
+            endTime: _currentTask!.endTime,
+            color: _currentTask!.color,
+            location: _currentTask!.location,
+            isAllDay: _currentTask!.isAllDay,
+            progressPercentage: 100,
+            parentTaskId: _currentTask!.parentTaskId,
+            subtasks: _currentTask!.subtasks,
+            isRequest: _currentTask!.isRequest,
+            requestType: _currentTask!.requestType,
+            requestResponse: action, // 保存处理结果
+            completedAt: DateTime.now(),
+          );
+        });
+
+        // 清空备注输入框
+        _notesController.clear();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${actionText}邀约请求失败: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -135,13 +267,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   String _getPriorityText(String priority) {
     switch (priority) {
       case 'p0':
-        return 'P0 - 最高优先级';
+        return '重要且紧急';
       case 'p1':
-        return 'P1 - 高优先级';
+        return '重要不紧急';
       case 'p2':
-        return 'P2 - 中优先级';
+        return '不重要紧急';
       case 'p3':
-        return 'P3 - 低优先级';
+        return '不重要不紧急';
       default:
         return priority;
     }
@@ -206,6 +338,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         actions: [
+          // 邀约任务且当前用户是被邀约人时，不显示编辑和创建子任务按钮
+          if (!(_currentTask!.isRequest && _currentTask!.assigneeId == widget.currentUser.id)) ...[
           // 右上角加号按钮（创建子任务）
           if (_canCreateSubtask)
             IconButton(
@@ -219,6 +353,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             onPressed: _editTask,
             tooltip: '编辑任务',
           ),
+          ],
         ],
       ),
       body: RefreshIndicator(
@@ -245,7 +380,187 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 任务基本信息卡片
+              // 邀约任务信息（邀约任务专用）
+              if (task.isRequest)
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 请求类型和状态
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.blue,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Text(
+                                task.requestType ?? '未知',
+                                style: const TextStyle(
+                                  color: Colors.blue,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getStatusColor(task.status).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                _getStatusText(task.status),
+                                style: TextStyle(
+                                  color: _getStatusColor(task.status),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            // 处理结果
+                            if (task.requestResponse != null) ...[
+                              const SizedBox(width: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: task.requestResponse == 'approve' 
+                                      ? Colors.green.withOpacity(0.1)
+                                      : Colors.red.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  task.requestResponse == 'approve' ? '已批准' : '已反驳',
+                                  style: TextStyle(
+                                    color: task.requestResponse == 'approve' ? Colors.green : Colors.red,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // 请求内容
+                        if (task.description.isNotEmpty) ...[
+                          Text(
+                            '请求内容',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey[800],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            task.description,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[700],
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
+                        // 邀约信息列表
+                        _buildInfoRow(
+                          icon: Icons.person_outline,
+                          label: '发起人',
+                          value: task.createdBy,
+                        ),
+                        const SizedBox(height: 8),
+                        _buildInfoRow(
+                          icon: Icons.person,
+                          label: '接收人',
+                          value: task.assigneeName,
+                        ),
+                        const SizedBox(height: 8),
+                        if (task.requestResponse != null) ...[
+                          _buildInfoRow(
+                            icon: Icons.check_circle,
+                            label: '处理结果',
+                            value: task.requestResponse == 'approve' ? '已批准' : '已反驳',
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        if (task.completedAt != null) ...[
+                          _buildInfoRow(
+                            icon: Icons.access_time,
+                            label: '处理时间',
+                            value: DateFormat('yyyy-MM-dd HH:mm').format(task.completedAt!),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        _buildInfoRow(
+                          icon: Icons.access_time,
+                          label: '创建时间',
+                          value: DateFormat('yyyy-MM-dd HH:mm').format(task.createdAt),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                
+              // 备注信息卡片（邀约任务且已处理时显示）
+              if (task.isRequest && task.requestResponse != null)
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '备注',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          task.specialNotes ?? '无',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              
+              // 任务基本信息卡片（非邀约任务显示）
+              if (!task.isRequest)
               Card(
                 elevation: 4,
                 shape: RoundedRectangleBorder(
@@ -408,8 +723,77 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
               const SizedBox(height: 16),
 
-              // 子任务列表
-              if (_canCreateSubtask || _subtasks.isNotEmpty)
+              // 邀约处理（仅邀约任务且当前用户是被邀约人且未完成时显示）
+              if (_currentTask!.isRequest && 
+                  _currentTask!.assigneeId == widget.currentUser.id && 
+                  _currentTask!.status != 'completed')
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '处理邀约',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _notesController,
+                          decoration: const InputDecoration(
+                            labelText: '备注（可选）',
+                            hintText: '请输入备注信息...',
+                            border: OutlineInputBorder(),
+                          ),
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _handleRequestResponse('approve'),
+                                icon: const Icon(Icons.check_circle),
+                                label: const Text('批准'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _handleRequestResponse('reject'),
+                                icon: const Icon(Icons.cancel),
+                                label: const Text('反驳'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 16),
+
+              // 子任务列表（邀约任务不显示）
+              if (!_currentTask!.isRequest && (_canCreateSubtask || _subtasks.isNotEmpty))
                 Card(
                   elevation: 4,
                   shape: RoundedRectangleBorder(

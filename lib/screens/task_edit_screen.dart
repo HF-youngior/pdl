@@ -46,10 +46,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
   // 可用的优先级选项
   final List<Map<String, dynamic>> _priorityOptions = [
-    {'value': 'p0', 'label': 'P0 - 最高优先级', 'color': Colors.red},
-    {'value': 'p1', 'label': 'P1 - 高优先级', 'color': Colors.amber},
-    {'value': 'p2', 'label': 'P2 - 中优先级', 'color': Colors.blue},
-    {'value': 'p3', 'label': 'P3 - 低优先级', 'color': Colors.green},
+    {'value': 'p0', 'label': '重要且紧急', 'color': Colors.red},
+    {'value': 'p1', 'label': '重要不紧急', 'color': Colors.amber},
+    {'value': 'p2', 'label': '不重要紧急', 'color': Colors.blue},
+    {'value': 'p3', 'label': '不重要不紧急', 'color': Colors.green},
   ];
 
   // 可用的状态选项
@@ -848,7 +848,39 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         fillColor: Colors.grey.shade50,
       ),
       isExpanded: true,
+      // 允许下拉项自适应高度，避免多行内容溢出产生黄黑提示
+      isDense: true,
+      itemHeight: null,
       icon: const Icon(Icons.arrow_drop_down),
+      // 选中时仅展示单行内容，避免在输入框区域内出现两行导致溢出
+      selectedItemBuilder: (context) {
+        return _availableUsers.map((user) {
+          return Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                child: Text(
+                  user.name.isNotEmpty ? user.name[0] : 'U',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  user.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          );
+        }).toList();
+      },
       items: _availableUsers.map((user) {
         // 根据用户角色显示不同的标签
         String roleLabel = '';

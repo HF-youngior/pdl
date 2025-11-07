@@ -3712,10 +3712,10 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                       value: selectedPriority,
                       isExpanded: true,
                       items: const [
-                        DropdownMenuItem(value: 'p0', child: Text('P0 - 最高')),
-                        DropdownMenuItem(value: 'p1', child: Text('P1 - 高')),
-                        DropdownMenuItem(value: 'p2', child: Text('P2 - 中')),
-                        DropdownMenuItem(value: 'p3', child: Text('P3 - 低')),
+                        DropdownMenuItem(value: 'p0', child: Text('重要且紧急')),
+                        DropdownMenuItem(value: 'p1', child: Text('重要不紧急')),
+                        DropdownMenuItem(value: 'p2', child: Text('不重要紧急')),
+                        DropdownMenuItem(value: 'p3', child: Text('不重要不紧急')),
                       ],
                       onChanged: (String? value) {
                         setState(() {

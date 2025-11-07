@@ -47,13 +47,13 @@ class _CompanyImportantScreenState extends State<CompanyImportantScreen> {
   String _getPriorityText(String priority) {
     switch (priority) {
       case 'p0':
-        return 'P0 - 最高优先级';
+        return '重要且紧急';
       case 'p1':
-        return 'P1 - 高优先级';
+        return '重要不紧急';
       case 'p2':
-        return 'P2 - 中优先级';
+        return '不重要紧急';
       case 'p3':
-        return 'P3 - 低优先级';
+        return '不重要不紧急';
       default:
         return priority;
     }

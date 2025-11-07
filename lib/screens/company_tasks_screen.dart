@@ -33,8 +33,37 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
       });
 
       final tasks = await ApiService.getTasks();
+      
+      // 排序函数：邀约任务排在最上面，按ddl排序；其他任务按优先级和创建时间排序
+      int compareTasks(Task a, Task b) {
+        // 邀约任务优先
+        if (a.isRequest && !b.isRequest) return -1;
+        if (!a.isRequest && b.isRequest) return 1;
+        
+        // 如果都是邀约任务，按ddl排序
+        if (a.isRequest && b.isRequest) {
+          if (a.deadline != null && b.deadline != null) {
+            return a.deadline!.compareTo(b.deadline!);
+          }
+          if (a.deadline != null) return -1;
+          if (b.deadline != null) return 1;
+          return 0;
+        }
+        
+        // 非邀约任务按优先级排序（p0 > p1 > p2 > p3）
+        final priorityOrder = {'p0': 0, 'p1': 1, 'p2': 2, 'p3': 3};
+        final aPriority = priorityOrder[a.priority] ?? 4;
+        final bPriority = priorityOrder[b.priority] ?? 4;
+        if (aPriority != bPriority) {
+          return aPriority.compareTo(bPriority);
+        }
+        
+        // 相同优先级按创建时间倒序
+        return b.createdAt.compareTo(a.createdAt);
+      }
+      
       setState(() {
-        _tasks = tasks;
+        _tasks = tasks..sort(compareTasks);
         _isLoading = false;
       });
     } catch (e) {
@@ -46,10 +75,42 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
   }
 
   List<Task> get _filteredTasks {
+    List<Task> filtered;
     if (_filterStatus == 'all') {
-      return _tasks;
+      filtered = _tasks;
+    } else {
+      filtered = _tasks.where((task) => task.status == _filterStatus).toList();
     }
-    return _tasks.where((task) => task.status == _filterStatus).toList();
+    
+    // 确保排序：邀约任务排在最上面，按ddl排序
+    int compareTasks(Task a, Task b) {
+      // 邀约任务优先
+      if (a.isRequest && !b.isRequest) return -1;
+      if (!a.isRequest && b.isRequest) return 1;
+      
+      // 如果都是邀约任务，按ddl排序
+      if (a.isRequest && b.isRequest) {
+        if (a.deadline != null && b.deadline != null) {
+          return a.deadline!.compareTo(b.deadline!);
+        }
+        if (a.deadline != null) return -1;
+        if (b.deadline != null) return 1;
+        return 0;
+      }
+      
+      // 非邀约任务按优先级排序（p0 > p1 > p2 > p3）
+      final priorityOrder = {'p0': 0, 'p1': 1, 'p2': 2, 'p3': 3};
+      final aPriority = priorityOrder[a.priority] ?? 4;
+      final bPriority = priorityOrder[b.priority] ?? 4;
+      if (aPriority != bPriority) {
+        return aPriority.compareTo(bPriority);
+      }
+      
+      // 相同优先级按创建时间倒序
+      return b.createdAt.compareTo(a.createdAt);
+    }
+    
+    return filtered..sort(compareTasks);
   }
 
   bool get _canCreateTask {
@@ -69,13 +130,13 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
   String _getPriorityText(String priority) {
     switch (priority) {
       case 'p0':
-        return 'P0 - 最高优先级';
+        return '重要且紧急';
       case 'p1':
-        return 'P1 - 高优先级';
+        return '重要不紧急';
       case 'p2':
-        return 'P2 - 中优先级';
+        return '不重要紧急';
       case 'p3':
-        return 'P3 - 低优先级';
+        return '不重要不紧急';
       default:
         return priority;
     }

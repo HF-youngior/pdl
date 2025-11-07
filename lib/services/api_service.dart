@@ -381,4 +381,53 @@ class ApiService {
       return [];
     }
   }
+
+  // 创建向上邀约请求
+  static Future<bool> createRequest({
+    required String requestType,
+    required String assigneeId,
+    required String description,
+    String? deadline,
+    String? relatedTaskId,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/tasks/request'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'request_type': requestType,
+          'assignee_id': assigneeId,
+          'description': description,
+          'deadline': deadline,
+          'related_task_id': relatedTaskId,
+        }),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      print('创建邀约请求错误: $e');
+      rethrow;
+    }
+  }
+
+  // 处理邀约请求（批准/反驳）
+  static Future<bool> handleRequestResponse({
+    required String taskId,
+    required String action, // 'approve' 或 'reject'
+    String? notes,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/tasks/$taskId/request-response'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'action': action,
+          'notes': notes,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('处理邀约请求错误: $e');
+      rethrow;
+    }
+  }
 }
