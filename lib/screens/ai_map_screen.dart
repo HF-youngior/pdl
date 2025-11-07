@@ -1552,24 +1552,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                       itemBuilder: (context, index) {
                         final record = _mbtiRecords[index];
                         return ListTile(
-                          leading: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: _getMbtiTypeColor(record['mbti_type']),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Center(
-                              child: Text(
-                                record['mbti_type'],
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ),
+                          leading: _buildMbtiAvatar(record['mbti_type']),
                           title: Text(
                             'MBTI类型: ${record['mbti_type']}',
                             style: const TextStyle(fontWeight: FontWeight.bold),
@@ -1607,6 +1590,87 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       'ENFJ': const Color(0xFFEF4444),
     };
     return colors[mbtiType] ?? const Color(0xFF6B7280);
+  }
+
+  // 构建MBTI小人头像
+  Widget _buildMbtiAvatar(String mbtiType) {
+    final imagePath = _getMbtiImagePath(mbtiType);
+    
+    return Container(
+      width: 50,
+      height: 50,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.grey.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: imagePath != null
+            ? Image.asset(
+                imagePath,
+                width: 50,
+                height: 50,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  // 如果图片加载失败，显示文本标签作为后备
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: _getMbtiTypeColor(mbtiType),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Text(
+                        mbtiType,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              )
+            : Container(
+                decoration: BoxDecoration(
+                  color: _getMbtiTypeColor(mbtiType),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Text(
+                    mbtiType,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+
+  // 获取MBTI类型对应的图片路径
+  String? _getMbtiImagePath(String mbtiType) {
+    if (mbtiType == null || mbtiType.isEmpty) return null;
+    
+    // 所有16种MBTI类型
+    const validTypes = [
+      'INTJ', 'INTP', 'ENTJ', 'ENTP',
+      'INFJ', 'INFP', 'ENFJ', 'ENFP',
+      'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ',
+      'ISTP', 'ISFP', 'ESTP', 'ESFP'
+    ];
+    
+    if (!validTypes.contains(mbtiType.toUpperCase())) {
+      return null;
+    }
+    
+    return 'assets/images/mbti/${mbtiType.toUpperCase()}.png';
   }
 
   // 格式化测试日期
