@@ -15,7 +15,7 @@ class AiService {
   static Future<AiAnalyzeResult> analyzeLog(String text, {int topK = 20}) async {
     final response = await http.post(
       Uri.parse('${ApiService.baseUrl}/ai/analyze-log'),
-      headers: {'Content-Type': 'application/json'},
+      headers: ApiService.getAuthHeaders(),
       body: jsonEncode({'text': text, 'topK': topK}),
     );
     if (response.statusCode == 200) {
@@ -33,7 +33,7 @@ class AiService {
 
   static Future<AiAnalyzeResult> analyzeToday({int topK = 20}) async {
     final response = await http.get(
-      Uri.parse('${ApiService.baseUrl}/api/ai/analyze-today?topK=$topK'),
+      Uri.parse('${ApiService.baseUrl}/ai/analyze-today?topK=$topK'),
       headers: ApiService.getAuthHeaders(),
     );
     if (response.statusCode == 200) {
@@ -91,6 +91,7 @@ class AiService {
     required String logText,
     String? mbtiType,
   }) async {
+    // baseUrl已经包含/api，所以不需要再加/api前缀
     final response = await http.post(
       Uri.parse('${ApiService.baseUrl}/ai/personality-analysis'),
       headers: ApiService.getAuthHeaders(),
@@ -104,7 +105,17 @@ class AiService {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       return PersonalityAnalysis.fromJson(data);
     }
-    throw Exception('性格分析失败，状态码: ${response.statusCode}');
+    // 提供更详细的错误信息
+    String errorMessage = '性格分析失败，状态码: ${response.statusCode}';
+    try {
+      final errorData = jsonDecode(response.body);
+      if (errorData['error'] != null) {
+        errorMessage += ', 错误信息: ${errorData['error']}';
+      }
+    } catch (e) {
+      errorMessage += ', 响应体: ${response.body}';
+    }
+    throw Exception(errorMessage);
   }
 
   // 获取性格分析历史

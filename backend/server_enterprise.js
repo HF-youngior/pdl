@@ -3358,6 +3358,24 @@ app.get('/api/mbti-records/latest', authenticateToken, async (req, res) => {
       record.personal_info = safeParseJSON(record.personal_info);
     }
 
+    // 确保confidence_score是数字类型（MySQL DECIMAL可能返回字符串）
+    if (typeof record.confidence_score === 'string') {
+      record.confidence_score = parseFloat(record.confidence_score) || 0.5;
+    }
+    if (record.confidence_score == null || isNaN(record.confidence_score)) {
+      record.confidence_score = 0.5;
+    }
+
+    // 从ai_analysis中提取strengths和weaknesses（如果存在）以便前端直接使用
+    if (record.ai_analysis && typeof record.ai_analysis === 'object') {
+      if (record.ai_analysis.strengths) {
+        record.strengths = record.ai_analysis.strengths;
+      }
+      if (record.ai_analysis.weaknesses) {
+        record.weaknesses = record.ai_analysis.weaknesses;
+      }
+    }
+
     res.json(record);
   } catch (error) {
     console.error('获取最新MBTI记录错误:', error);
@@ -3621,22 +3639,36 @@ app.get('/api/ai/analyze-today', authenticateToken, async (req, res) => {
     const { topK = 20 } = req.query;
     const userId = req.user.id;
 
-    // 查询当天该用户的个人日志（title+content）
+    // 查询当天该用户的个人日志（优先使用log_date字段，如果为空则使用created_at）
+    // 同时获取title和content字段（兼容log_title和log_content）
     let [rows] = await db.execute(
-      `SELECT title, content
+      `SELECT
+         COALESCE(log_title, title) as title,
+         COALESCE(log_content, content) as content
        FROM personal_logs
        WHERE user_id = ?
-         AND DATE(created_at) = CURDATE()`,
+         AND (
+           (log_date IS NOT NULL AND DATE(log_date) = CURDATE())
+           OR (log_date IS NULL AND DATE(created_at) = CURDATE())
+         )`,
       [userId]
     );
     let usedRange = 'today';
 
+    // 如果今天没有日志，尝试获取最近7天的日志
     if (!rows || rows.length === 0) {
       const [rows7] = await db.execute(
-        `SELECT title, content
+        `SELECT
+           COALESCE(log_title, title) as title,
+           COALESCE(log_content, content) as content
          FROM personal_logs
          WHERE user_id = ?
-           AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`,
+           AND (
+             (log_date IS NOT NULL AND log_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY))
+             OR (log_date IS NULL AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY))
+           )
+         ORDER BY COALESCE(log_date, created_at) DESC
+         LIMIT 50`,
         [userId]
       );
       rows = rows7 || [];
@@ -3647,10 +3679,23 @@ app.get('/api/ai/analyze-today', authenticateToken, async (req, res) => {
       return res.json({ keywords: [], wordFrequencies: [], range: usedRange });
     }
 
-    const combined = rows.map(r => `${r.title || ''} ${r.content || ''}`).join(' \n ');
+    // 合并日志内容（title和content）
+    const combined = rows
+      .map(r => `${r.title || ''} ${r.content || ''}`)
+      .filter(text => text.trim().length > 0)
+      .join(' \n ');
+
+    if (!combined || combined.trim().length === 0) {
+      return res.json({ keywords: [], wordFrequencies: [], range: usedRange });
+    }
+
     // 临时使用简单分词（等segmentit安装后恢复）
     const tokens = combined.split(/[\s\n\r\t,，。！？；：""''（）()【】\[\]{}]+/)
       .filter(w => w && w.trim().length > 1);
+
+    if (tokens.length === 0) {
+      return res.json({ keywords: [], wordFrequencies: [], range: usedRange });
+    }
 
     const freqMap = {};
     for (const w of tokens) {
@@ -3667,7 +3712,7 @@ app.get('/api/ai/analyze-today', authenticateToken, async (req, res) => {
     return res.json({ keywords, wordFrequencies, range: usedRange });
   } catch (e) {
     console.error('AI当天日志分析失败:', e);
-    return res.status(500).json({ error: 'AI当天日志分析失败' });
+    return res.status(500).json({ error: 'AI当天日志分析失败: ' + e.message });
   }
 });
 
@@ -3679,26 +3724,47 @@ app.post('/api/ai/save-wordcloud', authenticateToken, async (req, res) => {
     const { analysisDate, keywords, wordFrequencies, description } = req.body;
     const userId = req.user.id;
 
+    // 解析analysisDate，如果为空则使用当前时间
+    const analysisDateTime = analysisDate ? new Date(analysisDate) : new Date();
+
     const [result] = await db.execute(
       `INSERT INTO wordcloud_analysis (user_id, analysis_date, keywords, word_frequencies, description, created_at)
        VALUES (?, ?, ?, ?, ?, NOW())`,
-      [userId, analysisDate, JSON.stringify(keywords), JSON.stringify(wordFrequencies), description]
+      [userId, analysisDateTime, JSON.stringify(keywords), JSON.stringify(wordFrequencies), description || '今日日志分析']
     );
 
+    // 查询刚插入的记录，确保返回完整数据
+    const [rows] = await db.execute(
+      `SELECT id, user_id, analysis_date, keywords, word_frequencies, description, created_at
+       FROM wordcloud_analysis
+       WHERE id = ?`,
+      [result.insertId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(500).json({ error: '保存成功但无法查询到记录' });
+    }
+
+    const row = rows[0];
     const analysis = {
-      id: result.insertId.toString(),
-      userId: userId,
-      analysisDate: analysisDate,
-      keywords: keywords,
-      wordFrequencies: wordFrequencies,
-      createdAt: new Date(),
-      description: description,
+      id: row.id.toString(),
+      userId: row.user_id,
+      analysisDate: row.analysis_date,
+      keywords: JSON.parse(row.keywords),
+      wordFrequencies: JSON.parse(row.word_frequencies),
+      createdAt: row.created_at,
+      description: row.description,
+      // 兼容前端期望的字段名
+      user_id: row.user_id,
+      analysis_date: row.analysis_date,
+      word_frequencies: JSON.parse(row.word_frequencies),
+      created_at: row.created_at,
     };
 
     res.json(analysis);
   } catch (error) {
     console.error('保存词云分析失败:', error);
-    res.status(500).json({ error: '保存词云分析失败' });
+    res.status(500).json({ error: '保存词云分析失败: ' + error.message });
   }
 });
 
@@ -3738,14 +3804,41 @@ app.post('/api/ai/personality-analysis', authenticateToken, async (req, res) => 
     const userId = req.user.id;
 
     let analysisResult;
+    let isDeepSeek = false;
 
-    if (useDeepSeek && DEEPSEEK_API_KEY) {
-      // 使用DeepSeek API进行性格分析
-      analysisResult = await analyzePersonalityWithDeepSeek(logText, mbtiType);
+    // 优先使用外部AI（DeepSeek）进行性格分析
+    if (DEEPSEEK_API_KEY) {
+      try {
+        // 尝试使用DeepSeek API进行性格分析
+        analysisResult = await analyzePersonalityWithDeepSeek(logText, mbtiType);
+        // 检查返回结果是否表示失败（包含错误信息）
+        const hasError = analysisResult.aiAnalysisText && (
+          analysisResult.aiAnalysisText.includes('失败') ||
+          analysisResult.aiAnalysisText.includes('错误') ||
+          analysisResult.aiAnalysisText.includes('AI分析失败')
+        );
+        if (hasError) {
+          // DeepSeek API返回了错误结果，回退到本地算法
+          console.warn('DeepSeek API返回错误结果，回退到本地算法');
+          analysisResult = await analyzePersonalityLocally(logText, mbtiType);
+          isDeepSeek = false;
+        } else {
+          isDeepSeek = true;
+        }
+      } catch (deepSeekError) {
+        // DeepSeek API调用抛出异常，回退到本地算法
+        console.warn('DeepSeek API调用失败，回退到本地算法:', deepSeekError.message);
+        analysisResult = await analyzePersonalityLocally(logText, mbtiType);
+        isDeepSeek = false;
+      }
     } else {
-      // 使用本地算法进行性格分析
+      // DeepSeek API密钥不存在，使用本地算法进行性格分析
       analysisResult = await analyzePersonalityLocally(logText, mbtiType);
+      isDeepSeek = false;
     }
+
+    // 根据是否使用DeepSeek设置description
+    const description = isDeepSeek ? 'DeepSeek AI性格分析报告' : '本地算法性格分析报告';
 
     const [result] = await db.execute(
       `INSERT INTO personality_analysis (user_id, analysis_date, personality_traits, mbti_type, work_suggestions, personality_chart, ai_analysis_text, description, created_at)
@@ -3757,7 +3850,7 @@ app.post('/api/ai/personality-analysis', authenticateToken, async (req, res) => 
         JSON.stringify(analysisResult.workSuggestions),
         JSON.stringify(analysisResult.personalityChart),
         analysisResult.aiAnalysisText || null,
-        'AI性格分析报告'
+        description
       ]
     );
 
@@ -3770,8 +3863,9 @@ app.post('/api/ai/personality-analysis', authenticateToken, async (req, res) => 
       workSuggestions: analysisResult.workSuggestions,
       personalityChart: analysisResult.personalityChart,
       aiAnalysisText: analysisResult.aiAnalysisText,
+      isDeepSeek: isDeepSeek, // 标识是否使用DeepSeek API
       createdAt: new Date(),
-      description: 'AI性格分析报告',
+      description: description,
     };
 
     res.json(analysis);
@@ -3804,6 +3898,8 @@ app.get('/api/ai/personality-history', authenticateToken, async (req, res) => {
       aiAnalysisText: row.ai_analysis_text,
       createdAt: row.created_at,
       description: row.description,
+      // 根据description判断是否使用DeepSeek（兼容历史数据）
+      isDeepSeek: row.description && row.description.includes('DeepSeek'),
     }));
 
     res.json(history);
