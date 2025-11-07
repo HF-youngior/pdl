@@ -2,7 +2,7 @@ const mysql = require('mysql2/promise');
 
 async function queryTask() {
   let connection;
-  
+
   try {
     connection = await mysql.createConnection({
       host: 'localhost',
