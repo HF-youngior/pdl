@@ -175,13 +175,6 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         final allData = jsonDecode(allRecordsResponse.body);
         List<Map<String, dynamic>> allRecords = List<Map<String, dynamic>>.from(allData['records'] ?? []);
         
-        // 计算每个MBTI类型的数量
-        Map<String, int> counts = {};
-        for (var record in allRecords) {
-          final type = record['mbti_type']?.toString() ?? '未知';
-          counts[type] = (counts[type] ?? 0) + 1;
-        }
-        
         // 应用类型筛选
         List<Map<String, dynamic>> filteredRecords = allRecords;
         if (_selectedMbtiType != '全部') {
@@ -258,6 +251,13 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           }
         });
         
+        // 基于去重后的记录计算每个MBTI类型的数量
+        Map<String, int> counts = {};
+        for (var record in sortedRecords) {
+          final type = record['mbti_type']?.toString() ?? '未知';
+          counts[type] = (counts[type] ?? 0) + 1;
+        }
+        
         setState(() { 
           _mbtiRecords = sortedRecords;
           _mbtiTypeCounts = counts;
@@ -269,183 +269,6 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       print('加载MBTI记录失败: $e');
     } finally {
       setState(() { _loadingMbtiRecords = false; });
-    }
-  }
-
-  // 清理不完整的MBTI记录
-  Future<void> _cleanIncompleteMbtiRecords() async {
-    // 确认对话框
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('确认清理'),
-        content: const Text(
-          '将删除以下不完整的MBTI记录：\n'
-          '• 缺少MBTI类型的记录\n'
-          '• 缺少测试日期的记录\n'
-          '• 缺少测试分数的记录\n'
-          '• 同一天同一类型的重复记录（保留最新的）\n\n'
-          '此操作不可恢复，确定要继续吗？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
-            child: const Text('确定清理', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    setState(() { _loading = true; });
-
-    try {
-      // 获取所有记录
-      final allRecordsResponse = await http.get(
-        Uri.parse('${ApiService.baseUrl}/mbti-records'),
-        headers: ApiService.getAuthHeaders(),
-      );
-
-      if (allRecordsResponse.statusCode != 200) {
-        throw Exception('获取记录失败');
-      }
-
-      final allData = jsonDecode(allRecordsResponse.body);
-      List<Map<String, dynamic>> allRecords = List<Map<String, dynamic>>.from(allData['records'] ?? []);
-
-      // 找出需要删除的记录
-      List<String> recordsToDelete = [];
-      Map<String, Map<String, dynamic>> dateTypeMap = {}; // 用于去重：日期_MBTI类型 -> 记录
-
-      for (var record in allRecords) {
-        final mbtiType = record['mbti_type']?.toString() ?? '';
-        final testDate = record['test_date']?.toString() ?? '';
-        final testScores = record['test_scores'];
-        final id = record['id']?.toString() ?? '';
-
-        // 检查是否不完整
-        bool isIncomplete = false;
-        if (mbtiType.isEmpty) {
-          isIncomplete = true;
-        } else if (testDate.isEmpty) {
-          isIncomplete = true;
-        } else if (testScores == null) {
-          isIncomplete = true;
-        }
-
-        if (isIncomplete) {
-          recordsToDelete.add(id);
-          continue;
-        }
-
-        // 检查重复：同一天同一类型只保留最新的
-        try {
-          final dateTime = DateTime.parse(testDate);
-          final dateKey = '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}_$mbtiType';
-
-          if (!dateTypeMap.containsKey(dateKey)) {
-            dateTypeMap[dateKey] = record;
-          } else {
-            // 比较创建时间，保留最新的
-            final existingRecord = dateTypeMap[dateKey]!;
-            final existingCreatedAt = existingRecord['created_at']?.toString();
-            final currentCreatedAt = record['created_at']?.toString();
-
-            if (currentCreatedAt != null && existingCreatedAt != null) {
-              try {
-                final existing = DateTime.parse(existingCreatedAt);
-                final current = DateTime.parse(currentCreatedAt);
-                if (current.isAfter(existing)) {
-                  // 当前记录更新，删除旧的
-                  recordsToDelete.add(existingRecord['id']?.toString() ?? '');
-                  dateTypeMap[dateKey] = record;
-                } else {
-                  // 旧记录更新，删除当前的
-                  recordsToDelete.add(id);
-                }
-              } catch (e) {
-                // 解析失败，比较test_date
-                try {
-                  final existingTestDate = DateTime.parse(existingRecord['test_date']?.toString() ?? '');
-                  final currentTestDate = DateTime.parse(testDate);
-                  if (currentTestDate.isAfter(existingTestDate)) {
-                    recordsToDelete.add(existingRecord['id']?.toString() ?? '');
-                    dateTypeMap[dateKey] = record;
-                  } else {
-                    recordsToDelete.add(id);
-                  }
-                } catch (e2) {
-                  // 如果都解析失败，保留第一个
-                  recordsToDelete.add(id);
-                }
-              }
-            } else {
-              // 如果无法比较，保留第一个
-              recordsToDelete.add(id);
-            }
-          }
-        } catch (e) {
-          // 日期解析失败，标记为不完整
-          recordsToDelete.add(id);
-        }
-      }
-
-      // 删除记录
-      int deletedCount = 0;
-      int failedCount = 0;
-
-      for (var id in recordsToDelete) {
-        if (id.isEmpty) continue;
-        try {
-          final deleteResponse = await http.delete(
-            Uri.parse('${ApiService.baseUrl}/mbti-records/$id'),
-            headers: ApiService.getAuthHeaders(),
-          );
-
-          if (deleteResponse.statusCode == 200) {
-            deletedCount++;
-          } else {
-            failedCount++;
-          }
-        } catch (e) {
-          failedCount++;
-        }
-      }
-
-      // 重新加载记录列表
-      await _loadMbtiRecords();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              deletedCount > 0
-                  ? '清理完成：已删除 $deletedCount 条记录${failedCount > 0 ? "，$failedCount 条删除失败" : ""}'
-                  : '没有需要清理的记录',
-            ),
-            backgroundColor: deletedCount > 0 ? Colors.green : Colors.blue,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('清理失败: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      setState(() { _loading = false; });
     }
   }
 
@@ -1515,47 +1338,6 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 清理不完整记录按钮
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFEF4444).withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: ElevatedButton.icon(
-                onPressed: _loading ? null : _cleanIncompleteMbtiRecords,
-                icon: const Icon(Icons.cleaning_services, color: Colors.white),
-                label: Text(
-                  _loading ? '清理中...' : '清理不完整记录',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-
             // 搜索和过滤控件
             Container(
               padding: const EdgeInsets.all(16.0),
