@@ -22,6 +22,10 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
   bool _isLoading = true;
   String? _error;
   late TabController _tabController;
+  Set<String> _previousReceivedTaskIds = {}; // 用于跟踪之前的接收任务ID
+  Set<String> _previousAssignedTaskIds = {}; // 用于跟踪之前的分配任务ID
+  Map<String, String?> _previousRequestResponses = {}; // 用于跟踪之前的邀约回复状态
+  DateTime? _lastLoadTime; // 上次加载时间
 
   @override
   void initState() {
@@ -45,23 +49,28 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
 
       final tasks = await ApiService.getTasks();
       
-      // 排序函数：邀约任务排在最上面，按ddl排序；其他任务按优先级和创建时间排序
+      // 排序函数：未处理的邀约始终在最上方，已处理的邀约按正常排序
       int compareTasks(Task a, Task b) {
-        // 邀约任务优先
-        if (a.isRequest && !b.isRequest) return -1;
-        if (!a.isRequest && b.isRequest) return 1;
+        // 判断是否为未处理的邀约（isRequest为true且requestResponse为null）
+        final bool aIsUnhandledRequest = a.isRequest && (a.requestResponse == null || a.requestResponse?.isEmpty == true);
+        final bool bIsUnhandledRequest = b.isRequest && (b.requestResponse == null || b.requestResponse?.isEmpty == true);
         
-        // 如果都是邀约任务，按ddl排序
-        if (a.isRequest && b.isRequest) {
+        // 未处理的邀约始终在最上方
+        if (aIsUnhandledRequest && !bIsUnhandledRequest) return -1;
+        if (!aIsUnhandledRequest && bIsUnhandledRequest) return 1;
+        
+        // 如果都是未处理的邀约，按ddl排序
+        if (aIsUnhandledRequest && bIsUnhandledRequest) {
           if (a.deadline != null && b.deadline != null) {
             return a.deadline!.compareTo(b.deadline!);
           }
           if (a.deadline != null) return -1;
           if (b.deadline != null) return 1;
-          return 0;
+          // 如果都没有ddl，按创建时间倒序（新的在上）
+          return b.createdAt.compareTo(a.createdAt);
         }
         
-        // 非邀约任务按优先级排序（p0 > p1 > p2 > p3）
+        // 已处理的邀约和普通任务按优先级排序（p0 > p1 > p2 > p3）
         final priorityOrder = {'p0': 0, 'p1': 1, 'p2': 2, 'p3': 3};
         final aPriority = priorityOrder[a.priority] ?? 4;
         final bPriority = priorityOrder[b.priority] ?? 4;
@@ -69,23 +78,91 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
           return aPriority.compareTo(bPriority);
         }
         
-        // 相同优先级按创建时间倒序
+        // 相同优先级按创建时间倒序（新创建的任务在上）
         return b.createdAt.compareTo(a.createdAt);
       }
       
       // 根据用户角色和任务关系分类任务，并排序
+      final receivedTasks = tasks.where((task) => 
+        task.assigneeId == widget.user.id || 
+        task.assigneeName == widget.user.name
+      ).toList()..sort(compareTasks);
+      
+      final assignedTasks = tasks.where((task) => 
+        task.createdBy == widget.user.id || 
+        task.createdBy == widget.user.username
+      ).toList()..sort(compareTasks);
+      
+      final now = DateTime.now();
+      final currentReceivedTaskIds = receivedTasks.map((t) => t.id).toSet();
+      final currentAssignedTaskIds = assignedTasks.map((t) => t.id).toSet();
+      
+      // 检测新邀约、新任务和邀约回复
+      if (_lastLoadTime != null && _previousReceivedTaskIds.isNotEmpty) {
+        final newReceivedTasks = receivedTasks.where((task) => 
+          !_previousReceivedTaskIds.contains(task.id)
+        ).toList();
+        
+        final newRequests = newReceivedTasks.where((task) => 
+          task.isRequest && 
+          (task.requestResponse == null || task.requestResponse?.isEmpty == true)
+        ).toList();
+        
+        final newRegularTasks = newReceivedTasks.where((task) => !task.isRequest).toList();
+        
+        // 检测邀约回复（用户发送的邀约被处理了）
+        final newRequestReplies = assignedTasks.where((task) {
+          if (!task.isRequest || task.createdBy != widget.user.id) return false;
+          if (task.requestResponse == null || task.requestResponse!.isEmpty) return false;
+          
+          // 检查之前的状态：如果之前没有回复，现在有回复，就是新回复
+          final previousResponse = _previousRequestResponses[task.id];
+          final wasUnhandled = previousResponse == null || previousResponse.isEmpty;
+          final nowHandled = task.requestResponse != null && task.requestResponse!.isNotEmpty;
+          
+          return wasUnhandled && nowHandled;
+        }).toList();
+        
+        // 显示弹窗提示（优先级：新邀约 > 邀约回复 > 新任务）
+        if (mounted) {
+          if (newRequests.isNotEmpty) {
+            _showNotificationDialog(
+              title: '新邀约',
+              message: '您收到了 ${newRequests.length} 个新邀约',
+              tasks: newRequests,
+            );
+          } else if (newRequestReplies.isNotEmpty) {
+            _showNotificationDialog(
+              title: '邀约回复',
+              message: '您的 ${newRequestReplies.length} 个邀约已收到回复',
+              tasks: newRequestReplies,
+            );
+          } else if (newRegularTasks.isNotEmpty) {
+            _showNotificationDialog(
+              title: '新任务',
+              message: '您收到了 ${newRegularTasks.length} 个新任务',
+              tasks: newRegularTasks,
+            );
+          }
+        }
+      }
+      
+      // 更新邀约回复状态记录
+      final newRequestResponses = <String, String?>{};
+      for (final task in assignedTasks) {
+        if (task.isRequest && task.createdBy == widget.user.id) {
+          newRequestResponses[task.id] = task.requestResponse;
+        }
+      }
+      
       setState(() {
-        _receivedTasks = tasks.where((task) => 
-          task.assigneeId == widget.user.id || 
-          task.assigneeName == widget.user.name
-        ).toList()..sort(compareTasks);
-        
-        _assignedTasks = tasks.where((task) => 
-          task.createdBy == widget.user.id || 
-          task.createdBy == widget.user.username
-        ).toList()..sort(compareTasks);
-        
+        _receivedTasks = receivedTasks;
+        _assignedTasks = assignedTasks;
         _isLoading = false;
+        _previousReceivedTaskIds = currentReceivedTaskIds;
+        _previousAssignedTaskIds = currentAssignedTaskIds;
+        _previousRequestResponses = newRequestResponses;
+        _lastLoadTime = now;
       });
     } catch (e) {
       setState(() {
@@ -93,6 +170,67 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
         _isLoading = false;
       });
     }
+  }
+  
+  // 显示通知弹窗
+  void _showNotificationDialog({
+    required String title,
+    required String message,
+    required List<Task> tasks,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              title.contains('邀约回复') 
+                ? Icons.reply 
+                : (title.contains('邀约') ? Icons.mail : Icons.task),
+              color: title.contains('邀约回复') 
+                ? Colors.purple 
+                : (title.contains('邀约') ? Colors.orange : Colors.blue),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message, style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 16),
+            if (tasks.length <= 3) ...[
+              const Text('任务列表：', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              ...tasks.map((task) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.arrow_right, size: 16, color: Colors.grey[600]),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        task.title,
+                        style: TextStyle(fontSize: 14, color: Colors.grey[800]),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+            ] else
+              Text('共 ${tasks.length} 个任务', style: TextStyle(color: Colors.grey[600])),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   bool get _canCreateTask {
@@ -189,24 +327,25 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
             onPressed: _loadTasks,
             tooltip: '刷新',
           ),
-          // 向上邀约按钮（所有用户都可以使用）
-          IconButton(
-            icon: const Icon(Icons.send),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => RequestScreen(
-                    currentUser: widget.user,
+          // 向上邀约按钮（admin用户不显示）
+          if (widget.user.role != 'admin')
+            IconButton(
+              icon: const Icon(Icons.send),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => RequestScreen(
+                      currentUser: widget.user,
+                    ),
                   ),
-                ),
-              ).then((result) {
-                if (result == true) {
-                  _loadTasks();
-                }
-              });
-            },
-            tooltip: '向上邀约',
-          ),
+                ).then((result) {
+                  if (result == true) {
+                    _loadTasks();
+                  }
+                });
+              },
+              tooltip: '向上邀约',
+            ),
           // 加号按钮在刷新按钮左边（仅非员工角色显示）
           if (_canCreateTask)
             IconButton(
@@ -392,6 +531,31 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
                     ),
                   ),
                 ),
+                // 邀约标识
+                if (task.isRequest && (task.requestResponse == null || task.requestResponse?.isEmpty == true))
+                  Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.orange,
+                        width: 1,
+                      ),
+                    ),
+                    child: const Text(
+                      '邀约',
+                      style: TextStyle(
+                        color: Colors.orange,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,

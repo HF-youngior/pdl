@@ -25,7 +25,7 @@ class Task {
   final bool isRequest; // 是否为邀约任务
   final String? requestType; // 请求类型
   final String? requestResponse; // 处理结果：'approve' 或 'reject'
-  final String? specialNotes=null; // 备注信息
+  final String? specialNotes; // 备注信息
 
   Task({
     required this.id,
@@ -51,6 +51,7 @@ class Task {
     this.isRequest = false,
     this.requestType,
     this.requestResponse,
+    this.specialNotes,
   });
 
   factory Task.fromJson(Map<String, dynamic> json) {
@@ -86,6 +87,7 @@ class Task {
       isRequest: json['is_request'] == true || json['is_request'] == 1 || json['isRequest'] == true,
       requestType: json['request_type'] ?? json['requestType'],
       requestResponse: json['request_response'] ?? json['requestResponse'],
+      specialNotes: json['special_notes'] ?? json['specialNotes'],
     );
   }
 

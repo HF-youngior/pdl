@@ -178,34 +178,44 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ),
         );
 
-        // 更新任务状态
-        setState(() {
-          _currentTask = Task(
-            id: _currentTask!.id,
-            title: _currentTask!.title,
-            description: _currentTask!.description,
-            assigneeId: _currentTask!.assigneeId,
-            assigneeName: _currentTask!.assigneeName,
-            department: _currentTask!.department,
-            priority: _currentTask!.priority,
-            status: 'completed',
-            createdAt: _currentTask!.createdAt,
-            deadline: _currentTask!.deadline,
-            createdBy: _currentTask!.createdBy,
-            startTime: _currentTask!.startTime,
-            endTime: _currentTask!.endTime,
-            color: _currentTask!.color,
-            location: _currentTask!.location,
-            isAllDay: _currentTask!.isAllDay,
-            progressPercentage: 100,
-            parentTaskId: _currentTask!.parentTaskId,
-            subtasks: _currentTask!.subtasks,
-            isRequest: _currentTask!.isRequest,
-            requestType: _currentTask!.requestType,
-            requestResponse: action, // 保存处理结果
-            completedAt: DateTime.now(),
-          );
-        });
+        // 刷新任务信息以获取最新的备注信息
+        try {
+          final updatedTask = await TaskService.getTaskById(_currentTask!.id);
+          setState(() {
+            _currentTask = updatedTask;
+          });
+        } catch (e) {
+          print('刷新任务信息失败: $e');
+          // 如果刷新失败，至少更新本地状态
+          setState(() {
+            _currentTask = Task(
+              id: _currentTask!.id,
+              title: _currentTask!.title,
+              description: _currentTask!.description,
+              assigneeId: _currentTask!.assigneeId,
+              assigneeName: _currentTask!.assigneeName,
+              department: _currentTask!.department,
+              priority: _currentTask!.priority,
+              status: 'completed',
+              createdAt: _currentTask!.createdAt,
+              deadline: _currentTask!.deadline,
+              createdBy: _currentTask!.createdBy,
+              startTime: _currentTask!.startTime,
+              endTime: _currentTask!.endTime,
+              color: _currentTask!.color,
+              location: _currentTask!.location,
+              isAllDay: _currentTask!.isAllDay,
+              progressPercentage: 100,
+              parentTaskId: _currentTask!.parentTaskId,
+              subtasks: _currentTask!.subtasks,
+              isRequest: _currentTask!.isRequest,
+              requestType: _currentTask!.requestType,
+              requestResponse: action, // 保存处理结果
+              specialNotes: notes.isEmpty ? null : notes, // 保存备注
+              completedAt: DateTime.now(),
+            );
+          });
+        }
 
         // 清空备注输入框
         _notesController.clear();
@@ -332,21 +342,34 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         actions: [
-          // 邀约任务且当前用户是被邀约人时，不显示编辑和创建子任务按钮
-          if (!(_currentTask!.isRequest && _currentTask!.assigneeId == widget.currentUser.id)) ...[
-          // 右上角加号按钮（创建子任务）
-          if (_canCreateSubtask)
-            IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: _createSubtask,
-              tooltip: '创建子任务',
-            ),
-          // 编辑按钮
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: _editTask,
-            tooltip: '编辑任务',
-          ),
+          // 邀约任务：只有创建者可以编辑，被邀约人不能编辑
+          // 普通任务：根据权限显示编辑按钮
+          if (_currentTask!.isRequest) ...[
+            // 邀约任务：只有创建者可以编辑
+            if (_currentTask!.createdBy == widget.currentUser.id || 
+                _currentTask!.createdBy == widget.currentUser.username)
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: _editTask,
+                tooltip: '编辑邀约内容',
+              ),
+          ] else ...[
+            // 普通任务：邀约任务且当前用户是被邀约人时，不显示编辑和创建子任务按钮
+            if (!(_currentTask!.isRequest && _currentTask!.assigneeId == widget.currentUser.id)) ...[
+              // 右上角加号按钮（创建子任务）
+              if (_canCreateSubtask)
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: _createSubtask,
+                  tooltip: '创建子任务',
+                ),
+              // 编辑按钮
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: _editTask,
+                tooltip: '编辑任务',
+              ),
+            ],
           ],
         ],
       ),
