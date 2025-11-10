@@ -8,7 +8,7 @@ async function verifyLogic() {
     connection = await mysql.createConnection({
       host: 'localhost',
       user: 'root',
-      password: 'Zs462581379',
+      password: 'Pyx_07091817',
       database: 'enterprise_management',
       charset: 'utf8mb4'
     });

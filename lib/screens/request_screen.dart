@@ -345,34 +345,58 @@ class _RequestScreenState extends State<RequestScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : DropdownButtonFormField<String>(
                       value: _selectedAssigneeId,
+                      isExpanded: true,
+                      isDense: true,
                       decoration: const InputDecoration(
                         labelText: '接收人 *',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.person),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                       ),
                       items: _availableUsers.map((user) {
                         final deptDisp = user.department ?? '未知部门';
                         return DropdownMenuItem<String>(
                           value: user.id,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                user.name,
-                                style: const TextStyle(fontWeight: FontWeight.w500),
-                              ),
-                              Text(
-                                '$deptDisp · ${user.role}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              minHeight: 40,
+                              maxHeight: 48,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  user.name,
+                                  style: const TextStyle(fontWeight: FontWeight.w500),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
-                              ),
-                            ],
+                                Text(
+                                  '$deptDisp · ${user.role}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ],
+                            ),
                           ),
                         );
                       }).toList(),
+                      selectedItemBuilder: (BuildContext context) {
+                        return _availableUsers.map((user) {
+                          final deptDisp = user.department ?? '未知部门';
+                          return Text(
+                            '${user.name} · $deptDisp · ${user.role}',
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          );
+                        }).toList();
+                      },
                       onChanged: (value) {
                         setState(() {
                           _selectedAssigneeId = value;
@@ -434,6 +458,7 @@ class _RequestScreenState extends State<RequestScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : DropdownButtonFormField<String>(
                       value: _selectedRelatedTaskId,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: '关联任务',
                         border: OutlineInputBorder(),
@@ -447,7 +472,11 @@ class _RequestScreenState extends State<RequestScreen> {
                         ..._availableTasks.map((task) {
                           return DropdownMenuItem<String>(
                             value: task['id'],
-                            child: Text('${task['title']} (${task['assigneeName']})'),
+                            child: Text(
+                              '${task['title']} (${task['assigneeName']})',
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
                           );
                         }),
                       ],

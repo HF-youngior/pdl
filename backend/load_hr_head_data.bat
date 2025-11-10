@@ -7,7 +7,7 @@ echo.
 echo 正在为 hr_head 用户添加 2025年10月份的数据...
 echo.
 
-mysql -u root -pZs462581379 < migrations\2025-10-hr-head-data-compatible.sql
+mysql -u root -pPyx_07091817 < migrations\2025-10-hr-head-data-compatible.sql
 
 echo.
 if %ERRORLEVEL% EQU 0 (

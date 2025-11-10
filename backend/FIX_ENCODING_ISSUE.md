@@ -21,7 +21,7 @@ MySQL 数据库连接的字符集配置不正确：
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Zs462581379',
+  password: process.env.DB_PASSWORD || 'Pyx_07091817',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
   charset: 'utf8mb4',  // 添加字符集配置
@@ -79,12 +79,12 @@ COLLATE utf8mb4_unicode_ci;
 
 ```powershell
 # 转换数据库
-mysql -h localhost -u root -pZs462581379 enterprise_management -e "ALTER DATABASE enterprise_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -h localhost -u root -pPyx_07091817 enterprise_management -e "ALTER DATABASE enterprise_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 # 转换表
-mysql -h localhost -u root -pZs462581379 enterprise_management -e "ALTER TABLE personal_logs CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -h localhost -u root -pPyx_07091817 enterprise_management -e "ALTER TABLE personal_logs CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-mysql -h localhost -u root -pZs462581379 enterprise_management -e "ALTER TABLE tasks CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -h localhost -u root -pPyx_07091817 enterprise_management -e "ALTER TABLE tasks CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 ```
 
 ## 📋 验证修复
@@ -98,7 +98,7 @@ async function test() {
   const db = await mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: 'Zs462581379',
+    password: 'Pyx_07091817',
     database: 'enterprise_management',
     charset: 'utf8mb4'
   });
@@ -123,7 +123,7 @@ test().catch(console.error);
 ### 方法2: 检查 MySQL 字符集
 
 ```bash
-mysql -h localhost -u root -pZs462581379 -e "SHOW VARIABLES LIKE 'character_set%';"
+mysql -h localhost -u root -pPyx_07091817 -e "SHOW VARIABLES LIKE 'character_set%';"
 ```
 
 期望看到：

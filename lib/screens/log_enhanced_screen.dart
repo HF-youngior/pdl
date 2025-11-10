@@ -19,11 +19,13 @@ class LogEnhancedScreen extends StatefulWidget {
     required List<Task> tasks,
     required VoidCallback onLogAdded,
   }) {
-    _LogEnhancedScreenState.showAddLogDialog(
+    showDialog(
       context: context,
-      user: user,
-      tasks: tasks,
-      onLogAdded: onLogAdded,
+      builder: (context) => _AddLogDialog(
+        user: user,
+        tasks: tasks,
+        onLogAdded: onLogAdded,
+      ),
     );
   }
 
@@ -624,30 +626,13 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
   }
 
   void _showAddLogDialog() {
-    showAddLogDialog(
+    LogEnhancedScreen.showAddLogDialog(
       context: context,
       user: widget.user,
       tasks: _tasks,
       onLogAdded: () {
         _loadData();
       },
-    );
-  }
-  
-  // 公共静态方法：显示添加日志对话框（供其他模块调用）
-  static void showAddLogDialog({
-    required BuildContext context,
-    required User user,
-    required List<Task> tasks,
-    required VoidCallback onLogAdded,
-  }) {
-    showDialog(
-      context: context,
-      builder: (context) => _AddLogDialog(
-        user: user,
-        tasks: tasks,
-        onLogAdded: onLogAdded,
-      ),
     );
   }
 
