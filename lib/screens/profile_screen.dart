@@ -3,6 +3,9 @@ import '../models/user.dart';
 import '../widgets/data_panel.dart';
 import '../services/api_service.dart';
 import 'login_screen.dart';
+import 'settings_screen.dart';
+import 'help_support_screen.dart';
+import 'about_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final User user;
@@ -293,21 +296,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
           icon: Icons.settings,
           title: '设置',
           onTap: () {
-            // 设置功能
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const SettingsScreen()),
+            );
           },
         ),
         _buildMenuItem(
           icon: Icons.help,
           title: '帮助与支持',
           onTap: () {
-            // 帮助功能
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
+            );
           },
         ),
         _buildMenuItem(
           icon: Icons.info,
           title: '关于',
           onTap: () {
-            // 关于功能
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const AboutScreen()),
+            );
           },
         ),
         _buildMenuItem(

@@ -1,18 +1,12 @@
 allprojects {
     repositories {
-        maven { url=uri ("https://www.jitpack.io")}
-        maven { url=uri ("https://maven.aliyun.com/repository/releases")}
-        maven { url=uri ("https://maven.aliyun.com/repository/google")}
-        maven { url=uri ("https://maven.aliyun.com/repository/central")}
-        maven { url=uri ("https://maven.aliyun.com/repository/gradle-plugin")}
-        maven { url=uri ("https://maven.aliyun.com/repository/public")}
-
         google()
         mavenCentral()
     }
 }
 
-// 注释掉自定义构建目录，避免跨驱动器路径问题
+// 注释掉自定义构建目录配置，避免与 Flutter 插件路径冲突
+// 当构建目录和插件路径在不同驱动器时（如 F:\ 和 C:\），会导致路径计算错误
 // val newBuildDir: Directory =
 //     rootProject.layout.buildDirectory
 //         .dir("../../build")
@@ -23,6 +17,7 @@ allprojects {
 //     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
 //     project.layout.buildDirectory.value(newSubprojectBuildDir)
 // }
+
 subprojects {
     project.evaluationDependsOn(":app")
 }

@@ -20,15 +20,86 @@ class MbtiTestResult {
   });
 
   factory MbtiTestResult.fromJson(Map<String, dynamic> json) {
+    // 安全转换confidence_score，处理字符串或数字类型
+    double parseConfidenceScore(dynamic value) {
+      if (value == null) return 0.0;
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is String) {
+        return double.tryParse(value) ?? 0.0;
+      }
+      return 0.0;
+    }
+
+    // 安全转换scores，确保所有值都是int类型
+    Map<String, int> parseScores(Map<String, dynamic>? scores) {
+      if (scores == null) return {};
+      return scores.map((key, value) {
+        if (value is int) {
+          return MapEntry(key, value);
+        } else if (value is String) {
+          return MapEntry(key, int.tryParse(value) ?? 0);
+        } else if (value is double) {
+          return MapEntry(key, value.toInt());
+        }
+        return MapEntry(key, 0);
+      });
+    }
+
+    // 安全转换personalityTraits
+    Map<String, String> parsePersonalityTraits(Map<String, dynamic>? traits) {
+      if (traits == null) return {};
+      return traits.map((key, value) => MapEntry(key, value?.toString() ?? ''));
+    }
+
+    // 安全解析日期
+    DateTime parseDate(dynamic dateValue) {
+      if (dateValue == null) return DateTime.now();
+      if (dateValue is DateTime) return dateValue;
+      if (dateValue is String) {
+        try {
+          return DateTime.parse(dateValue);
+        } catch (e) {
+          return DateTime.now();
+        }
+      }
+      return DateTime.now();
+    }
+
+    // 从ai_analysis中提取strengths和weaknesses（如果存在）
+    List<String> extractStrengths(Map<String, dynamic> json) {
+      if (json['strengths'] != null) {
+        return List<String>.from(json['strengths']);
+      }
+      // 尝试从ai_analysis中提取
+      final aiAnalysis = json['ai_analysis'];
+      if (aiAnalysis is Map && aiAnalysis['strengths'] != null) {
+        return List<String>.from(aiAnalysis['strengths']);
+      }
+      return [];
+    }
+
+    List<String> extractWeaknesses(Map<String, dynamic> json) {
+      if (json['weaknesses'] != null) {
+        return List<String>.from(json['weaknesses']);
+      }
+      // 尝试从ai_analysis中提取
+      final aiAnalysis = json['ai_analysis'];
+      if (aiAnalysis is Map && aiAnalysis['weaknesses'] != null) {
+        return List<String>.from(aiAnalysis['weaknesses']);
+      }
+      return [];
+    }
+
     return MbtiTestResult(
-      mbtiType: json['mbti_type'] ?? json['mbtiType'] ?? '',
-      scores: Map<String, int>.from(json['test_scores'] ?? json['scores'] ?? {}),
-      personalityTraits: Map<String, String>.from(json['personality_traits'] ?? json['personalityTraits'] ?? {}),
-      testDate: DateTime.parse(json['test_date'] ?? json['testDate'] ?? DateTime.now().toIso8601String()),
-      testVersion: json['test_version'] ?? json['testVersion'] ?? 'v1.0',
-      confidenceScore: (json['confidence_score'] ?? json['confidenceScore'] ?? 0.0).toDouble(),
-      strengths: List<String>.from(json['strengths'] ?? []),
-      weaknesses: List<String>.from(json['weaknesses'] ?? []),
+      mbtiType: json['mbti_type']?.toString() ?? json['mbtiType']?.toString() ?? '',
+      scores: parseScores(json['test_scores'] ?? json['scores']),
+      personalityTraits: parsePersonalityTraits(json['personality_traits'] ?? json['personalityTraits']),
+      testDate: parseDate(json['test_date'] ?? json['testDate']),
+      testVersion: json['test_version']?.toString() ?? json['testVersion']?.toString() ?? 'v1.0',
+      confidenceScore: parseConfidenceScore(json['confidence_score'] ?? json['confidenceScore']),
+      strengths: extractStrengths(json),
+      weaknesses: extractWeaknesses(json),
     );
   }
 

@@ -87,15 +87,19 @@ class StatisticsService {
   }
 
   // 判断任务是否紧急
+  // 优先级映射：p0=重要且紧急, p1=重要不紧急, p2=不重要紧急, p3=不重要不紧急
   static bool _isUrgent(Task task) {
     final priority = task.priority.toLowerCase();
-    return priority == 'important_urgent' || priority == 'not_important_urgent';
+    // p0 (重要且紧急) 和 p2 (不重要紧急) 是紧急的
+    return priority == 'p0' || priority == 'p2';
   }
 
   // 判断任务是否重要
+  // 优先级映射：p0=重要且紧急, p1=重要不紧急, p2=不重要紧急, p3=不重要不紧急
   static bool _isImportant(Task task) {
     final priority = task.priority.toLowerCase();
-    return priority == 'important_urgent' || priority == 'important_not_urgent';
+    // p0 (重要且紧急) 和 p1 (重要不紧急) 是重要的
+    return priority == 'p0' || priority == 'p1';
   }
 
   // 获取近7天统计

@@ -106,7 +106,7 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
         return DateFormat('yyyy-MM-dd').format(dateTime);
       }
       
-      // 如果没有时区信息，当作本地时间（北京时间）
+      // 如果没有时区信息，当作系统本地时间
       // 解析为UTC后再转换为本地时间
       final dateTime = DateTime.parse(timeStr).toLocal();
       return DateFormat('yyyy-MM-dd').format(dateTime);

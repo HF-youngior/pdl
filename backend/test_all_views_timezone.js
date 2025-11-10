@@ -38,7 +38,7 @@ async function testAllViews() {
     connection = await mysql.createConnection({
       host: 'localhost',
       user: 'root',
-      password: '23301144',
+      password: 'Zs462581379',
       database: 'enterprise_management',
       charset: 'utf8mb4',
       timezone: '+08:00'

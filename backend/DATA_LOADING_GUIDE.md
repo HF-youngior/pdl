@@ -106,7 +106,7 @@ backend/load_all_data.bat
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=23301144
+DB_PASSWORD=Zs462581379
 DB_NAME=enterprise_management
 ```
 

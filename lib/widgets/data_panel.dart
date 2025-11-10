@@ -16,17 +16,22 @@ class DataPanelState extends State<DataPanel> {
   TaskStatistics? _todayStats;
   TaskStatistics? _last7DaysStats;
   bool _isLoading = true;
+  bool _isRefreshing = false; // 用于区分初始加载和刷新
   String _selectedPeriod = 'today'; // 'today' or 'last7days'
 
   @override
   void initState() {
     super.initState();
-    _loadStatistics();
+    _loadStatistics(isInitialLoad: true);
   }
 
-  Future<void> _loadStatistics() async {
+  Future<void> _loadStatistics({bool isInitialLoad = false}) async {
     setState(() {
-      _isLoading = true;
+      if (isInitialLoad) {
+        _isLoading = true;
+      } else {
+        _isRefreshing = true;
+      }
     });
 
     try {
@@ -37,17 +42,21 @@ class DataPanelState extends State<DataPanel> {
         _todayStats = todayStats;
         _last7DaysStats = last7DaysStats;
         _isLoading = false;
+        _isRefreshing = false;
       });
     } catch (e) {
       setState(() {
         _isLoading = false;
+        _isRefreshing = false;
       });
       print('加载统计数据失败: $e');
     }
   }
 
   Future<void> refreshData() async {
-    await _loadStatistics();
+    // 刷新时重新加载数据（不是初始加载）
+    await _loadStatistics(isInitialLoad: false);
+    // 如果外部有刷新回调，调用它
     if (widget.onRefresh != null) {
       widget.onRefresh!();
     }
@@ -92,18 +101,27 @@ class DataPanelState extends State<DataPanel> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  _selectedPeriod == 'today' ? '今日数据' : '近7日数据',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Text(
+                    _selectedPeriod == 'today' ? '今日数据' : '近7日数据',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.refresh, size: 20),
-                      onPressed: refreshData,
+                      icon: _isRefreshing 
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh, size: 20),
+                      onPressed: _isRefreshing ? null : refreshData,
                       tooltip: '刷新数据',
                     ),
                     _buildPeriodButton('今日', 'today'),
@@ -140,23 +158,12 @@ class DataPanelState extends State<DataPanel> {
             const SizedBox(height: 20),
 
             // 优先级分布标题
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  '完成计划优先级分布',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.share, size: 20),
-                  onPressed: () {
-                    // 分享功能
-                  },
-                ),
-              ],
+            const Text(
+              '完成计划优先级分布',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 16),
 

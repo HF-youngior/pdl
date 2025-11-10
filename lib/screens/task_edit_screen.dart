@@ -46,10 +46,10 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
   // 可用的优先级选项
   final List<Map<String, dynamic>> _priorityOptions = [
-    {'value': 'p0', 'label': 'P0 - 最高优先级', 'color': Colors.red},
-    {'value': 'p1', 'label': 'P1 - 高优先级', 'color': Colors.amber},
-    {'value': 'p2', 'label': 'P2 - 中优先级', 'color': Colors.blue},
-    {'value': 'p3', 'label': 'P3 - 低优先级', 'color': Colors.green},
+    {'value': 'p0', 'label': '重要且紧急', 'color': Colors.red},
+    {'value': 'p1', 'label': '重要不紧急', 'color': Colors.amber},
+    {'value': 'p2', 'label': '不重要紧急', 'color': Colors.blue},
+    {'value': 'p3', 'label': '不重要不紧急', 'color': Colors.green},
   ];
 
   // 可用的状态选项
@@ -158,9 +158,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       _endTime = widget.task!.endTime;
       _isAllDay = widget.task!.isAllDay;
         } else {
-      // 创建新任务，设置默认值
-      _startTime = DateTime.now();
-      _endTime = DateTime.now().add(const Duration(hours: 1));
+      // 创建新任务，设置默认值（增加8小时）
+      _startTime = DateTime.now().add(const Duration(hours: 8));
+      _endTime = DateTime.now().add(const Duration(hours: 9));
     }
   }
 
@@ -199,23 +199,30 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         throw Exception('用户缺少部门信息，无法创建任务。请确保该用户已分配部门。');
       }
       
+      // 如果是邀约任务，只更新描述，其他字段保持不变
+      final isRequest = widget.task?.isRequest ?? false;
+      
       final task = Task(
         id: widget.task?.id ?? const Uuid().v4(),
-        title: _titleController.text.trim(),
+        title: isRequest ? (widget.task?.title ?? _titleController.text.trim()) : _titleController.text.trim(),
         description: _descriptionController.text.trim(),
-        assigneeId: assignee.id,
-        assigneeName: assignee.name,
-        department: departmentId,
-        priority: _priority,
-        status: _status,
+        assigneeId: isRequest ? (widget.task?.assigneeId ?? assignee.id) : assignee.id,
+        assigneeName: isRequest ? (widget.task?.assigneeName ?? assignee.name) : assignee.name,
+        department: isRequest ? (widget.task?.department ?? departmentId) : departmentId,
+        priority: isRequest ? (widget.task?.priority ?? 'p0') : _priority,
+        status: isRequest ? (widget.task?.status ?? 'pending') : _status,
         createdAt: widget.task?.createdAt ?? now,
-        deadline: _deadline ?? _endTime,
+        deadline: isRequest ? widget.task?.deadline : (_deadline ?? _endTime),
         createdBy: widget.task?.createdBy ?? widget.currentUser.id,
-        startTime: _startTime ?? now,
-        endTime: _endTime ?? now.add(const Duration(hours: 1)),
-        progressPercentage: _progressPercentage.round(),
-        isAllDay: _isAllDay,
+        startTime: isRequest ? (widget.task?.startTime ?? now) : (_startTime ?? now),
+        endTime: isRequest ? (widget.task?.endTime ?? now.add(const Duration(hours: 1))) : (_endTime ?? now.add(const Duration(hours: 1))),
+        progressPercentage: isRequest ? (widget.task?.progressPercentage ?? 0) : _progressPercentage.round(),
+        isAllDay: isRequest ? (widget.task?.isAllDay ?? false) : _isAllDay,
         parentTaskId: widget.task?.parentTaskId ?? widget.parentTaskId, // 使用传入的父任务ID或保持原有
+        isRequest: isRequest,
+        requestType: widget.task?.requestType,
+        requestResponse: widget.task?.requestResponse,
+        specialNotes: widget.task?.specialNotes,
       );
 
       // 调用服务保存任务
@@ -310,7 +317,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.task == null ? '创建任务' : '编辑任务'),
+        title: Text(
+          widget.task?.isRequest == true 
+            ? '编辑邀约内容' 
+            : (widget.task == null ? '创建任务' : '编辑任务')
+        ),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         actions: [
@@ -346,143 +357,156 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 基本信息
-              _buildSectionTitle('基本信息'),
-              _buildTextField(
-                controller: _titleController,
-                label: '任务标题',
-                hint: '请输入任务标题',
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return '请输入任务标题';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
+              _buildSectionTitle(widget.task?.isRequest == true ? '邀约内容' : '基本信息'),
+              // 邀约任务不显示标题编辑（标题由系统生成）
+              if (widget.task?.isRequest != true)
+                _buildTextField(
+                  controller: _titleController,
+                  label: '任务标题',
+                  hint: '请输入任务标题',
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return '请输入任务标题';
+                    }
+                    return null;
+                  },
+                ),
+              if (widget.task?.isRequest != true) const SizedBox(height: 16),
               _buildTextField(
                 controller: _descriptionController,
-                label: '任务描述',
-                hint: '请输入任务描述（可选）',
-                maxLines: 3,
+                label: widget.task?.isRequest == true ? '邀约内容' : '任务描述',
+                hint: widget.task?.isRequest == true ? '请输入邀约内容' : '请输入任务描述（可选）',
+                maxLines: widget.task?.isRequest == true ? 5 : 3,
+                validator: widget.task?.isRequest == true ? (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return '请输入邀约内容';
+                  }
+                  return null;
+                } : null,
               ),
               const SizedBox(height: 24),
 
-              // 负责人选择
-              _buildSectionTitle('负责人'),
-              // 创建新任务时必须选择，编辑时如果当前用户是员工则只显示，否则可以修改
-              if (widget.task == null || (widget.task != null && widget.currentUser.role != 'employee'))
-                _buildAssigneeSelector()
-              else
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.person, color: Colors.grey),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          widget.task?.assigneeName ?? '未分配',
-                          style: const TextStyle(fontSize: 16),
+              // 负责人选择（邀约任务不显示）
+              if (widget.task?.isRequest != true) ...[
+                _buildSectionTitle('负责人'),
+                // 创建新任务时必须选择，编辑时如果当前用户是员工则只显示，否则可以修改
+                if (widget.task == null || (widget.task != null && widget.currentUser.role != 'employee'))
+                  _buildAssigneeSelector()
+                else
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.person, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            widget.task?.assigneeName ?? '未分配',
+                            style: const TextStyle(fontSize: 16),
+                          ),
                         ),
+                      ],
+                    ),
+                  ),
+
+                const SizedBox(height: 24),
+              ],
+
+              // 邀约任务只显示描述，其他字段隐藏
+              if (widget.task?.isRequest != true) ...[
+                // 优先级和状态（邀约任务不显示）
+                _buildSectionTitle('优先级和状态'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildDropdown(
+                        value: _priority,
+                        label: '优先级',
+                        items: _priorityOptions,
+                        onChanged: (value) {
+                          setState(() {
+                            _priority = value!;
+                          });
+                        },
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildDropdown(
+                        value: _status,
+                        label: '状态',
+                        items: _statusOptions,
+                        onChanged: (value) {
+                          setState(() {
+                            _status = value!;
+                          });
+                        },
+                      ),
+                    ),
+                  ],
                 ),
 
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              // 优先级和状态
-              _buildSectionTitle('优先级和状态'),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildDropdown(
-                      value: _priority,
-                      label: '优先级',
-                      items: _priorityOptions,
-                      onChanged: (value) {
-                        setState(() {
-                          _priority = value!;
-                        });
-                      },
-                    ),
+                // 进度百分比滑块（邀约任务不显示）
+                _buildSectionTitle('任务进度'),
+                _buildProgressSlider(),
+                
+                // 进度百分比显示
+                const SizedBox(height: 8),
+                _buildProgressDisplay(),
+
+                const SizedBox(height: 24),
+
+                // 时间设置（邀约任务不显示）
+                _buildSectionTitle('时间设置'),
+                _buildDateTimeField(
+                  label: '开始时间',
+                  value: _startTime,
+                  onTap: () => _selectDateTime(
+                    initialDate: _startTime,
+                    title: '选择开始时间',
+                    onDateSelected: (dateTime) {
+                      setState(() {
+                        _startTime = dateTime;
+                        // 如果结束时间早于开始时间，自动调整结束时间
+                        if (_endTime == null || _endTime!.isBefore(dateTime)) {
+                          _endTime = dateTime.add(const Duration(hours: 1));
+                        }
+                      });
+                    },
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildDropdown(
-                      value: _status,
-                      label: '状态',
-                      items: _statusOptions,
-                      onChanged: (value) {
-                        setState(() {
-                          _status = value!;
-                        });
-                      },
-                    ),
+                ),
+                const SizedBox(height: 16),
+                _buildDateTimeField(
+                  label: '结束时间',
+                  value: _endTime,
+                  onTap: () => _selectDateTime(
+                    initialDate: _endTime,
+                    title: '选择结束时间',
+                    onDateSelected: (dateTime) {
+                      setState(() {
+                        _endTime = dateTime;
+                      });
+                    },
                   ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // 进度百分比滑块
-              _buildSectionTitle('任务进度'),
-              _buildProgressSlider(),
-              
-              // 进度百分比显示
-              const SizedBox(height: 8),
-              _buildProgressDisplay(),
-
-              const SizedBox(height: 24),
-
-              // 时间设置
-              _buildSectionTitle('时间设置'),
-              _buildDateTimeField(
-                label: '开始时间',
-                value: _startTime,
-                onTap: () => _selectDateTime(
-                  initialDate: _startTime,
-                  title: '选择开始时间',
-                  onDateSelected: (dateTime) {
+                ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  title: const Text('全天任务'),
+                  subtitle: const Text('勾选后任务将显示为全天事件'),
+                  value: _isAllDay,
+                  onChanged: (value) {
                     setState(() {
-                      _startTime = dateTime;
-                      // 如果结束时间早于开始时间，自动调整结束时间
-                      if (_endTime == null || _endTime!.isBefore(dateTime)) {
-                        _endTime = dateTime.add(const Duration(hours: 1));
-                      }
+                      _isAllDay = value;
                     });
                   },
                 ),
-              ),
-              const SizedBox(height: 16),
-              _buildDateTimeField(
-                label: '结束时间',
-                value: _endTime,
-                onTap: () => _selectDateTime(
-                  initialDate: _endTime,
-                  title: '选择结束时间',
-                  onDateSelected: (dateTime) {
-                    setState(() {
-                      _endTime = dateTime;
-                    });
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-              SwitchListTile(
-                title: const Text('全天任务'),
-                subtitle: const Text('勾选后任务将显示为全天事件'),
-                value: _isAllDay,
-                onChanged: (value) {
-                  setState(() {
-                    _isAllDay = value;
-                  });
-                },
-              ),
+              ],
 
               const SizedBox(height: 32),
 
@@ -621,7 +645,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         ),
         child: Text(
           value != null
-              ? DateFormat('yyyy-MM-dd HH:mm').format(value)
+              ? DateFormat('yyyy-MM-dd HH:mm').format(value.add(const Duration(hours: 8)))
               : isOptional
                   ? '未设置'
                   : '请选择',
@@ -848,7 +872,39 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         fillColor: Colors.grey.shade50,
       ),
       isExpanded: true,
+      // 允许下拉项自适应高度，避免多行内容溢出产生黄黑提示
+      isDense: true,
+      itemHeight: null,
       icon: const Icon(Icons.arrow_drop_down),
+      // 选中时仅展示单行内容，避免在输入框区域内出现两行导致溢出
+      selectedItemBuilder: (context) {
+        return _availableUsers.map((user) {
+          return Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                child: Text(
+                  user.name.isNotEmpty ? user.name[0] : 'U',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  user.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          );
+        }).toList();
+      },
       items: _availableUsers.map((user) {
         // 根据用户角色显示不同的标签
         String roleLabel = '';

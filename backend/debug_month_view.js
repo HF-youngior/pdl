@@ -4,7 +4,7 @@ async function debugMonthView() {
   const db = await mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: '23301144',
+    password: 'Zs462581379',
     database: 'pdl_enterprise',
     timezone: '+08:00'
   });

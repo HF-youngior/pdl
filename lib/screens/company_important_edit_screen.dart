@@ -110,13 +110,13 @@ class _CompanyImportantEditScreenState extends State<CompanyImportantEditScreen>
   String _getPriorityText(String priority) {
     switch (priority) {
       case 'p0':
-        return 'P0 - 最高优先级';
+        return '重要且紧急';
       case 'p1':
-        return 'P1 - 高优先级';
+        return '重要不紧急';
       case 'p2':
-        return 'P2 - 中优先级';
+        return '不重要紧急';
       case 'p3':
-        return 'P3 - 低优先级';
+        return '不重要不紧急';
       default:
         return priority;
     }
@@ -465,10 +465,10 @@ class _CompanyImportantEditScreenState extends State<CompanyImportantEditScreen>
                         border: OutlineInputBorder(),
                       ),
                       items: const [
-                        DropdownMenuItem(value: 'p0', child: Text('P0 - 最高优先级')),
-                        DropdownMenuItem(value: 'p1', child: Text('P1 - 高优先级')),
-                        DropdownMenuItem(value: 'p2', child: Text('P2 - 中优先级')),
-                        DropdownMenuItem(value: 'p3', child: Text('P3 - 低优先级')),
+                        DropdownMenuItem(value: 'p0', child: Text('重要且紧急')),
+                        DropdownMenuItem(value: 'p1', child: Text('重要不紧急')),
+                        DropdownMenuItem(value: 'p2', child: Text('不重要紧急')),
+                        DropdownMenuItem(value: 'p3', child: Text('不重要不紧急')),
                       ],
                       onChanged: (value) {
                         setState(() {

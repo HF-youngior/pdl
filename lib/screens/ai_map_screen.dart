@@ -9,9 +9,12 @@ import '../models/personality_analysis.dart';
 import '../models/personal_log.dart';
 import '../models/mbti_test_result.dart';
 import '../models/user.dart';
+import '../models/task.dart';
 import '../widgets/enhanced_wordcloud.dart';
 import '../widgets/personality_chart.dart';
+import '../utils/time_utils.dart';
 import 'mbti_test_screen.dart';
+import 'log_enhanced_screen.dart';
 
 class AiMapScreen extends StatefulWidget {
   final User user;
@@ -40,6 +43,13 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   Map<String, dynamic>? _selectedMbtiRecord;
   String _searchQuery = '';
   String _selectedMbtiType = '全部';
+  Map<String, int> _mbtiTypeCounts = {}; // 每个MBTI类型的记录数量
+  // 所有16种MBTI类型
+  static const List<String> _allMbtiTypes = [
+    '全部',
+    'ENFP', 'INTJ', 'ISFJ', 'ISTJ', 'ENFJ', 'INFP', 'ENTJ', 'INTP',
+    'ESTJ', 'ESFJ', 'ISTP', 'ISFP', 'ESTP', 'ESFP', 'ENTP', 'INFJ'
+  ];
   
   // 今日日志相关状态
   List<PersonalLog> _todayLogs = [];
@@ -88,9 +98,21 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     try {
       final allLogs = await ApiService.getPersonalLogs(widget.user.id);
       final today = DateTime.now();
+      
+      // 优先使用log_date字段，如果为空则使用created_at
       final todayLogs = allLogs.where((log) {
-        final logDate = log.logDate ?? log.createdAtDate;
+        // 优先使用logDate字段
+        DateTime? logDate = log.logDate;
+        
+        // 如果logDate为空，使用createdAtDate
+        if (logDate == null) {
+          logDate = log.createdAtDate;
+        }
+        
+        // 如果仍然为空，跳过这条日志
         if (logDate == null) return false;
+        
+        // 比较年月日
         return logDate.year == today.year &&
                logDate.month == today.month &&
                logDate.day == today.day;
@@ -105,6 +127,9 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         _loadingTodayLogs = false;
       });
       print('加载今日日志失败: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('加载今日日志失败: $e')),
+      );
     }
   }
 
@@ -140,90 +165,110 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   Future<void> _loadMbtiRecords() async {
     setState(() { _loadingMbtiRecords = true; });
     try {
-      String url = '${ApiService.baseUrl}/mbti-records';
-      if (_selectedMbtiType != '全部') {
-        url += '?mbti_type=$_selectedMbtiType';
-      }
-      
-      final response = await http.get(
-        Uri.parse(url),
+      // 先获取所有记录以计算统计信息
+      final allRecordsResponse = await http.get(
+        Uri.parse('${ApiService.baseUrl}/mbti-records'),
         headers: ApiService.getAuthHeaders(),
       );
       
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        List<Map<String, dynamic>> records = List<Map<String, dynamic>>.from(data['records'] ?? []);
+      if (allRecordsResponse.statusCode == 200) {
+        final allData = jsonDecode(allRecordsResponse.body);
+        List<Map<String, dynamic>> allRecords = List<Map<String, dynamic>>.from(allData['records'] ?? []);
+        
+        // 应用类型筛选
+        List<Map<String, dynamic>> filteredRecords = allRecords;
+        if (_selectedMbtiType != '全部') {
+          filteredRecords = allRecords.where((record) {
+            return record['mbti_type']?.toString() == _selectedMbtiType;
+          }).toList();
+        }
         
         // 应用搜索过滤
         if (_searchQuery.isNotEmpty) {
-          records = records.where((record) {
+          filteredRecords = filteredRecords.where((record) {
             return record['mbti_type'].toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
                    record['test_date'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
           }).toList();
         }
         
+        // 去重：基于测试日期和MBTI类型去重，保留最新的记录
+        // 使用 "日期_MBTI类型" 作为唯一键
+        Map<String, Map<String, dynamic>> uniqueRecords = {};
+        for (var record in filteredRecords) {
+          final mbtiType = record['mbti_type']?.toString() ?? '';
+          final testDate = record['test_date']?.toString() ?? '';
+          
+          if (mbtiType.isEmpty || testDate.isEmpty) continue;
+          
+          try {
+            // 解析日期，只取日期部分（忽略时间）
+            final dateTime = DateTime.parse(testDate);
+            final dateKey = '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}_$mbtiType';
+            
+            if (!uniqueRecords.containsKey(dateKey)) {
+              uniqueRecords[dateKey] = record;
+            } else {
+              // 如果同一天有多个相同类型的记录，比较创建时间，保留最新的
+              final existingRecord = uniqueRecords[dateKey]!;
+              final existingCreatedAt = existingRecord['created_at']?.toString();
+              final currentCreatedAt = record['created_at']?.toString();
+              
+              if (currentCreatedAt != null && existingCreatedAt != null) {
+                try {
+                  final existing = DateTime.parse(existingCreatedAt);
+                  final current = DateTime.parse(currentCreatedAt);
+                  if (current.isAfter(existing)) {
+                    uniqueRecords[dateKey] = record;
+                  }
+                } catch (e) {
+                  // 如果解析失败，比较test_date
+                  final existingTestDate = DateTime.parse(existingRecord['test_date']?.toString() ?? '');
+                  final currentTestDate = DateTime.parse(testDate);
+                  if (currentTestDate.isAfter(existingTestDate)) {
+                    uniqueRecords[dateKey] = record;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            // 如果日期解析失败，使用ID作为备用去重键
+            final id = record['id']?.toString();
+            if (id != null && !uniqueRecords.containsKey(id)) {
+              uniqueRecords[id] = record;
+            }
+          }
+        }
+        
+        // 按测试日期降序排序
+        List<Map<String, dynamic>> sortedRecords = uniqueRecords.values.toList();
+        sortedRecords.sort((a, b) {
+          try {
+            final dateA = DateTime.parse(a['test_date']?.toString() ?? '');
+            final dateB = DateTime.parse(b['test_date']?.toString() ?? '');
+            return dateB.compareTo(dateA);
+          } catch (e) {
+            return 0;
+          }
+        });
+        
+        // 基于去重后的记录计算每个MBTI类型的数量
+        Map<String, int> counts = {};
+        for (var record in sortedRecords) {
+          final type = record['mbti_type']?.toString() ?? '未知';
+          counts[type] = (counts[type] ?? 0) + 1;
+        }
+        
         setState(() { 
-          _mbtiRecords = records;
+          _mbtiRecords = sortedRecords;
+          _mbtiTypeCounts = counts;
         });
       } else {
-        print('加载MBTI记录失败: ${response.statusCode}');
+        print('加载MBTI记录失败: ${allRecordsResponse.statusCode}');
       }
     } catch (e) {
       print('加载MBTI记录失败: $e');
     } finally {
       setState(() { _loadingMbtiRecords = false; });
-    }
-  }
-
-  // 创建MBTI记录
-  Future<void> _createMbtiRecord() async {
-    setState(() { _loading = true; });
-    try {
-      // 模拟MBTI测试数据
-      final testData = {
-        'mbti_type': 'ENFP',
-        'test_scores': {
-          'E': 75,
-          'N': 80,
-          'F': 70,
-          'P': 65,
-          'total_score': 290
-        },
-        'personality_traits': {
-          'extroversion': '外向型，善于社交和沟通',
-          'intuition': '直觉型，喜欢探索新可能性',
-          'feeling': '情感型，重视人际关系和价值观',
-          'perceiving': '感知型，灵活适应环境变化'
-        },
-        'personal_info': {
-          'full_name': '测试用户',
-          'birth_date': '1990-01-01',
-          'address': '测试地址'
-        }
-      };
-
-      final response = await http.post(
-        Uri.parse('${ApiService.baseUrl}/mbti-records'),
-        headers: ApiService.getAuthHeaders(),
-        body: jsonEncode(testData),
-      );
-
-      if (response.statusCode == 201) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('MBTI记录创建成功')),
-        );
-        _loadMbtiRecords(); // 重新加载记录列表
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('创建失败: ${response.body}')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('创建失败: $e')),
-      );
-    } finally {
-      setState(() { _loading = false; });
     }
   }
 
@@ -266,8 +311,8 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
             children: [
               _buildDetailSection('基本信息', [
                 'MBTI类型: ${_selectedMbtiRecord!['mbti_type']}',
-                '测试日期: ${_selectedMbtiRecord!['test_date']}',
-                '置信度: ${(_selectedMbtiRecord!['confidence_score'] * 100).toStringAsFixed(1)}%',
+                '测试日期: ${_formatTestDate(_selectedMbtiRecord!['test_date'])}',
+                '置信度: ${_formatConfidenceScore(_selectedMbtiRecord!['confidence_score'])}%',
               ]),
               _buildDetailSection('测试分数', _formatTestScores(_selectedMbtiRecord!['test_scores'])),
               _buildDetailSection('性格特质', _formatPersonalityTraits(_selectedMbtiRecord!['personality_traits'])),
@@ -369,16 +414,32 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   }
   
   Future<void> _analyzeAndSave() async {
-                    setState(() { _loading = true; });
-                    try {
-                      final result = await AiService.analyzeToday(topK: 30);
-                      setState(() {
-                        _keywords = result.keywords;
-                        _wordFreq = result.wordFrequencies;
-                      });
+    setState(() { _loading = true; });
+    try {
+      // 先刷新今日日志
+      await _loadTodayLogs();
       
-      if (_wordFreq.isNotEmpty) {
-        // 保存分析结果
+      // 调用后端API分析今日日志
+      final result = await AiService.analyzeToday(topK: 30);
+      
+      if (result.wordFrequencies.isEmpty) {
+        setState(() {
+          _keywords = [];
+          _wordFreq = [];
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('今日没有可分析的日志，请先记录一些日志')),
+        );
+        return;
+      }
+      
+      setState(() {
+        _keywords = result.keywords;
+        _wordFreq = result.wordFrequencies;
+      });
+      
+      // 保存分析结果到历史记录
+      try {
         final savedAnalysis = await AiService.saveWordCloudAnalysis(
           analysisDate: DateTime.now(),
           keywords: result.keywords,
@@ -391,19 +452,25 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         });
         
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('今日日志分析完成并已保存')),
+          const SnackBar(content: Text('今日日志分析完成并已保存到历史记录')),
         );
-      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('今日没有可分析的日志')),
-                        );
-                      }
-                    } catch (e) {
-      // 如果API不可用，使用测试数据
-      _generateTestAnalysis();
+      } catch (saveError) {
+        // 保存失败不影响分析结果的显示
+        print('保存分析结果失败: $saveError');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('分析完成，但保存失败: $saveError')),
+        );
+      }
+    } catch (e) {
+      print('分析今日日志失败: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('使用测试数据进行分析')),
+        SnackBar(content: Text('分析失败: $e')),
       );
+      // 清空之前的结果
+      setState(() {
+        _keywords = [];
+        _wordFreq = [];
+      });
     } finally {
       setState(() { _loading = false; });
     }
@@ -416,16 +483,36 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       return;
     }
     
+    // 检查Widget是否仍然挂载
+    if (!mounted) return;
+    
     setState(() { _loading = true; });
+    
     try {
+      // 确保MBTI类型存在且有效
+      final mbtiType = _latestMbtiResult?.mbtiType;
+      if (mbtiType == null || mbtiType.isEmpty) {
+        throw Exception('MBTI类型无效，请先完成MBTI测试');
+      }
+      
+      print('开始性格分析，MBTI类型: $mbtiType');
+      
       // 获取用户日志内容
       final logText = await AiService.getUserLogsText(days: 30);
+      
+      // 再次检查Widget是否仍然挂载
+      if (!mounted) return;
+      
+      print('日志内容长度: ${logText.length} 字符');
       
       // 调用DeepSeek API进行性格分析，使用MBTI测试结果
       final analysis = await AiService.analyzePersonalityWithDeepSeek(
         logText: logText,
-        mbtiType: _latestMbtiResult!.mbtiType,
+        mbtiType: mbtiType,
       );
+      
+      // 再次检查Widget是否仍然挂载
+      if (!mounted) return;
       
       setState(() {
         _currentPersonalityAnalysis = analysis;
@@ -436,15 +523,32 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       print('性格分析结果: ${analysis.personalityChart}');
       print('MBTI类型: ${analysis.mbtiType}');
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('性格分析完成（MBTI: ${_latestMbtiResult!.mbtiType}）')),
-      );
+      // 检查Widget是否仍然挂载后再显示SnackBar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('性格分析完成（MBTI: ${_latestMbtiResult!.mbtiType}）'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('性格分析失败: $e')),
-      );
+      print('性格分析错误: $e');
+      // 检查Widget是否仍然挂载后再显示错误信息
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('性格分析失败: ${e.toString()}'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
-      setState(() { _loading = false; });
+      // 检查Widget是否仍然挂载后再更新状态
+      if (mounted) {
+        setState(() { _loading = false; });
+      }
     }
   }
 
@@ -492,14 +596,18 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => MbtiTestScreen(
-          onTestCompleted: (result) {
+          onTestCompleted: (result) async {
             setState(() {
               _latestMbtiResult = result;
             });
+            // 刷新MBTI记录列表
+            await _loadMbtiRecords();
+            // 重新加载最新的MBTI结果
+            await _loadLatestMbtiResult();
             // 测试完成后不自动开始性格分析，让用户手动选择
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('MBTI测试完成！现在可以进行AI性格分析。'),
+                content: Text('MBTI测试完成！类型：${result.mbtiType}。现在可以进行AI性格分析。'),
                 duration: Duration(seconds: 3),
               ),
             );
@@ -699,7 +807,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
             Tab(text: '词云分析', icon: Icon(Icons.cloud, size: 20)),
             Tab(text: '性格分析', icon: Icon(Icons.psychology, size: 20)),
             Tab(text: 'MBTI记录', icon: Icon(Icons.assessment, size: 20)),
-            Tab(text: '历史记录', icon: Icon(Icons.history, size: 20)),
+            Tab(text: '词云历史', icon: Icon(Icons.history, size: 20)),
           ],
         ),
       ),
@@ -924,7 +1032,13 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 ],
               ),
               child: ElevatedButton.icon(
-                onPressed: _loading ? null : _analyzePersonality,
+                onPressed: (_loading || _loadingMbtiResult) 
+                    ? null 
+                    : () {
+                        // 确保在点击时关闭键盘，避免输入法相关错误
+                        FocusScope.of(context).unfocus();
+                        _analyzePersonality();
+                      },
                 icon: const Icon(Icons.psychology, color: Colors.white),
                 label: Text(
                   _loading ? '分析中...' : _getPersonalityAnalysisButtonText(),
@@ -982,7 +1096,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                       ),
                     ),
                     Text(
-                      '测试时间：${_latestMbtiResult!.testDate.toString().split(' ')[0]}',
+                      '测试时间：${TimeUtils.formatDate(_latestMbtiResult!.testDate)}',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.blue[600],
@@ -1020,24 +1134,86 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF3B82F6).withOpacity(0.1),
+                              color: (_currentPersonalityAnalysis!.isDeepSeek == true 
+                                ? const Color(0xFF10B981) 
+                                : const Color(0xFF3B82F6)).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Icon(
-                              Icons.auto_awesome,
-                              color: Color(0xFF3B82F6),
+                            child: Icon(
+                              _currentPersonalityAnalysis!.isDeepSeek == true 
+                                ? Icons.psychology 
+                                : Icons.auto_awesome,
+                              color: _currentPersonalityAnalysis!.isDeepSeek == true 
+                                ? const Color(0xFF10B981) 
+                                : const Color(0xFF3B82F6),
                               size: 20,
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'AI分析结果',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E3A8A),
-                              ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _currentPersonalityAnalysis!.isDeepSeek == true 
+                                    ? 'DeepSeek AI 分析结果' 
+                                    : '本地算法分析结果',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1E3A8A),
+                                  ),
+                                ),
+                                if (_currentPersonalityAnalysis!.isDeepSeek == true)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 4),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF10B981).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      '由 DeepSeek AI 生成',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF10B981),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                if (_currentPersonalityAnalysis!.mbtiType != null && _currentPersonalityAnalysis!.mbtiType!.isNotEmpty)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 8),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.person_outline,
+                                          size: 16,
+                                          color: Color(0xFF8B5CF6),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'MBTI类型: ${_currentPersonalityAnalysis!.mbtiType}',
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            color: Color(0xFF8B5CF6),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ],
@@ -1049,7 +1225,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(
+                        child: SelectableText(
                           _currentPersonalityAnalysis!.aiAnalysisText!,
                           style: const TextStyle(
                             fontSize: 14,
@@ -1162,47 +1338,6 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 创建MBTI记录按钮
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF10B981), Color(0xFF059669)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF10B981).withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: ElevatedButton.icon(
-                onPressed: _loading ? null : _createMbtiRecord,
-                icon: const Icon(Icons.add, color: Colors.white),
-                label: Text(
-                  _loading ? '创建中...' : '创建MBTI记录',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-
             // 搜索和过滤控件
             Container(
               padding: const EdgeInsets.all(16.0),
@@ -1248,35 +1383,90 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                     },
                   ),
                   const SizedBox(height: 12),
-                  // MBTI类型过滤器
+                  // MBTI类型过滤器 - 下拉菜单
                   Row(
                     children: [
-                      const Text('MBTI类型: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text('MBTI类型筛选: ', style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: ['全部', 'ENFP', 'INTJ', 'ISFJ', 'ISTJ', 'ENFJ'].map((type) {
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8.0),
-                                child: FilterChip(
-                                  label: Text(type),
-                                  selected: _selectedMbtiType == type,
-                                  onSelected: (selected) {
-                                    setState(() { _selectedMbtiType = type; });
-                                    _loadMbtiRecords();
-                                  },
-                                  selectedColor: const Color(0xFF10B981).withOpacity(0.2),
-                                  checkmarkColor: const Color(0xFF10B981),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: DropdownButton<String>(
+                            value: _selectedMbtiType,
+                            isExpanded: true,
+                            underline: const SizedBox(),
+                            icon: const Icon(Icons.arrow_drop_down),
+                            items: _allMbtiTypes.map((type) {
+                              // 获取该类型的记录数量
+                              int count = 0;
+                              if (type == '全部') {
+                                count = _mbtiTypeCounts.values.fold(0, (sum, c) => sum + c);
+                              } else {
+                                count = _mbtiTypeCounts[type] ?? 0;
+                              }
+                              
+                              return DropdownMenuItem<String>(
+                                value: type,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(type),
+                                    if (count > 0)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF10B981).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          '$count',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Color(0xFF10B981),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               );
                             }).toList(),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                setState(() {
+                                  _selectedMbtiType = newValue;
+                                });
+                                _loadMbtiRecords();
+                              }
+                            },
                           ),
                         ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  // 显示统计信息
+                  if (_mbtiTypeCounts.isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: _allMbtiTypes.where((type) => type != '全部').map((type) {
+                        final count = _mbtiTypeCounts[type] ?? 0;
+                        if (count == 0) return const SizedBox.shrink();
+                        return Chip(
+                          label: Text('$type: $count'),
+                          labelStyle: const TextStyle(fontSize: 12),
+                          backgroundColor: _selectedMbtiType == type
+                              ? const Color(0xFF10B981).withOpacity(0.2)
+                              : Colors.grey[100],
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                        );
+                      }).toList(),
+                    ),
                 ],
               ),
             ),
@@ -1344,7 +1534,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              '点击上方按钮创建您的第一条MBTI记录',
+                              '完成MBTI测试后，记录将自动显示在这里',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey[500],
@@ -1362,24 +1552,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                       itemBuilder: (context, index) {
                         final record = _mbtiRecords[index];
                         return ListTile(
-                          leading: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: _getMbtiTypeColor(record['mbti_type']),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Center(
-                              child: Text(
-                                record['mbti_type'],
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ),
+                          leading: _buildMbtiAvatar(record['mbti_type']),
                           title: Text(
                             'MBTI类型: ${record['mbti_type']}',
                             style: const TextStyle(fontWeight: FontWeight.bold),
@@ -1387,8 +1560,8 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('测试日期: ${record['test_date']}'),
-                              Text('置信度: ${(record['confidence_score'] * 100).toStringAsFixed(1)}%'),
+                              Text('测试日期: ${_formatTestDate(record['test_date'])}'),
+                              Text('置信度: ${_formatConfidenceScore(record['confidence_score'])}%'),
                             ],
                           ),
                           trailing: IconButton(
@@ -1418,60 +1591,144 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     };
     return colors[mbtiType] ?? const Color(0xFF6B7280);
   }
-  
-  Widget _buildHistoryTab() {
+
+  // 构建MBTI小人头像
+  Widget _buildMbtiAvatar(String mbtiType) {
+    final imagePath = _getMbtiImagePath(mbtiType);
+    
     return Container(
+      width: 50,
+      height: 50,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.grey.withOpacity(0.2),
+          width: 1,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
       ),
-      child: DefaultTabController(
-        length: 2,
-        child: Column(
-          children: [
-            Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFF1E3A8A),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: imagePath != null
+            ? Image.asset(
+                imagePath,
+                width: 50,
+                height: 50,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  // 如果图片加载失败，显示文本标签作为后备
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: _getMbtiTypeColor(mbtiType),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Text(
+                        mbtiType,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              )
+            : Container(
+                decoration: BoxDecoration(
+                  color: _getMbtiTypeColor(mbtiType),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Text(
+                    mbtiType,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
               ),
-              child: const TabBar(
-                indicatorColor: Colors.white,
-                indicatorWeight: 3,
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white70,
-                labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                unselectedLabelStyle: TextStyle(fontWeight: FontWeight.normal, fontSize: 14),
-                tabs: [
-                  Tab(text: '词云历史', icon: Icon(Icons.cloud, size: 18)),
-                  Tab(text: '性格历史', icon: Icon(Icons.psychology, size: 18)),
-                ],
-              ),
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _buildWordCloudHistory(),
-                  _buildPersonalityHistory(),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
+  }
+
+  // 获取MBTI类型对应的图片路径
+  String? _getMbtiImagePath(String mbtiType) {
+    if (mbtiType == null || mbtiType.isEmpty) return null;
+    
+    // 所有16种MBTI类型
+    const validTypes = [
+      'INTJ', 'INTP', 'ENTJ', 'ENTP',
+      'INFJ', 'INFP', 'ENFJ', 'ENFP',
+      'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ',
+      'ISTP', 'ISFP', 'ESTP', 'ESFP'
+    ];
+    
+    if (!validTypes.contains(mbtiType.toUpperCase())) {
+      return null;
+    }
+    
+    return 'assets/images/mbti/${mbtiType.toUpperCase()}.png';
+  }
+
+  // 格式化测试日期
+  String _formatTestDate(dynamic dateValue) {
+    if (dateValue == null) return '未知';
+    
+    try {
+      DateTime dateTime;
+      if (dateValue is DateTime) {
+        dateTime = dateValue;
+      } else if (dateValue is String) {
+        // 尝试解析字符串日期
+        dateTime = DateTime.parse(dateValue);
+      } else {
+        return dateValue.toString();
+      }
+      return TimeUtils.formatDate(dateTime);
+    } catch (e) {
+      // 如果解析失败，尝试提取日期部分
+      final dateStr = dateValue.toString();
+      if (dateStr.contains(' ')) {
+        return dateStr.split(' ')[0];
+      }
+      return dateStr;
+    }
+  }
+
+  // 格式化置信度分数
+  String _formatConfidenceScore(dynamic scoreValue) {
+    if (scoreValue == null) return '0.0';
+    
+    try {
+      double score;
+      if (scoreValue is double) {
+        score = scoreValue;
+      } else if (scoreValue is int) {
+        score = scoreValue.toDouble();
+      } else if (scoreValue is String) {
+        score = double.tryParse(scoreValue) ?? 0.0;
+      } else {
+        return '0.0';
+      }
+      
+      // 确保分数在0-1范围内，然后转换为百分比
+      if (score > 1.0) {
+        // 如果已经是百分比形式（0-100），直接使用
+        return score.toStringAsFixed(1);
+      } else {
+        // 如果是0-1的小数，转换为百分比
+        return (score * 100).toStringAsFixed(1);
+      }
+    } catch (e) {
+      return '0.0';
+    }
+  }
+  
+  Widget _buildHistoryTab() {
+    return _buildWordCloudHistory();
   }
   
   Widget _buildWordCloudHistory() {
@@ -1626,14 +1883,89 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('${analysis.mbtiType} - 性格分析详情'),
+        title: Row(
+          children: [
+            Icon(
+              analysis.isDeepSeek == true ? Icons.psychology : Icons.auto_awesome,
+              color: analysis.isDeepSeek == true 
+                ? const Color(0xFF10B981) 
+                : const Color(0xFF3B82F6),
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('${analysis.mbtiType} - 性格分析详情'),
+            ),
+          ],
+        ),
         content: SizedBox(
           width: double.maxFinite,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('分析日期: ${analysis.analysisDate.toString().split(' ')[0]}'),
+                Row(
+                  children: [
+                    Text('分析日期: ${analysis.analysisDate.toString().split(' ')[0]}'),
+                    const SizedBox(width: 12),
+                    if (analysis.isDeepSeek == true)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'DeepSeek AI',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF10B981),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3B82F6).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '本地算法',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF3B82F6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (analysis.aiAnalysisText != null && analysis.aiAnalysisText!.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: (analysis.isDeepSeek == true 
+                          ? const Color(0xFF10B981) 
+                          : const Color(0xFF3B82F6)).withOpacity(0.3),
+                      ),
+                    ),
+                    child: SelectableText(
+                      analysis.aiAnalysisText!,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF374151),
+                        height: 1.6,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 PersonalityChart(
                   personalityData: analysis.personalityChart,
@@ -1759,19 +2091,20 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             Icons.note_add_outlined,
-            size: 48,
+            size: 64,
             color: Colors.grey[400],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Text(
             '今日还没有日志记录',
             style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w500,
+              fontSize: 18,
+              color: Colors.grey[700],
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 8),
@@ -1782,8 +2115,80 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               color: Colors.grey[500],
             ),
           ),
+          const SizedBox(height: 24),
+          // 添加跳转按钮
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF3B82F6), Color(0xFF1E40AF)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF3B82F6).withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ElevatedButton.icon(
+              onPressed: () => _navigateToAddLog(),
+              icon: const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
+              label: const Text(
+                '去添加日志',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
+    );
+  }
+  
+  // 跳转到添加日志页面 - 使用与日志模块相同的对话框
+  Future<void> _navigateToAddLog() async {
+    // 加载任务列表
+    List<Task> tasks = [];
+    try {
+      tasks = await ApiService.getTasks();
+    } catch (e) {
+      print('加载任务列表失败: $e');
+    }
+    
+    // 使用LogEnhancedScreen的公共静态方法显示添加日志对话框
+    // 这与日志模块使用的对话框完全相同
+    LogEnhancedScreen.showAddLogDialog(
+      context: context,
+      user: widget.user,
+      tasks: tasks,
+      onLogAdded: () async {
+        // 日志添加成功后，刷新今日日志列表
+        await _loadTodayLogs();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('日志添加成功！'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      },
     );
   }
   

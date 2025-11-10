@@ -2,12 +2,12 @@ const mysql = require('mysql2/promise');
 
 async function queryTask() {
   let connection;
-  
+
   try {
     connection = await mysql.createConnection({
       host: 'localhost',
       user: 'root',
-      password: '23301144',
+      password: 'Zs462581379',
       database: 'enterprise_management',
       charset: 'utf8mb4'
     });

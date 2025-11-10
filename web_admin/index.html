@@ -271,6 +271,10 @@
                                 <i class="bi bi-plus"></i>
                                 新建任务
                             </button>
+                            <button type="button" class="btn btn-success ms-2" id="requestButton" onclick="showRequestModal()" style="display: none;">
+                                <i class="bi bi-send"></i>
+                                向上邀约
+                            </button>
                             <button type="button" class="btn btn-outline-secondary ms-2" onclick="loadTasks()">
                                 <i class="bi bi-arrow-clockwise"></i>
                                 刷新
@@ -443,6 +447,108 @@
         </div>
     </div>
 
+    <!-- 编辑任务模态框 -->
+    <div class="modal fade" id="editTaskModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">编辑任务</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editTaskForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="editTaskTitle" class="form-label">任务名称 <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="editTaskTitle" required>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label for="editTaskPriority" class="form-label">优先级</label>
+                                    <select class="form-select" id="editTaskPriority">
+                                        <option value="p0">重要且紧急</option>
+                                        <option value="p1">重要不紧急</option>
+                                        <option value="p2">不重要紧急</option>
+                                        <option value="p3">不重要不紧急</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label for="editTaskStatus" class="form-label">状态</label>
+                                    <select class="form-select" id="editTaskStatus">
+                                        <option value="pending">待开始</option>
+                                        <option value="in_progress">进行中</option>
+                                        <option value="completed">已完成</option>
+                                        <option value="cancelled">已取消</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editTaskDescription" class="form-label">任务详情</label>
+                            <textarea class="form-control" id="editTaskDescription" rows="4"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="editTaskAssignee" class="form-label">责任人</label>
+                                    <select class="form-select" id="editTaskAssignee"></select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="editTaskDepartment" class="form-label">部门</label>
+                                    <input type="text" class="form-control" id="editTaskDepartment" readonly>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="editTaskStartTime" class="form-label">开始时间</label>
+                                    <input type="datetime-local" class="form-control" id="editTaskStartTime">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="editTaskEndTime" class="form-label">结束时间</label>
+                                    <input type="datetime-local" class="form-control" id="editTaskEndTime">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="editTaskDeadline" class="form-label">截止时间</label>
+                                    <input type="datetime-local" class="form-control" id="editTaskDeadline">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    <label for="editTaskLocation" class="form-label">地点</label>
+                                    <input type="text" class="form-control" id="editTaskLocation">
+                                </div>
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="editTaskIsAllDay">
+                                    <label class="form-check-label" for="editTaskIsAllDay">全天任务</label>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="updateTask()">保存修改</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 添加用户模态框 -->
     <div class="modal fade" id="addUserModal" tabindex="-1">
         <div class="modal-dialog">
@@ -521,10 +627,10 @@
                                     <label for="taskPriority" class="form-label">优先级 <span class="text-danger">*</span></label>
                                     <select class="form-select" id="taskPriority" required>
                                         <option value="">选择优先级</option>
-                                        <option value="important_urgent">重要且紧急</option>
-                                        <option value="important_not_urgent">重要不紧急</option>
-                                        <option value="not_important_urgent">紧急不重要</option>
-                                        <option value="not_important_not_urgent">不重要不紧急</option>
+                                        <option value="p0">重要且紧急</option>
+                                        <option value="p1">重要不紧急</option>
+                                        <option value="p2">不重要紧急</option>
+                                        <option value="p3">不重要不紧急</option>
                                     </select>
                                 </div>
                             </div>
@@ -627,6 +733,17 @@
                                             <p><strong>截止时间：</strong><span id="detailTaskDeadline"></span></p>
                                         </div>
                                     </div>
+                                    <!-- 邀约处理结果（仅邀约任务显示） -->
+                                    <div id="requestResponseSection" style="display: none;">
+                                        <hr>
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <p><strong>请求类型：</strong><span id="detailRequestType"></span></p>
+                                                <p><strong>处理结果：</strong><span id="detailRequestResponse"></span></p>
+                                                <p id="detailRequestNotesRow" style="display: none;"><strong>处理备注：</strong><span id="detailRequestNotes"></span></p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                             
@@ -641,12 +758,16 @@
                                             <span id="taskProgressText">0%</span>
                                         </div>
                                     </div>
-                                    <small class="text-muted">最后更新：<span id="lastProgressUpdate"></span></small>
+                                    <div class="d-flex align-items-center mt-2">
+                                        <input type="range" class="form-range w-100" id="detailProgressInput" min="0" max="100" step="1">
+                                        <button class="btn btn-sm btn-primary ms-3" onclick="saveDetailProgress()">保存进度</button>
+                                        <small class="text-muted ms-3">最后更新：<span id="lastProgressUpdate"></span></small>
+                                    </div>
                                 </div>
                             </div>
                             
                             <!-- 子任务列表 -->
-                            <div class="card mb-4">
+                            <div class="card mb-4" id="subtasksCard">
                                 <div class="card-header d-flex justify-content-between align-items-center">
                                     <h6 class="mb-0">子任务</h6>
                                     <button class="btn btn-sm btn-primary" onclick="createSubtask(currentTask.id)" id="createSubtaskBtn" style="display: none;">
@@ -661,7 +782,7 @@
                             </div>
                             
                             <!-- 关联日志列表 -->
-                            <div class="card">
+                            <div class="card" id="logsCard">
                                 <div class="card-header">
                                     <h6 class="mb-0">工作日志</h6>
                                 </div>
@@ -684,8 +805,8 @@
                                         <button class="btn btn-primary" onclick="editTask()">
                                             <i class="bi bi-pencil"></i> 编辑任务
                                         </button>
-                                        <button class="btn btn-warning" onclick="updateTaskProgress()">
-                                            <i class="bi bi-graph-up"></i> 更新进度
+                                        <button class="btn btn-warning" onclick="saveDetailProgress()">
+                                            <i class="bi bi-graph-up"></i> 保存进度
                                         </button>
                                         <button class="btn btn-success" onclick="completeTask()">
                                             <i class="bi bi-check-circle"></i> 完成任务
@@ -714,6 +835,110 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 向上邀约模态框 -->
+    <div class="modal fade" id="requestModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">向上邀约</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="requestForm">
+                        <div class="mb-3">
+                            <label for="requestType" class="form-label">请求类型 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="requestType" required>
+                                <option value="">选择请求类型</option>
+                                <option value="修改任务">修改任务</option>
+                                <option value="删除任务">删除任务</option>
+                                <option value="请假">请假</option>
+                                <option value="重新安排任务">重新安排任务</option>
+                                <option value="请来办公室">请来办公室</option>
+                                <option value="其他">其他</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="requestAssignee" class="form-label">接收人 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="requestAssignee" required>
+                                <option value="">选择接收人</option>
+                                <!-- 用户列表将通过JavaScript动态加载 -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="requestDescription" class="form-label">请求详情 <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="requestDescription" rows="5" placeholder="请详细描述您的请求内容..." required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="requestDeadline" class="form-label">期望回复时间（可选）</label>
+                            <input type="datetime-local" class="form-control" id="requestDeadline">
+                            <small class="text-muted">如果不填写，默认3天后</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="requestRelatedTask" class="form-label">关联任务（可选）</label>
+                            <select class="form-select" id="requestRelatedTask">
+                                <option value="">无关联任务</option>
+                                <!-- 任务列表将通过JavaScript动态加载 -->
+                            </select>
+                            <small class="text-muted">对于"修改任务"、"删除任务"、"重新安排任务"类型，必须关联一个任务</small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-success" onclick="createRequest()">发送邀约</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 处理邀约模态框 -->
+    <div class="modal fade" id="handleRequestModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">处理邀约</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="handleRequestForm">
+                        <input type="hidden" id="handleRequestTaskId">
+                        <div class="mb-3">
+                            <label class="form-label">邀约信息</label>
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <p class="mb-1"><strong>任务名称：</strong><span id="handleRequestTitle"></span></p>
+                                    <p class="mb-1"><strong>请求类型：</strong><span id="handleRequestType"></span></p>
+                                    <p class="mb-0"><strong>请求详情：</strong><span id="handleRequestDescription"></span></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">处理方式 <span class="text-danger">*</span></label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="requestAction" id="approveAction" value="approve" checked>
+                                <label class="btn btn-outline-success" for="approveAction">
+                                    <i class="bi bi-check-circle"></i> 批准
+                                </label>
+                                <input type="radio" class="btn-check" name="requestAction" id="rejectAction" value="reject">
+                                <label class="btn btn-outline-danger" for="rejectAction">
+                                    <i class="bi bi-x-circle"></i> 拒绝
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="handleRequestNotes" class="form-label">备注（可选）</label>
+                            <textarea class="form-control" id="handleRequestNotes" rows="3" placeholder="可以填写处理意见或说明..."></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-success" onclick="handleRequest()">确认处理</button>
                 </div>
             </div>
         </div>
