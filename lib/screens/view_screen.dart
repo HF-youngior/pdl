@@ -19,6 +19,7 @@ class ViewScreen extends StatefulWidget {
 
 class _ViewScreenState extends State<ViewScreen> {
   DateTime _currentDate = DateTime.now();
+  VoidCallback? _refreshCalendar;
 
   @override
   void initState() {
@@ -102,10 +103,22 @@ class _ViewScreenState extends State<ViewScreen> {
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: '刷新',
+            onPressed: () {
+              _refreshCalendar?.call();
+            },
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: CalendarWidget(
         tasks: const [], // CalendarWidget内部会加载数据
         currentDate: _currentDate,
+        onProvideRefresh: (cb) {
+          _refreshCalendar = cb;
+        },
         onDateSelected: (date) {
           setState(() {
             _currentDate = date;

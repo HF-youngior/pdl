@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
 class CalendarService {
-  static const String baseUrl = 'http://10.0.2.2:8080/api';
+  static String get baseUrl => ApiService.baseUrl;
 
   // 获取月视图数据
   static Future<MonthViewData> getMonthView(int year, int month) async {
@@ -95,25 +95,46 @@ class CalendarService {
   // 更新日志
   static Future<void> updateLog(
     String logId, {
+    required String category,
+    required bool isCompleted,
+    String? createdAt,
+    String? logDate,
     String? title,
     String? content,
   }) async {
     try {
-      final body = <String, dynamic>{};
-      if (title != null) body['title'] = title;
-      if (content != null) body['content'] = content;
+      final resolvedTitle = (title?.trim().isNotEmpty ?? false) ? title!.trim() : null;
+      final resolvedContent = content?.trim();
+
+      final logPayload = <String, dynamic>{
+        'title': resolvedTitle,
+        'content': resolvedContent,
+        'category': category,
+        'is_completed': isCompleted,
+      };
+
+      if (createdAt != null && createdAt.isNotEmpty) {
+        logPayload['created_at'] = createdAt;
+      }
+
+      if (logDate != null && logDate.isNotEmpty) {
+        logPayload['log_date'] = logDate;
+      }
+
+      // 移除空值，避免覆盖为 null
+      logPayload.removeWhere((key, value) => value == null);
 
       final response = await http.put(
-        Uri.parse('$baseUrl/logs/$logId'),
+        Uri.parse('$baseUrl/personal-logs/$logId'),
         headers: {
           ...ApiService.getAuthHeaders(),
           'Content-Type': 'application/json',
         },
-        body: json.encode(body),
+        body: json.encode({'log': logPayload}),
       );
 
       if (response.statusCode != 200) {
-        throw Exception('更新日志失败: ${response.statusCode}');
+        throw Exception('更新日志失败: ${response.statusCode} ${response.body}');
       }
     } catch (e) {
       throw Exception('更新日志失败: $e');
@@ -124,12 +145,12 @@ class CalendarService {
   static Future<void> deleteLog(String logId) async {
     try {
       final response = await http.delete(
-        Uri.parse('$baseUrl/logs/$logId'),
+        Uri.parse('$baseUrl/personal-logs/$logId'),
         headers: ApiService.getAuthHeaders(),
       );
 
-      if (response.statusCode != 200) {
-        throw Exception('删除日志失败: ${response.statusCode}');
+      if (response.statusCode != 204) {
+        throw Exception('删除日志失败: ${response.statusCode} ${response.body}');
       }
     } catch (e) {
       throw Exception('删除日志失败: $e');

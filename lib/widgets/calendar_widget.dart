@@ -16,6 +16,8 @@ class CalendarWidget extends StatefulWidget {
   final Function(Task) onTaskSelected;
   final Function(DateTime) onTaskAdd;
   final Function(DateTime) onLogAdd;
+  // 提供刷新回调给父组件（用于页眉右侧的刷新按钮）
+  final void Function(VoidCallback refresh)? onProvideRefresh;
 
   const CalendarWidget({
     super.key,
@@ -25,6 +27,7 @@ class CalendarWidget extends StatefulWidget {
     required this.onTaskSelected,
     required this.onTaskAdd,
     required this.onLogAdd,
+    this.onProvideRefresh,
   });
 
   @override
@@ -48,6 +51,10 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     super.initState();
     _currentDate = widget.currentDate;
     _loadMonthViewData();
+    // 将刷新方法暴露给父组件（用于页眉右侧刷新按钮）
+    if (widget.onProvideRefresh != null) {
+      widget.onProvideRefresh!.call(_refreshCurrentView);
+    }
   }
 
   @override
@@ -61,6 +68,8 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   void _changeView(CalendarView view) {
     setState(() {
       _currentView = view;
+      // 切换视图时重置为“今天”，确保进入各视图时默认显示当前月/周/日
+      _currentDate = TimeUtils.getSystemTime();
     });
     
     // 如果切换到月视图，加载数据
@@ -286,13 +295,18 @@ class _CalendarWidgetState extends State<CalendarWidget> {
             color: Colors.blue.shade700,
           ),
         ),
-        IconButton(
-          onPressed: () => _navigateDate(1),
-          icon: Icon(
-            Icons.chevron_right,
-            color: Colors.blue.shade700,
-          ),
-          iconSize: 24,
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              onPressed: () => _navigateDate(1),
+              icon: Icon(
+                Icons.chevron_right,
+                color: Colors.blue.shade700,
+              ),
+              iconSize: 24,
+            ),
+          ],
         ),
       ],
     );
@@ -301,6 +315,17 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   DateTime _getWeekStart(DateTime date) {
     final weekday = date.weekday;
     return date.subtract(Duration(days: weekday - 1));
+  }
+
+  // 刷新当前视图数据
+  void _refreshCurrentView() {
+    if (_currentView == CalendarView.month) {
+      _loadMonthViewData();
+    } else if (_currentView == CalendarView.week) {
+      _loadWeekViewData();
+    } else {
+      _loadDayViewData();
+    }
   }
 
   @override
@@ -3437,64 +3462,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                 ),
               ),
 
-              // 底部按钮栏
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(20),
-                    bottomRight: Radius.circular(20),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          _showEditTaskDialog(context, task, day);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        icon: const Icon(Icons.edit),
-                        label: const Text(
-                          '编辑任务',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          _deleteTask(context, task, day);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        icon: const Icon(Icons.delete),
-                        label: const Text(
-                          '删除任务',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              // 需求：月视图任务详情中不显示“编辑任务”和“删除任务”按钮（移除底部按钮栏）
             ],
           ),
         ),
@@ -3951,10 +3919,38 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     DateTime day,
   ) async {
     try {
+      final updatedTitle = (updates['title'] ?? '').trim();
+      final updatedContent = (updates['content'] ?? '').trim();
+
+      String? createdAt = log.createdAt.isEmpty ? null : log.createdAt;
+      String? logDate;
+      try {
+        if ((log.createdAt).isNotEmpty) {
+          final parsed = DateTime.parse(log.createdAt);
+          logDate =
+              '${parsed.year.toString().padLeft(4, '0')}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
+          createdAt = parsed.toIso8601String();
+        }
+      } catch (_) {
+        // 保持原始值，如果解析失败则忽略
+        logDate = log.createdAt.split(' ').firstWhere(
+          (segment) => segment.contains('-'),
+          orElse: () => '',
+        );
+      }
+
+      final effectiveTitle = updatedTitle.isNotEmpty
+          ? updatedTitle
+          : (log.title.isNotEmpty ? log.title : '个人日志');
+
       await CalendarService.updateLog(
         log.id,
-        title: updates['title'],
-        content: updates['content'],
+        title: effectiveTitle,
+        content: updatedContent,
+        category: log.category.isNotEmpty ? log.category : '其他',
+        isCompleted: log.isCompleted,
+        createdAt: createdAt,
+        logDate: logDate?.isNotEmpty == true ? logDate : null,
       );
 
       if (mounted) {
@@ -4687,9 +4683,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                   itemBuilder: (context, index) {
                     final log = dayData.logs[index];
                     final accentColor = _getLogColor(log);
-                    final timeStr = log.createdAt != null
-                        ? _formatLogCreatedTime(log.createdAt!)
-                        : '';
 
                     return GestureDetector(
                       onTap: () {
@@ -4757,21 +4750,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                   ),
                               ],
                             ),
-
-                            // 日志时间
-                            if (timeStr.isNotEmpty) ...[
-                              const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  Icon(Icons.access_time, size: 16, color: Colors.grey.shade600),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    timeStr,
-                                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-                                  ),
-                                ],
-                              ),
-                            ],
 
                             // 日志内容预览
                             if (log.content.isNotEmpty) ...[
@@ -4999,8 +4977,8 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       final dateTime = _parseLogTime(timeStr);
       // 增加8小时
       final adjustedDateTime = dateTime.add(const Duration(hours: 8));
-      // 格式化为 YYYY-MM-DD HH:MM:SS 格式
-      return DateFormat('yyyy-MM-dd HH:mm:ss').format(adjustedDateTime);
+      // 仅显示为 YYYY-MM-DD（不显示时分秒）
+      return DateFormat('yyyy-MM-dd').format(adjustedDateTime);
     } catch (e) {
       return '';
     }
@@ -5412,9 +5390,6 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
 
         final String title = (log.title ?? '').toString();
         final String content = (log.content ?? '').toString();
-        final String timeStr = log.createdAt != null
-            ? _formatLogTime(log.createdAt.toString())
-            : '';
         final String category = (log.category ?? '').toString();
 
         return Dialog(
@@ -5498,14 +5473,6 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
                                       ),
                                     ),
                                   ),
-                                if (timeStr.isNotEmpty)
-                                  Text(
-                                    timeStr,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.purple.shade700,
-                                    ),
-                                  ),
                               ],
                             ),
                           ],
@@ -5543,7 +5510,6 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
                         onPressed: () async {
                           final buffer = StringBuffer();
                           if (title.isNotEmpty) buffer.writeln(title);
-                          if (timeStr.isNotEmpty) buffer.writeln(timeStr);
                           buffer.writeln(content);
                           await Clipboard.setData(ClipboardData(text: buffer.toString()));
                           ScaffoldMessenger.of(ctx).showSnackBar(
