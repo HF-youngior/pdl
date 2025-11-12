@@ -15,7 +15,7 @@ chcp 65001 >nul
 set DB_HOST=localhost
 set DB_PORT=3306
 set DB_USER=root
-set DB_PASSWORD=Zs462581379
+set DB_PASSWORD=hyx123456
 set MYSQL_CMD=mysql
 set SCRIPT_DIR=%~dp0
 

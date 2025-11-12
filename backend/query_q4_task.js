@@ -7,7 +7,7 @@ async function queryTask() {
     connection = await mysql.createConnection({
       host: 'localhost',
       user: 'root',
-      password: 'Zs462581379',
+      password: 'hyx123456',
       database: 'enterprise_management',
       charset: 'utf8mb4'
     });
