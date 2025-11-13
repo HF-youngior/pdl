@@ -50,6 +50,7 @@ windows/flutter/generated_plugins.*
 
 # Node.js related (backend)
 backend/node_modules/
+web_admin/node_modules/
 backend/.env
 backend/.env.local
 backend/.env.production
