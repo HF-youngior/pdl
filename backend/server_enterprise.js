@@ -3853,7 +3853,12 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+if(process.env.NODE_ENV !== 'tset') {
+  startServer().catch(console.error);
+}
+//导出app和数据库初始化函数，方便测试
+module.exports = { app, initDatabase };
+
 
 // ================= AI 文本分析（基础版） =================
 // 提取关键词和词频统计

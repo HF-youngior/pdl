@@ -7,7 +7,8 @@
     "start": "node server_enterprise.js",
     "dev": "nodemon server_enterprise.js",
     "init-db": "node -e \"require('./server_enterprise.js')\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest --runInBand --verbose",
+    "test-coverage": "jest --coverage --runInBand"
   },
   "keywords": [
     "enterprise",
@@ -30,7 +31,9 @@
     "segmentit": "^2.0.3"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "jest": "^30.2.0",
+    "nodemon": "^3.0.1",
+    "supertest": "^7.1.4"
   },
   "engines": {
     "node": ">=14.0.0"

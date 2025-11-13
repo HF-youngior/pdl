@@ -1,10 +1,19 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../models/log.dart';
 import '../models/task.dart';
 import '../utils/config.dart';
 
 class LogService {
+  // Dynamically resolve host/port for different platforms
+  static http.Client _client = http.Client();
+
+  @visibleForTesting
+  static void setMockClient(http.Client mockClient) {
+    _client = mockClient;
+  }
+
   static String? _authToken;
 
   // 设置认证token
@@ -63,7 +72,7 @@ class LogService {
       final uri = Uri.parse('${Config.baseUrl}${Config.logsEndpoint}')
           .replace(queryParameters: queryParams);
 
-      final response = await http.get(
+      final response = await _client.get(
         uri,
         headers: _getAuthHeaders(),
       ).timeout(const Duration(milliseconds: Config.requestTimeout));
@@ -164,7 +173,7 @@ class LogService {
       final uri = Uri.parse('${Config.baseUrl}/api/personal-logs')
           .replace(queryParameters: queryParams);
 
-      final response = await http.get(
+      final response = await _client.get(
         uri,
         headers: _getAuthHeaders(),
       ).timeout(const Duration(milliseconds: Config.requestTimeout));
@@ -187,7 +196,7 @@ class LogService {
   // 创建日志
   static Future<bool> createLog(Log log) async {
     try {
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse('${Config.baseUrl}${Config.logsEndpoint}'),
         headers: _getAuthHeaders(),
         body: json.encode(log.toJson()),
@@ -203,7 +212,7 @@ class LogService {
   // 更新日志
   static Future<bool> updateLog(String logId, Log log) async {
     try {
-      final response = await http.put(
+      final response = await _client.put(
         Uri.parse('${Config.baseUrl}${Config.logsEndpoint}/$logId'),
         headers: _getAuthHeaders(),
         body: json.encode(log.toJson()),
@@ -219,7 +228,7 @@ class LogService {
   // 删除日志
   static Future<bool> deleteLog(String logId) async {
     try {
-      final response = await http.delete(
+      final response = await _client.delete(
         Uri.parse('${Config.baseUrl}${Config.logsEndpoint}/$logId'),
         headers: _getAuthHeaders(),
       ).timeout(const Duration(milliseconds: Config.requestTimeout));
@@ -234,7 +243,7 @@ class LogService {
   // 获取日志统计信息
   static Future<Map<String, int>> getLogStatistics() async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('${Config.baseUrl}${Config.logsEndpoint}/statistics'),
         headers: _getAuthHeaders(),
       ).timeout(const Duration(milliseconds: Config.requestTimeout));
@@ -254,7 +263,7 @@ class LogService {
   // 获取关联任务列表（用于日志关联显示）
   static Future<List<Task>> fetchRelatedTasks(String logId) async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('${Config.baseUrl}${Config.logsEndpoint}/$logId/tasks'),
         headers: _getAuthHeaders(),
       ).timeout(const Duration(milliseconds: Config.requestTimeout));

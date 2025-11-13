@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/important_item.dart';
@@ -12,6 +12,12 @@ import 'task_service.dart';
 
 class ApiService {
   // Dynamically resolve host/port for different platforms
+  static http.Client _client = http.Client();
+
+  @visibleForTesting
+  static void setMockClient(http.Client mockClient) {
+    _client = mockClient;
+  }
   static String get _host {
     if (kIsWeb) return '127.0.0.1';
     try {
@@ -53,7 +59,7 @@ class ApiService {
   // 用户认证
   static Future<User?> login(String username, String password) async {
     try {
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse('$baseUrl/auth/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -82,7 +88,7 @@ class ApiService {
   // 获取公司重要事项（已选择的）
   static Future<List<ImportantItem>> getImportantItems() async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/important-items'),
         headers: getAuthHeaders(),
       );
@@ -100,7 +106,7 @@ class ApiService {
   // 获取所有重要事项（用于编辑）
   static Future<List<ImportantItem>> getAllImportantItems() async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/company-important-items/all'),
         headers: getAuthHeaders(),
       );
@@ -118,7 +124,7 @@ class ApiService {
   // 批量更新重要事项选择状态
   static Future<bool> batchUpdateImportantItemsSelection(List<String> selectedIds) async {
     try {
-      final response = await http.put(
+      final response = await _client.put(
         Uri.parse('$baseUrl/company-important-items/batch-select'),
         headers: getAuthHeaders(),
         body: jsonEncode({
@@ -140,7 +146,7 @@ class ApiService {
     DateTime? deadline,
   }) async {
     try {
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse('$baseUrl/company-important-items'),
         headers: getAuthHeaders(),
         body: jsonEncode({
@@ -167,7 +173,7 @@ class ApiService {
     DateTime? deadline,
   }) async {
     try {
-      final response = await http.put(
+      final response = await _client.put(
         Uri.parse('$baseUrl/company-important-items/$id'),
         headers: getAuthHeaders(),
         body: jsonEncode({
@@ -188,7 +194,7 @@ class ApiService {
   // 删除重要事项
   static Future<bool> deleteImportantItem(String id) async {
     try {
-      final response = await http.delete(
+      final response = await _client.delete(
         Uri.parse('$baseUrl/company-important-items/$id'),
         headers: getAuthHeaders(),
       );
@@ -202,7 +208,7 @@ class ApiService {
   // 获取任务派发
   static Future<List<Task>> getTasks() async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/tasks'),
         headers: getAuthHeaders(),
       );
@@ -220,7 +226,7 @@ class ApiService {
   // 获取个人信息
   static Future<List<PersonalInfo>> getPersonalInfo(String userId) async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/personal-info/$userId'),
         headers: getAuthHeaders(),
       );
@@ -238,7 +244,7 @@ class ApiService {
   // 获取日志
   static Future<List<Log>> getLogs() async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/logs'),
         headers: getAuthHeaders(),
       );
@@ -256,7 +262,7 @@ class ApiService {
   // 创建日志
   static Future<bool> createLog(Log log) async {
     try {
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse('$baseUrl/logs'),
         headers: getAuthHeaders(),
         body: jsonEncode(log.toJson()),
@@ -271,7 +277,7 @@ class ApiService {
   // 获取个人日志列表（使用 token 认证，不需要 userId 参数）
   static Future<List<PersonalLog>> getPersonalLogs(String userId) async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/personal-logs'),
         headers: getAuthHeaders(),
       );
@@ -288,7 +294,7 @@ class ApiService {
   // 创建个人日志（logData 结构: { log: {...}, linkages: [...] }）
   static Future<PersonalLog> createPersonalLog(Map<String, dynamic> logData) async {
     try {
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse('$baseUrl/personal-logs'),
         headers: getAuthHeaders(),
         body: jsonEncode(logData),
@@ -305,7 +311,7 @@ class ApiService {
   // 更新个人日志
   static Future<PersonalLog> updatePersonalLog(String logId, Map<String, dynamic> logData) async {
     try {
-      final response = await http.put(
+      final response = await _client.put(
         Uri.parse('$baseUrl/personal-logs/$logId'),
         headers: getAuthHeaders(),
         body: jsonEncode(logData),
@@ -321,7 +327,7 @@ class ApiService {
 
   // 删除个人日志
   static Future<void> deletePersonalLog(String logId) async {
-    final response = await http.delete(
+    final response = await _client.delete(
       Uri.parse('$baseUrl/personal-logs/$logId'),
       headers: getAuthHeaders(),
     );
@@ -333,7 +339,7 @@ class ApiService {
   // 新增：获取月视图数据
   static Future<Map<String, dynamic>?> getMonthView(int year, int month) async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/calendar/month-view?year=$year&month=$month'),
         headers: getAuthHeaders(),
       );
@@ -350,7 +356,7 @@ class ApiService {
   // 新增：获取日详情数据
   static Future<Map<String, dynamic>?> getDayDetail(String date) async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/calendar/day-detail?date=$date'),
         headers: getAuthHeaders(),
       );
@@ -367,7 +373,7 @@ class ApiService {
   // 获取用户列表（根据权限）
   static Future<List<User>> getUsers() async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/users'),
         headers: getAuthHeaders(),
       );
@@ -391,7 +397,7 @@ class ApiService {
     String? relatedTaskId,
   }) async {
     try {
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse('$baseUrl/tasks/request'),
         headers: getAuthHeaders(),
         body: jsonEncode({
@@ -416,7 +422,7 @@ class ApiService {
     String? notes,
   }) async {
     try {
-      final response = await http.put(
+      final response = await _client.put(
         Uri.parse('$baseUrl/tasks/$taskId/request-response'),
         headers: getAuthHeaders(),
         body: jsonEncode({
@@ -441,7 +447,7 @@ class ApiService {
     String? relatedTaskId,
   }) async {
     try {
-      final response = await http.put(
+      final response = await _client.put(
         Uri.parse('$baseUrl/tasks/$taskId/request'),
         headers: getAuthHeaders(),
         body: jsonEncode({

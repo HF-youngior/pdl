@@ -1,9 +1,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../models/task.dart';
 import 'api_service.dart';
 
 class TaskService {
+  // Dynamically resolve host/port for different platforms
+  static http.Client _client = http.Client();
+
+  @visibleForTesting
+  static void setMockClient(http.Client mockClient) {
+    _client = mockClient;
+  }
+
   static String get baseUrl => ApiService.baseUrl;
   static String? _authToken;
   
@@ -29,7 +38,7 @@ class TaskService {
   // 获取所有任务
   static Future<List<Task>> getTasks() async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/tasks'),
         headers: _getAuthHeaders(),
       );
@@ -58,7 +67,7 @@ class TaskService {
   // 根据日期范围获取任务
   static Future<List<Task>> getTasksByDateRange(DateTime startDate, DateTime endDate) async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/tasks?startDate=${startDate.toIso8601String()}&endDate=${endDate.toIso8601String()}'),
         headers: _getAuthHeaders(),
       );
@@ -80,7 +89,7 @@ class TaskService {
       final taskJson = task.toJson();
       print('发送任务数据: $taskJson'); // 调试信息
       
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse('$baseUrl/tasks'),
         headers: _getAuthHeaders(),
         body: json.encode(taskJson),
@@ -111,7 +120,7 @@ class TaskService {
   // 更新任务
   static Future<Task> updateTask(String id, Task task) async {
     try {
-      final response = await http.put(
+      final response = await _client.put(
         Uri.parse('$baseUrl/tasks/$id'),
         headers: _getAuthHeaders(),
         body: json.encode(task.toJson()),
@@ -131,7 +140,7 @@ class TaskService {
   // 删除任务
   static Future<void> deleteTask(String id) async {
     try {
-      final response = await http.delete(
+      final response = await _client.delete(
         Uri.parse('$baseUrl/tasks/$id'),
         headers: _getAuthHeaders(),
       );
@@ -147,7 +156,7 @@ class TaskService {
   // 获取任务详情
   static Future<Task> getTaskById(String id) async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/tasks/$id'),
         headers: _getAuthHeaders(),
       );
@@ -198,7 +207,7 @@ class TaskService {
       if (progressPercentage != null) body['progress_percentage'] = progressPercentage;
       if (specialNotes != null && specialNotes.trim().isNotEmpty) body['special_notes'] = specialNotes.trim();
 
-      final response = await http.put(
+      final response = await _client.put(
         Uri.parse('$baseUrl/tasks/$id/status'),
         headers: _getAuthHeaders(),
         body: json.encode(body),
