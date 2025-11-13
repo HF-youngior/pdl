@@ -104,7 +104,7 @@ function safeParseJSON(value) {
 // 初始化数据库连接
 async function initDatabase() {
   try {
-    db = mysql.createPool(dbConfig);
+    db = await mysql.createPool(dbConfig);
 
     // 测试并设置字符集
     const connection = await db.getConnection();
@@ -1393,6 +1393,10 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
       WHERE 1=1
     `;
     let params = [];
+
+    // 仅返回分配给当前用户的任务
+    query += ' AND t.assignee_id = ?';
+    params.push(req.user.id);
 
     // 邀约任务权限过滤：只有创建者（发送邀约的人）和被邀约人（接收人）可以看到
     // 普通任务：所有人都可以看到
@@ -3834,7 +3838,12 @@ app.get('/api/mbti-records/statistics', authenticateToken, async (req, res) => {
 // 启动服务器
 async function startServer() {
   await initDatabase();
-  
+
+  if (process.env.NODE_ENV === 'test') {
+    console.log('测试环境检测到，跳过服务器监听');
+    return;
+  }
+
   app.listen(PORT, () => {
     console.log(`企业管理系统服务器运行在端口 ${PORT}`);
     console.log(`API地址: http://localhost:${PORT}/api`);
@@ -3853,11 +3862,11 @@ async function startServer() {
   });
 }
 
-if(process.env.NODE_ENV !== 'tset') {
+if (require.main === module) {
   startServer().catch(console.error);
 }
-//导出app和数据库初始化函数，方便测试
-module.exports = { app, initDatabase };
+
+module.exports = { app, startServer, initDatabase };
 
 
 // ================= AI 文本分析（基础版） =================
