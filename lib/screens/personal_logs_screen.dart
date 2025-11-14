@@ -1,4 +1,5 @@
 // lib/screens/personal_logs_screen.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:testflutterproject/models/personal_log.dart';
 import 'package:testflutterproject/services/api_service.dart';
@@ -97,21 +98,57 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
     );
   }
 
-  // 格式化日志日期，处理时区问题
-  String _formatLogDate(String timeStr) {
+  Widget _buildLogAttachment(String path) {
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        width: 90,
+        height: 70,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _brokenThumb(),
+      );
+    }
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: 90,
+        height: 70,
+        fit: BoxFit.cover,
+      );
+    }
+    return _brokenThumb();
+  }
+
+  Widget _brokenThumb() {
+    return Container(
+      width: 90,
+      height: 70,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.broken_image, color: Colors.grey),
+    );
+  }
+
+  // 优先使用 log_date，避免 +8/-8 小时问题
+  String _formatLogDate(PersonalLog log) {
     try {
-      // 如果时间字符串包含时区信息（+08:00），直接解析
+      if (log.logDate != null) {
+        return DateFormat('yyyy-MM-dd').format(log.logDate!);
+      }
+      final timeStr = log.createdAt ?? '';
+      if (timeStr.isEmpty) return '';
+
+      // 如果时间字符串包含时区信息（+08:00 或 Z），直接解析为本地显示
       if (timeStr.contains('+') || timeStr.contains('Z')) {
         final dateTime = DateTime.parse(timeStr);
-        return DateFormat('yyyy-MM-dd').format(dateTime);
+        return DateFormat('yyyy-MM-dd').format(dateTime.toLocal());
       }
-      
-      // 如果没有时区信息，当作系统本地时间
-      // 解析为UTC后再转换为本地时间
-      final dateTime = DateTime.parse(timeStr).toLocal();
+
+      // 无时区信息时，按本地时间解析
+      final dateTime = DateTime.parse(timeStr);
       return DateFormat('yyyy-MM-dd').format(dateTime);
     } catch (e) {
-      return timeStr;
+      return log.createdAt ?? '';
     }
   }
 
@@ -163,7 +200,7 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _formatLogDate(log.createdAt ?? ''),
+                                _formatLogDate(log),
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -199,6 +236,41 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(fontSize: 15, color: Colors.grey[800]), // 内容用浅灰色
                           ),
+                          if (log.images.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              height: 70,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: log.images.length.clamp(0, 5),
+                                itemBuilder: (context, imgIndex) {
+                                  final path = log.images[imgIndex];
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: _buildLogAttachment(path),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                          if (log.locationName != null && log.locationName!.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    log.locationName!,
+                                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                           // 任务标签区（如果有）
                           if (log.taskUpdates.isNotEmpty) ...[
                             SizedBox(height: 7),

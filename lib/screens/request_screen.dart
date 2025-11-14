@@ -442,7 +442,7 @@ class _RequestScreenState extends State<RequestScreen> {
                   ),
                   child: Text(
                     _selectedDeadline != null
-                        ? DateFormat('yyyy-MM-dd HH:mm').format(_selectedDeadline!.add(const Duration(hours: 8)))
+                        ? DateFormat('yyyy-MM-dd HH:mm').format(_selectedDeadline!.toLocal())
                         : '点击选择（默认3天后）',
                     style: TextStyle(
                       color: _selectedDeadline != null ? Colors.black87 : Colors.grey,

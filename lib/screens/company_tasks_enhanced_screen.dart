@@ -775,7 +775,7 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
 
   String _formatDateTime(DateTime dateTime) {
     // 增加8小时
-    final adjustedDateTime = dateTime.add(const Duration(hours: 8));
+    final adjustedDateTime = dateTime.toLocal();
     return '${adjustedDateTime.year}-${adjustedDateTime.month.toString().padLeft(2, '0')}-${adjustedDateTime.day.toString().padLeft(2, '0')}';
   }
 

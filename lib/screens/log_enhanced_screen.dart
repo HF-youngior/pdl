@@ -1,11 +1,17 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import '../models/personal_log.dart';
 import '../models/task.dart';
+import '../models/user.dart';
 import '../services/api_service.dart';
 import '../services/task_service.dart';
-import '../models/user.dart';
 import 'package:testflutterproject/models/log_task_update.dart';
-import 'package:intl/intl.dart';
 
 class LogEnhancedScreen extends StatefulWidget {
   final User user;
@@ -464,6 +470,41 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
                   color: Colors.grey[600],
                 ),
               ),
+            if (log.images.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 80,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: log.images.length,
+                  itemBuilder: (context, index) {
+                    final path = log.images[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: _buildImagePreview(path),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            if (log.locationName != null && log.locationName!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      log.locationName!,
+                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             // 天气和关键词信息
             Row(
               children: [
@@ -625,6 +666,37 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
     }
   }
 
+  Widget _buildImagePreview(String path) {
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        width: 100,
+        height: 80,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _brokenImage(),
+      );
+    }
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: 100,
+        height: 80,
+        fit: BoxFit.cover,
+      );
+    }
+    return _brokenImage();
+  }
+
+  Widget _brokenImage() {
+    return Container(
+      width: 100,
+      height: 80,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.broken_image, color: Colors.grey),
+    );
+  }
+
   void _showAddLogDialog() {
     LogEnhancedScreen.showAddLogDialog(
       context: context,
@@ -675,6 +747,24 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
   }
 }
 
+class _AssociatedTaskEdit {
+  final String taskId;
+  final String title;
+  final String priority;
+  final DateTime? deadline;
+  int? progress;
+  String status;
+
+  _AssociatedTaskEdit({
+    required this.taskId,
+    required this.title,
+    required this.priority,
+    required this.deadline,
+    required this.progress,
+    required this.status,
+  });
+}
+
 class _AddLogDialog extends StatefulWidget {
   final User user;
   final List<Task> tasks;
@@ -696,6 +786,12 @@ class _AddLogDialogState extends State<_AddLogDialog> {
   final _actionController = TextEditingController(text: '个人日志');
   final _categoryInputController = TextEditingController(text: 'work');
   final _descriptionController = TextEditingController();
+  final ImagePicker _imagePicker = ImagePicker();
+  final List<File> _selectedImages = [];
+  String? _locationName;
+  double? _latitude;
+  double? _longitude;
+  bool _isLoadingLocation = false;
   
   // 旧版字段（分类/四象限/单任务关联）已废弃，不再在 UI 中展示
   // 如需兼容后端旧接口，内部将使用合理默认值
@@ -726,33 +822,41 @@ class _AddLogDialogState extends State<_AddLogDialog> {
     if (!_formKey.currentState!.validate()) return;
 
     try {
-      // 1) 组装一个匹配当前模型的对象
-      final log = PersonalLog(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        userId: widget.user.id,
-        title: _actionController.text.trim().isEmpty
+      final logPayload = {
+        'log_date': DateFormat('yyyy-MM-dd').format(_selectedDate),
+        'title': _actionController.text.trim().isEmpty
             ? '个人日志'
             : _actionController.text.trim(),
-        content: _buildLogDescription(),
-        category: _categoryInputController.text.trim(),
-        isCompleted: false,
-        createdAt: DateTime.now().toIso8601String(),
-        weather: _selectedWeather,
-        keywords: _keywords,
-        // 修复名称：用 taskUpdates
-        logDate: _selectedDate,
-        taskUpdates: _selectedTaskEdits.values
-            .map((edit) => LogTaskUpdate(
-                  taskId: edit.taskId,
-                  taskName: edit.title,
-                  progress_percentage: edit.progress ?? 0,
-                  task_status: edit.status,
-                ))
-            .toList(),
-      );
+        'content': _descriptionController.text.trim(),
+        'category': _categoryInputController.text.trim().isEmpty
+            ? 'work'
+            : _categoryInputController.text.trim(),
+        'weather': _selectedWeather,
+        'keywords': _keywords,
+        'images': _selectedImages.map((file) => file.path).toList(),
+      };
 
-      // 2) 调用 API（传 JSON Map）
-      await ApiService.createPersonalLog(log.toJson());
+      if (_locationName != null) {
+        logPayload['location'] = {
+          'name': _locationName,
+          'latitude': _latitude,
+          'longitude': _longitude,
+        };
+      }
+
+      final requestBody = {
+        'log': logPayload,
+        'linkages': _selectedTaskEdits.values
+            .map((edit) => {
+                  'task_id': edit.taskId,
+                  'progress_percentage': edit.progress ?? 0,
+                  'task_status': edit.status,
+                })
+            .toList(),
+      };
+
+      // 2) 调用 API
+      await ApiService.createPersonalLog(requestBody);
 
       // 3) 同步更新每个已关联任务的进度/状态（逐条尝试，失败不阻断整体）
       for (final edit in _selectedTaskEdits.values) {
@@ -789,6 +893,79 @@ class _AddLogDialogState extends State<_AddLogDialog> {
         );
       }
     }
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(source: source, imageQuality: 80);
+      if (image != null) {
+        setState(() {
+          _selectedImages.add(File(image.path));
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('选择图片失败: $e')),
+      );
+    }
+  }
+
+  void _removeImage(int index) {
+    setState(() {
+      _selectedImages.removeAt(index);
+    });
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() => _isLoadingLocation = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('位置权限被拒绝')),
+          );
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() => _isLoadingLocation = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('位置权限被永久拒绝，请前往系统设置开启')),
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _locationName = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+        _isLoadingLocation = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingLocation = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('获取位置失败: $e')),
+      );
+    }
+  }
+
+  void _clearLocation() {
+    setState(() {
+      _locationName = null;
+      _latitude = null;
+      _longitude = null;
+    });
   }
 
   String _buildLogDescription() {
@@ -921,6 +1098,10 @@ class _AddLogDialogState extends State<_AddLogDialog> {
                       ),
                       const SizedBox(height: 8),
                       // 去除加粗/列表占位按钮
+                      const SizedBox(height: 16),
+                      _buildImagePickerSection(),
+                      const SizedBox(height: 16),
+                      _buildLocationSection(),
                       const SizedBox(height: 16),
 
                       // 关联任务选择与编辑
@@ -1140,6 +1321,140 @@ class _AddLogDialogState extends State<_AddLogDialog> {
     });
   }
 
+  Widget _buildImagePickerSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: const [
+            Icon(Icons.photo, size: 18),
+            SizedBox(width: 6),
+            Text('图片附件'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _pickImage(ImageSource.gallery),
+                icon: const Icon(Icons.photo_library),
+                label: const Text('从相册选择'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _pickImage(ImageSource.camera),
+                icon: const Icon(Icons.camera_alt),
+                label: const Text('拍照'),
+              ),
+            ),
+          ],
+        ),
+        if (_selectedImages.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 100,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _selectedImages.length,
+              itemBuilder: (context, index) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          _selectedImages[index],
+                          width: 100,
+                          height: 100,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: GestureDetector(
+                          onTap: () => _removeImage(index),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildLocationSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: const [
+            Icon(Icons.location_on, size: 18),
+            SizedBox(width: 6),
+            Text('地理位置'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_locationName != null)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.place, color: Colors.blue),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _locationName!,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ),
+                IconButton(
+                  onPressed: _clearLocation,
+                  icon: const Icon(Icons.close, size: 18),
+                ),
+              ],
+            ),
+          )
+        else
+          ElevatedButton.icon(
+            onPressed: _isLoadingLocation ? null : _getCurrentLocation,
+            icon: _isLoadingLocation
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.my_location),
+            label: Text(_isLoadingLocation ? '定位中…' : '获取当前位置'),
+          ),
+      ],
+    );
+  }
+
   // 关联任务选择器
   Widget _buildAssociateTaskSelector(BuildContext context) {
     final taskItems = widget.tasks
@@ -1352,24 +1667,6 @@ class _AddLogDialogState extends State<_AddLogDialog> {
   }
 }
 
-class _AssociatedTaskEdit {
-  final String taskId;
-  final String title;
-  final String priority;
-  final DateTime? deadline;
-  int? progress;
-  String status;
-
-  _AssociatedTaskEdit({
-    required this.taskId,
-    required this.title,
-    required this.priority,
-    required this.deadline,
-    required this.progress,
-    required this.status,
-  });
-}
-
 class _EditLogDialog extends StatefulWidget {
   final User user;
   final List<Task> tasks;
@@ -1397,6 +1694,13 @@ class _EditLogDialogState extends State<_EditLogDialog> {
   final Map<String, _AssociatedTaskEdit> _selectedTaskEdits = {};
   final TextEditingController _keywordInputController = TextEditingController();
   List<String> _keywords = [];
+  final ImagePicker _imagePicker = ImagePicker();
+  final List<File> _selectedImages = [];
+  final List<String> _persistedImages = [];
+  String? _locationName;
+  double? _latitude;
+  double? _longitude;
+  bool _isLoadingLocation = false;
 
   @override
   void initState() {
@@ -1408,6 +1712,10 @@ class _EditLogDialogState extends State<_EditLogDialog> {
     _selectedDate = log.logDate ?? DateTime.now();
     _selectedWeather = log.weather ?? 'sunny';
     _keywords = List<String>.from(log.keywords);
+    _persistedImages.addAll(log.images);
+    _locationName = log.locationName;
+    _latitude = log.latitude;
+    _longitude = log.longitude;
 
     for (final l in log.linkages) {
       _selectedTaskEdits[l.taskId] = _AssociatedTaskEdit(
@@ -1441,6 +1749,16 @@ class _EditLogDialogState extends State<_EditLogDialog> {
           'log_date': _selectedDate.toIso8601String(),
           'weather': _selectedWeather,
           'keywords': _keywords,
+          'images': [
+            ..._persistedImages,
+            ..._selectedImages.map((img) => img.path),
+          ],
+          if (_locationName != null)
+            'location': {
+              'name': _locationName,
+              'latitude': _latitude,
+              'longitude': _longitude,
+            },
         },
         'linkages': _selectedTaskEdits.values.map((e) => {
           'task_id': e.taskId,
@@ -1465,6 +1783,119 @@ class _EditLogDialogState extends State<_EditLogDialog> {
         );
       }
     }
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 80,
+      );
+      if (image != null) {
+        setState(() {
+          _selectedImages.add(File(image.path));
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('选择图片失败: $e')),
+      );
+    }
+  }
+
+  void _removeImage(int index) {
+    setState(() {
+      _selectedImages.removeAt(index);
+    });
+  }
+
+  void _removePersistedImage(int index) {
+    setState(() {
+      _persistedImages.removeAt(index);
+    });
+  }
+
+  Widget _buildPersistedImage(String path) {
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        width: 100,
+        height: 90,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _brokenImage(),
+      );
+    }
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: 100,
+        height: 90,
+        fit: BoxFit.cover,
+      );
+    }
+    return _brokenImage();
+  }
+
+  Widget _brokenImage() {
+    return Container(
+      width: 100,
+      height: 90,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.broken_image, color: Colors.grey),
+    );
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() => _isLoadingLocation = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('位置权限被拒绝')),
+          );
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() => _isLoadingLocation = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('位置权限被永久拒绝，请前往系统设置开启')),
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _locationName = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+        _isLoadingLocation = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingLocation = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('获取位置失败: $e')),
+      );
+    }
+  }
+
+  void _clearLocation() {
+    setState(() {
+      _locationName = null;
+      _latitude = null;
+      _longitude = null;
+    });
   }
 
   @override
@@ -1531,6 +1962,156 @@ class _EditLogDialogState extends State<_EditLogDialog> {
                         decoration: const InputDecoration(labelText: '详细描述', border: OutlineInputBorder()),
                         maxLines: 3,
                         validator: (v) => (v == null || v.isEmpty) ? '请输入详细描述' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _pickImage(ImageSource.gallery),
+                              icon: const Icon(Icons.photo_library),
+                              label: const Text('相册'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _pickImage(ImageSource.camera),
+                              icon: const Icon(Icons.camera_alt),
+                              label: const Text('拍照'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_selectedImages.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 90,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _selectedImages.length,
+                            itemBuilder: (context, index) {
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(
+                                        _selectedImages[index],
+                                        width: 100,
+                                        height: 90,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: GestureDetector(
+                                        onTap: () => _removeImage(index),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.black54,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Icons.close, color: Colors.white, size: 16),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                      if (_persistedImages.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 90,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _persistedImages.length,
+                            itemBuilder: (context, index) {
+                              final path = _persistedImages[index];
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: _buildPersistedImage(path),
+                                    ),
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: GestureDetector(
+                                        onTap: () => _removePersistedImage(index),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.black45,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Icons.close, color: Colors.white, size: 16),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('地理位置', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  if (_locationName != null)
+                                    IconButton(
+                                      icon: const Icon(Icons.clear),
+                                      onPressed: _clearLocation,
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              if (_locationName != null)
+                                Row(
+                                  children: [
+                                    const Icon(Icons.location_on, color: Colors.redAccent),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        _locationName!,
+                                        style: const TextStyle(fontSize: 13),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              else
+                                ElevatedButton.icon(
+                                  onPressed: _isLoadingLocation ? null : _getCurrentLocation,
+                                  icon: _isLoadingLocation
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.my_location),
+                                  label: Text(_isLoadingLocation ? '定位中...' : '获取当前位置'),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 16),
               // 关联任务区域：新增添加按钮 + 已关联列表

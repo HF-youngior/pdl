@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/log.dart';
 import '../services/api_service.dart';
+import '../widgets/log_list_item.dart';
 
 class LogScreen extends StatefulWidget {
   const LogScreen({super.key});
@@ -89,33 +90,9 @@ class _LogScreenState extends State<LogScreen> {
                   itemCount: _logs.length,
                   itemBuilder: (context, index) {
                     final log = _logs[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: _getCategoryColor(log.category),
-                          child: Icon(
-                            _getCategoryIcon(log.category),
-                            color: Colors.white,
-                          ),
-                        ),
-                        title: Text(log.action),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(log.description),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${log.userName} • ${_formatDateTime(log.createdAt)}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                        isThreeLine: true,
-                      ),
+                    return LogListItem(
+                      log: log,
+                      onTap: () {},
                     );
                   },
                 ),

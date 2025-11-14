@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io';
 import '../models/user.dart';
 import '../models/task.dart';
 import '../models/log.dart';
@@ -35,11 +39,23 @@ class _LogEditScreenState extends State<LogEditScreen> {
   
   List<Task> _tasks = [];
   bool _isLoadingTasks = true;
+  
+  // 图片相关
+  final List<File> _selectedImages = [];
+  final ImagePicker _imagePicker = ImagePicker();
+  
+  // 地理位置相关
+  String? _locationName;
+  double? _latitude;
+  double? _longitude;
+  bool _isLoadingLocation = false;
 
   @override
   void initState() {
     super.initState();
-    _selectedDate = widget.initialDate ?? DateTime.now();
+    // 修复时间问题：使用本地时间，确保日期正确
+    final now = DateTime.now();
+    _selectedDate = widget.initialDate ?? DateTime(now.year, now.month, now.day);
     _loadTasks();
   }
 
@@ -95,13 +111,21 @@ class _LogEditScreenState extends State<LogEditScreen> {
 
       // 构建metadata对象，包含扩展信息
       final metadata = {
-        'log_date': _selectedDate.toIso8601String().split('T')[0],
+        'log_date': '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}',
         'weather': _selectedWeather,
         'keywords': _keywords.join(','),
         'associated_tasks': associatedTasks,
+        'images': _selectedImages.map((img) => img.path).toList(), // 图片路径列表
+        'location': _locationName != null ? {
+          'name': _locationName,
+          'latitude': _latitude,
+          'longitude': _longitude,
+        } : null,
       };
 
-      // 创建Log对象
+      // 创建Log对象，使用本地时间确保日期正确
+      final now = DateTime.now();
+      final logDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, now.hour, now.minute, now.second);
       final log = Log(
         id: '', // 后端会生成ID
         userId: widget.user.id,
@@ -111,7 +135,7 @@ class _LogEditScreenState extends State<LogEditScreen> {
         category: _selectedCategory,
         quadrant: _selectedQuadrant,
         isCompleted: 0, // 新创建的日志默认未完成
-        createdAt: _selectedDate,
+        createdAt: logDate,
         metadata: metadata,
         relatedTaskId: _selectedTaskId,
       );
@@ -152,6 +176,93 @@ class _LogEditScreenState extends State<LogEditScreen> {
   void _removeKeyword(String keyword) {
     setState(() {
       _keywords.remove(keyword);
+    });
+  }
+
+  // 选择图片
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(source: source, imageQuality: 80);
+      if (image != null) {
+        setState(() {
+          _selectedImages.add(File(image.path));
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('选择图片失败: $e')),
+      );
+    }
+  }
+
+  // 删除图片
+  void _removeImage(int index) {
+    setState(() {
+      _selectedImages.removeAt(index);
+    });
+  }
+
+  // 获取当前位置
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    try {
+      // 请求位置权限
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _isLoadingLocation = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('位置权限被拒绝')),
+          );
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _isLoadingLocation = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('位置权限被永久拒绝，请在设置中开启')),
+        );
+        return;
+      }
+
+      // 获取当前位置
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // 保存位置信息（暂时使用坐标，后续可以添加逆地理编码）
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        // 使用坐标作为位置名称，格式：纬度, 经度
+        _locationName = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+        _isLoadingLocation = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingLocation = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('获取位置失败: $e')),
+      );
+    }
+  }
+
+  // 清除位置信息
+  void _clearLocation() {
+    setState(() {
+      _locationName = null;
+      _latitude = null;
+      _longitude = null;
     });
   }
 
@@ -252,6 +363,157 @@ class _LogEditScreenState extends State<LogEditScreen> {
                     });
                   }
                 },
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 图片上传
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '图片',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _pickImage(ImageSource.gallery),
+                            icon: const Icon(Icons.photo_library),
+                            label: const Text('从相册选择'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _pickImage(ImageSource.camera),
+                            icon: const Icon(Icons.camera_alt),
+                            label: const Text('拍照'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_selectedImages.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 100,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _selectedImages.length,
+                          itemBuilder: (context, index) {
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.file(
+                                      _selectedImages[index],
+                                      width: 100,
+                                      height: 100,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: GestureDetector(
+                                      onTap: () => _removeImage(index),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.close,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 地理位置
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          '地理位置',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (_locationName != null)
+                          IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: _clearLocation,
+                            tooltip: '清除位置',
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_locationName != null)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.location_on, color: Colors.blue),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _locationName!,
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        onPressed: _isLoadingLocation ? null : _getCurrentLocation,
+                        icon: _isLoadingLocation
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.location_on),
+                        label: Text(_isLoadingLocation ? '获取中...' : '获取当前位置'),
+                      ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 16),

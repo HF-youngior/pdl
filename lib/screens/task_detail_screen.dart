@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/task.dart';
@@ -350,7 +351,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   // 格式化日期时间，处理时区问题（增加8小时）
   String _formatDateTime(DateTime dateTime) {
     // 增加8小时
-    final adjustedDateTime = dateTime.add(const Duration(hours: 8));
+    final adjustedDateTime = dateTime.toLocal();
     return DateFormat('yyyy-MM-dd HH:mm').format(adjustedDateTime);
   }
 
@@ -693,6 +694,36 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         const SizedBox(height: 16),
                       ],
 
+                      if (task.attachments.isNotEmpty) ...[
+                        Text(
+                          '图片/附件',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 90,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: task.attachments.length,
+                            itemBuilder: (context, index) {
+                              final path = task.attachments[index];
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: _buildAttachmentThumbnail(path),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
                       // 进度条
                       Text(
                         '完成进度',
@@ -945,6 +976,37 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAttachmentThumbnail(String path) {
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        width: 100,
+        height: 90,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _brokenThumbnail(),
+      );
+    }
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: 100,
+        height: 90,
+        fit: BoxFit.cover,
+      );
+    }
+    return _brokenThumbnail();
+  }
+
+  Widget _brokenThumbnail() {
+    return Container(
+      width: 100,
+      height: 90,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.broken_image, color: Colors.grey),
     );
   }
 

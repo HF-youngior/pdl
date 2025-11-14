@@ -252,11 +252,27 @@ class MbtiTestService {
         if (data != null) {
           return MbtiTestResult.fromJson(data);
         }
+      } else if (response.statusCode == 404) {
+        return null;
       }
       return null;
     } catch (e) {
       print('获取MBTI测试结果失败: $e');
       return null;
+    }
+  }
+
+  static Future<void> updatePersonalInfo({
+    required String recordId,
+    required Map<String, dynamic> personalInfo,
+  }) async {
+    final response = await http.put(
+      Uri.parse('${ApiService.baseUrl}/mbti-records/$recordId'),
+      headers: ApiService.getAuthHeaders(),
+      body: jsonEncode({'personal_info': personalInfo}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('更新个人信息失败: ${response.body}');
     }
   }
 

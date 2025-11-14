@@ -1,6 +1,10 @@
 // lib/screens/personal_log_edit_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io';
 import 'package:testflutterproject/models/personal_log.dart';
 import 'package:testflutterproject/models/log_task_update.dart';
 import 'package:testflutterproject/models/task.dart';
@@ -37,6 +41,16 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
 
   bool _isLoadingTasks = true;
   bool _isSaving = false;
+  
+  // 图片相关
+  final List<File> _selectedImages = [];
+  final List<String> _persistedImages = [];
+  final ImagePicker _imagePicker = ImagePicker();
+  // 地理位置
+  String? _locationName;
+  double? _latitude;
+  double? _longitude;
+  bool _isLoadingLocation = false;
   final Map<String, String> _taskStatuses = {
     'pending': '待处理',
     'in_progress': '进行中',
@@ -66,8 +80,14 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
       _selectedCategory = widget.logToEdit?.category ?? '';
       _currentTaskUpdates = widget.logToEdit!.taskUpdates.map((upd) => upd.copyWith()).toList();
       _currentKeywords = List.of(widget.logToEdit!.keywords);
+      _persistedImages.addAll(widget.logToEdit!.images);
+      _locationName = widget.logToEdit!.locationName;
+      _latitude = widget.logToEdit!.latitude;
+      _longitude = widget.logToEdit!.longitude;
     } else {
-      _selectedDate = DateTime.now();
+      // 修复时间问题：使用本地时间，确保日期正确
+      final now = DateTime.now();
+      _selectedDate = DateTime(now.year, now.month, now.day);
       _currentKeywords = [];
     }
 
@@ -199,6 +219,119 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
     });
   }
 
+  // 选择图片
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(source: source, imageQuality: 80);
+      if (image != null) {
+        setState(() {
+          _selectedImages.add(File(image.path));
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('选择图片失败: $e')),
+      );
+    }
+  }
+
+  // 删除图片
+  void _removeImage(int index) {
+    setState(() {
+      _selectedImages.removeAt(index);
+    });
+  }
+
+  void _removePersistedImage(int index) {
+    setState(() {
+      _persistedImages.removeAt(index);
+    });
+  }
+
+  Widget _buildPersistedImage(String path) {
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        width: 100,
+        height: 100,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildBrokenImage(),
+      );
+    }
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: 100,
+        height: 100,
+        fit: BoxFit.cover,
+      );
+    }
+    return _buildBrokenImage();
+  }
+
+  Widget _buildBrokenImage() {
+    return Container(
+      width: 100,
+      height: 100,
+      color: Colors.grey[200],
+      child: const Icon(Icons.broken_image, color: Colors.grey),
+    );
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() => _isLoadingLocation = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('位置权限被拒绝')),
+          );
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() => _isLoadingLocation = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('位置权限被永久拒绝，请到系统设置开启')),
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _locationName =
+            '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+        _isLoadingLocation = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingLocation = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('获取位置失败: $e')),
+      );
+    }
+  }
+
+  void _clearLocation() {
+    setState(() {
+      _locationName = null;
+      _latitude = null;
+      _longitude = null;
+    });
+  }
+
   Future<void> _saveLog() async {
     if (!_formKey.currentState!.validate() || _isSaving) {
       return;
@@ -206,15 +339,29 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
     setState(() => _isSaving = true);
 
     // 匹配后端 API 的 {log, linkages} 结构
+    final logPayload = {
+      'log_date': DateFormat('yyyy-MM-dd').format(_selectedDate),
+      'title': _titleController.text,
+      'content': _contentController.text,
+      'category': _selectedCategory,
+      'keywords': _currentKeywords,
+      'is_completed': widget.isEditing ? widget.logToEdit!.isCompleted : false,
+      'images': [
+        ..._persistedImages,
+        ..._selectedImages.map((img) => img.path),
+      ],
+    };
+
+    if (_locationName != null) {
+      logPayload['location'] = {
+        'name': _locationName,
+        'latitude': _latitude,
+        'longitude': _longitude,
+      };
+    }
+
     final logData = {
-      'log': {
-        'log_date': DateFormat('yyyy-MM-dd').format(_selectedDate), // 用log_date字段，格式2025-10-30这种
-        'title': _titleController.text,
-        'content': _contentController.text,
-        'category': _selectedCategory,
-        'keywords': _currentKeywords,
-        'is_completed': widget.isEditing ? widget.logToEdit!.isCompleted : false
-      },
+      'log': logPayload,
       // 确保 linkages 发送的是 snake_case
       'linkages': _currentTaskUpdates.map((update) => update.toJson()).toList(),
     };
@@ -314,6 +461,158 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
               ),
               maxLines: 5,
             ),
+            SizedBox(height: 16),
+            // 图片上传
+            Text('图片', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _pickImage(ImageSource.gallery),
+                    icon: Icon(Icons.photo_library),
+                    label: Text('从相册选择'),
+                  ),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _pickImage(ImageSource.camera),
+                    icon: Icon(Icons.camera_alt),
+                    label: Text('拍照'),
+                  ),
+                ),
+              ],
+            ),
+            if (_selectedImages.isNotEmpty) ...[
+              SizedBox(height: 12),
+              SizedBox(
+                height: 100,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _selectedImages.length,
+                  itemBuilder: (context, index) {
+                    return Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.file(
+                              _selectedImages[index],
+                              width: 100,
+                              height: 100,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () => _removeImage(index),
+                              child: Container(
+                                padding: EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.close,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            if (_persistedImages.isNotEmpty) ...[
+              SizedBox(height: 12),
+              SizedBox(
+                height: 100,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _persistedImages.length,
+                  itemBuilder: (context, index) {
+                    final path = _persistedImages[index];
+                    return Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: _buildPersistedImage(path),
+                          ),
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () => _removePersistedImage(index),
+                              child: Container(
+                                padding: EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.close,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            SizedBox(height: 16),
+            Text('地理位置', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            SizedBox(height: 8),
+            if (_locationName != null)
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.location_on, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _locationName!,
+                        style: TextStyle(fontSize: 14, color: Colors.blue[900]),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _clearLocation,
+                      icon: Icon(Icons.close, size: 18),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ElevatedButton.icon(
+                onPressed: _isLoadingLocation ? null : _getCurrentLocation,
+                icon: _isLoadingLocation
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : Icon(Icons.location_on),
+                label: Text(_isLoadingLocation ? '定位中…' : '获取当前位置'),
+              ),
             SizedBox(height: 16),
             DropdownButtonFormField<String>(
               value: _selectedCategory,

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class Log {
   final String id;
   final String userId;
@@ -38,7 +40,7 @@ class Log {
       createdAt: json['created_at'] != null 
           ? DateTime.parse(json['created_at'])
           : (json['createdAt'] != null ? DateTime.parse(json['createdAt']) : DateTime.now()),
-      metadata: json['metadata'],
+      metadata: _parseMetadata(json['metadata']),
       relatedTaskId: json['related_task_id'] ?? json['relatedTaskId'],
     );
   }
@@ -90,4 +92,79 @@ class Log {
 
   // 完成状态判断
   bool get isCompletedBool => isCompleted == 1;
+
+  List<String> get images => _parseImages(metadata?['images']);
+
+  String? get locationName {
+    final location = _extractLocation(metadata);
+    final name = location?['name'] ?? location?['location_name'];
+    return name?.toString();
+  }
+
+  double? get latitude {
+    final location = _extractLocation(metadata);
+    return _toDouble(location?['latitude'] ?? location?['lat']);
+  }
+
+  double? get longitude {
+    final location = _extractLocation(metadata);
+    return _toDouble(location?['longitude'] ?? location?['lng']);
+  }
+}
+
+Map<String, dynamic>? _parseMetadata(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is Map<String, dynamic>) return raw;
+  if (raw is String && raw.isNotEmpty) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+List<String> _parseImages(dynamic value) {
+  if (value == null) return const [];
+  if (value is List) {
+    return value.map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty).toList();
+  }
+  if (value is String && value.isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is List) {
+        return decoded.map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty).toList();
+      }
+    } catch (_) {}
+    return value.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  }
+  return const [];
+}
+
+Map<String, dynamic>? _extractLocation(Map<String, dynamic>? metadata) {
+  if (metadata == null) return null;
+  if (metadata['location'] is Map) {
+    return Map<String, dynamic>.from(metadata['location']);
+  }
+  final name = metadata['location_name'];
+  final lat = metadata['location_latitude'] ?? metadata['latitude'];
+  final lng = metadata['location_longitude'] ?? metadata['longitude'];
+  if (name == null && lat == null && lng == null) return null;
+  return {
+    'name': name,
+    'latitude': lat,
+    'longitude': lng,
+  };
+}
+
+double? _toDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is double) return value;
+  if (value is int) return value.toDouble();
+  if (value is String && value.isNotEmpty) {
+    return double.tryParse(value);
+  }
+  return null;
 }

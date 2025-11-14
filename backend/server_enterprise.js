@@ -190,6 +190,7 @@ async function createTables() {
       location VARCHAR(200) NULL,
       is_all_day BOOLEAN DEFAULT FALSE,
       special_notes TEXT NULL,
+      attachments JSON NULL,
       is_request BOOLEAN DEFAULT FALSE,
       request_type VARCHAR(50) NULL,
       request_response VARCHAR(20) NULL,
@@ -234,6 +235,10 @@ async function createTables() {
       keywords VARCHAR(255) NULL,
       log_title VARCHAR(200) NULL,
       log_content TEXT NULL,
+      images JSON NULL,
+      location_name VARCHAR(200) NULL,
+      location_latitude DECIMAL(10,7) NULL,
+      location_longitude DECIMAL(10,7) NULL,
       is_archived BOOLEAN DEFAULT FALSE,
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (related_task_id) REFERENCES tasks(id)
@@ -352,6 +357,10 @@ async function ensureSchemaCompatibility() {
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN keywords VARCHAR(255) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN log_title VARCHAR(200) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN log_content TEXT NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN images JSON NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN location_name VARCHAR(200) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN location_latitude DECIMAL(10,7) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE personal_logs ADD COLUMN location_longitude DECIMAL(10,7) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN category VARCHAR(50) NOT NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN quadrant ENUM('important_urgent', 'important_not_urgent', 'not_important_urgent', 'not_important_not_urgent') DEFAULT 'important_not_urgent'"); } catch(e){}
     try { await db.execute("ALTER TABLE personal_logs ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"); } catch(e){}
@@ -364,6 +373,8 @@ async function ensureSchemaCompatibility() {
     try { await db.execute("ALTER TABLE tasks ADD COLUMN request_type VARCHAR(50) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN request_response VARCHAR(20) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN related_task_id VARCHAR(36) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE tasks ADD COLUMN attachments JSON NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE mbti_records ADD COLUMN personal_info JSON NULL"); } catch(e){}
     // 索引、关联关系等原有包裹不变
     try { await db.execute("CREATE INDEX IF NOT EXISTS idx_personal_logs_user_id ON personal_logs(user_id)"); } catch (_) {}
     try { await db.execute("CREATE INDEX IF NOT EXISTS idx_personal_logs_log_date ON personal_logs(log_date)"); } catch (_) {}
@@ -1512,6 +1523,9 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       is_all_day,
       parent_task_id
     } = req.body;
+    const attachments = Array.isArray(req.body.attachments)
+      ? req.body.attachments.filter(item => typeof item === 'string' && item.trim().length > 0)
+      : [];
 
     // 参数验证
     if (!title || !title.trim()) {
@@ -1561,8 +1575,8 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       `INSERT INTO tasks (
         id, title, description, parent_task_id, assignee_id, assignee_name, 
         department_id, priority, deadline, created_by, start_time, end_time, 
-        location, is_all_day, progress_percentage, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        location, is_all_day, progress_percentage, status, attachments
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         taskId,
         title,
@@ -1579,7 +1593,8 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
         cleanValue(location),
         is_all_day || false,
         progress_percentage,
-        status
+        status,
+        attachments.length ? JSON.stringify(attachments) : JSON.stringify([])
       ]
     );
 
@@ -1841,6 +1856,13 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
     if (parent_task_id !== undefined) {
       updates.push('parent_task_id = ?');
       values.push(cleanValue(parent_task_id));
+    }
+    if (req.body.attachments !== undefined) {
+      const updatedAttachments = Array.isArray(req.body.attachments)
+        ? req.body.attachments.filter(item => typeof item === 'string' && item.trim().length > 0)
+        : [];
+      updates.push('attachments = ?');
+      values.push(JSON.stringify(updatedAttachments));
     }
 
     if (updates.length === 0) {
@@ -2521,6 +2543,13 @@ app.post('/api/personal-logs', authenticateToken, async (req, res) => {
   const quadrant = payload.quadrant || 'important_not_urgent';
   const is_archived = Boolean(payload.is_archived);
   const related_task_id = payload.related_task_id || null;
+  const images = Array.isArray(payload.images)
+    ? payload.images.filter(item => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const locationPayload = payload.location || {};
+  const location_name = locationPayload.name || payload.location_name || null;
+  const location_latitude = locationPayload.latitude ?? payload.location_latitude ?? null;
+  const location_longitude = locationPayload.longitude ?? payload.location_longitude ?? null;
 
   let connection;
   try {
@@ -2531,12 +2560,17 @@ app.post('/api/personal-logs', authenticateToken, async (req, res) => {
     const insertSql = `
       INSERT INTO personal_logs (
         id, log_id, user_id, title, content, is_completed, created_at, log_date, weather, keywords,
-        log_title, log_content, category, quadrant, is_archived, related_task_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        log_title, log_content, category, quadrant, is_archived, related_task_id,
+        images, location_name, location_latitude, location_longitude
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     await connection.execute(insertSql, [
       id, businessLogId, userId, title, content, is_completed, created_at, log_date, weather, keywords,
-      log_title, log_content, category, quadrant, is_archived, related_task_id
+      log_title, log_content, category, quadrant, is_archived, related_task_id,
+      images.length ? JSON.stringify(images) : JSON.stringify([]),
+      location_name,
+      location_latitude,
+      location_longitude
     ]);
 
     // 2) 插入任务关联并同步（可选）
@@ -2708,6 +2742,18 @@ app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
       is_archived: payload.is_archived ? 1 : 0,
       related_task_id: payload.related_task_id ?? null
     };
+    if (payload.images !== undefined) {
+      const updatedImages = Array.isArray(payload.images)
+        ? payload.images.filter(item => typeof item === 'string' && item.trim().length > 0)
+        : [];
+      fields.images = JSON.stringify(updatedImages);
+    }
+    if (payload.location !== undefined || payload.location_name !== undefined) {
+      const locPayload = payload.location || {};
+      fields.location_name = locPayload.name || payload.location_name || null;
+      fields.location_latitude = locPayload.latitude ?? payload.location_latitude ?? null;
+      fields.location_longitude = locPayload.longitude ?? payload.location_longitude ?? null;
+    }
     if (updatedCreatedAt) {
       fields.created_at = updatedCreatedAt;
     }
@@ -3279,15 +3325,22 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         department_name: t.department_name,
         creator_name: t.creator_name
       })),
-      logs: logs.map(l => ({
-        id: l.id,
-        title: l.title,
-        content: l.content,
-        category: l.category,
-        quadrant: l.quadrant,
-        is_completed: l.is_completed,
-        created_at: formatDateTimeForBeijing(l.created_at)
-      })),
+      logs: logs.map(l => {
+        const images = safeParseJSON(l.images) || [];
+        return {
+          id: l.id,
+          title: l.title,
+          content: l.content,
+          category: l.category,
+          quadrant: l.quadrant,
+          is_completed: l.is_completed,
+          created_at: formatDateTimeForBeijing(l.created_at),
+          images,
+          location_name: l.location_name,
+          location_latitude: l.location_latitude,
+          location_longitude: l.location_longitude
+        };
+      }),
       summary: {
         totalTasks: tasks.length,
         totalLogs: logs.length,
@@ -3725,11 +3778,16 @@ app.put('/api/mbti-records/:id', authenticateToken, async (req, res) => {
     }
     if (updateData.personal_info) {
       updateFields.push('personal_info = ?');
-      updateValues.push(JSON.stringify(updateData.personal_info));
+      // 清理 personal_info 对象，将 undefined 转换为 null
+      const cleanedPersonalInfo = {};
+      for (const [key, value] of Object.entries(updateData.personal_info)) {
+        cleanedPersonalInfo[key] = value === undefined ? null : value;
+      }
+      updateValues.push(JSON.stringify(cleanedPersonalInfo));
     }
     if (updateData.confidence_score !== undefined) {
       updateFields.push('confidence_score = ?');
-      updateValues.push(updateData.confidence_score);
+      updateValues.push(updateData.confidence_score === undefined ? null : updateData.confidence_score);
     }
 
     if (updateFields.length === 0) {
@@ -3737,27 +3795,39 @@ app.put('/api/mbti-records/:id', authenticateToken, async (req, res) => {
     }
 
     updateFields.push('updated_at = CURRENT_TIMESTAMP');
-    updateValues.push(id, userId);
+    // 确保 id 和 userId 不是 undefined
+    const safeId = id || null;
+    const safeUserId = userId || null;
+    updateValues.push(safeId, safeUserId);
+
+    // 确保所有值都不是 undefined
+    const safeUpdateValues = updateValues.map(v => v === undefined ? null : v);
 
     await db.execute(
       `UPDATE mbti_records SET ${updateFields.join(', ')}
        WHERE id = ? AND user_id = ?`,
-      [...updateValues]
+      safeUpdateValues
     );
 
-    // 记录系统日志
-    await db.execute(
-      `INSERT INTO system_logs (id, user_id, user_name, action, description, category)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        `log-${Date.now()}`,
-        userId,
-        req.user.name,
-        'update_mbti_record',
-        `更新MBTI记录: ${id}`,
-        'mbti'
-      ]
-    );
+    // 记录系统日志 - 确保所有参数都不是 undefined，user_name 不能为 null
+    // 即使日志插入失败，也不影响主操作的成功
+    try {
+      await db.execute(
+        `INSERT INTO system_logs (id, user_id, user_name, action, description, category)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          `log-${Date.now()}`,
+          safeUserId || null,
+          req.user?.name || '未知用户',
+          'update_mbti_record',
+          `更新MBTI记录: ${safeId || 'unknown'}`,
+          'mbti'
+        ].map(v => v === undefined ? null : v)
+      );
+    } catch (logError) {
+      // 记录日志错误，但不影响主操作
+      console.error('记录系统日志失败:', logError);
+    }
 
     res.json({ message: 'MBTI记录更新成功' });
   } catch (error) {

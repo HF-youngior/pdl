@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/log.dart';
@@ -78,6 +79,43 @@ class LogListItem extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ],
+            if (log.locationName != null && log.locationName!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(Icons.location_on, size: 14, color: Colors.redAccent),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      log.locationName!,
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (log.images.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 60,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: log.images.length,
+                  itemBuilder: (context, index) {
+                    final path = log.images[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: _buildImagePreview(path),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ],
         ),
         
@@ -88,6 +126,37 @@ class LogListItem extends StatelessWidget {
           size: 20,
         ),
       ),
+    );
+  }
+
+  Widget _buildImagePreview(String path) {
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        width: 80,
+        height: 60,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _brokenImage(),
+      );
+    }
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: 80,
+        height: 60,
+        fit: BoxFit.cover,
+      );
+    }
+    return _brokenImage();
+  }
+
+  Widget _brokenImage() {
+    return Container(
+      width: 80,
+      height: 60,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.broken_image, color: Colors.grey),
     );
   }
 }

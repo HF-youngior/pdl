@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 
 class Task {
@@ -23,6 +24,7 @@ class Task {
   final String? parentTaskId; // 父任务ID，支持分级派发
   final List<Task>? subtasks; // 子任务列表
   final bool isRequest; // 是否为邀约任务
+  final List<String> attachments;
   final String? requestType; // 请求类型
   final String? requestResponse; // 处理结果：'approve' 或 'reject'
   final String? specialNotes; // 备注信息
@@ -52,6 +54,7 @@ class Task {
     this.requestType,
     this.requestResponse,
     this.specialNotes,
+    this.attachments = const [],
   });
 
   factory Task.fromJson(Map<String, dynamic> json) {
@@ -88,6 +91,7 @@ class Task {
       requestType: json['request_type'] ?? json['requestType'],
       requestResponse: json['request_response'] ?? json['requestResponse'],
       specialNotes: json['special_notes'] ?? json['specialNotes'],
+      attachments: _parseStringList(json['attachments']),
     );
   }
 
@@ -118,6 +122,7 @@ class Task {
       'is_all_day': isAllDay,
       'parent_task_id': parentTaskId, // 支持创建子任务
       'progress_percentage': progressPercentage, // 添加进度字段
+      'attachments': attachments,
     };
   }
 
@@ -189,4 +194,22 @@ class Task {
            now.month == deadlineDate.month &&
            now.day == deadlineDate.day;
   }
+}
+
+List<String> _parseStringList(dynamic value) {
+  if (value == null) return const [];
+  if (value is List) {
+    return value.map((item) => item?.toString() ?? '').where((item) => item.isNotEmpty).toList();
+  }
+  if (value is String && value.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is List) {
+        return decoded.map((item) => item?.toString() ?? '').where((item) => item.isNotEmpty).toList();
+      }
+    } catch (_) {
+      return value.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    }
+  }
+  return const [];
 }

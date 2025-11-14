@@ -1,4 +1,5 @@
 // lib/models/personal_log.dart
+import 'dart:convert';
 import 'package:testflutterproject/models/log_task_update.dart';
 
 class PersonalLog {
@@ -10,6 +11,10 @@ class PersonalLog {
   final bool isCompleted;
   final String? createdAt; // 时间戳(字符串)
   final DateTime? logDate;
+  final List<String> images;
+  final String? locationName;
+  final double? latitude;
+  final double? longitude;
   // 兼容增强视图所需的可选字段
   final String? weather; // 天气（可能来自新版接口或留空）
   final List<String> keywords; // 关键词列表（若无则为空）
@@ -41,7 +46,12 @@ class PersonalLog {
     List<String>? keywords,
     required this.taskUpdates,
     this.logDate,
-  }) : keywords = keywords ?? const [];
+    List<String>? images,
+    this.locationName,
+    this.latitude,
+    this.longitude,
+  })  : keywords = keywords ?? const [],
+        images = images ?? const [];
 
   factory PersonalLog.fromJson(Map<String, dynamic> json) {
     final dynamic kw = json['keywords'];
@@ -66,6 +76,10 @@ class PersonalLog {
       logDate: (json['log_date'] != null) // <<< 确保在构造函数调用中传递 logDate
           ? DateTime.parse(json['log_date'] as String)
           : null,
+      images: _parseStringList(json['images']),
+      locationName: json['location_name'] ?? json['locationName'],
+      latitude: _toDouble(json['location_latitude'] ?? json['locationLatitude']),
+      longitude: _toDouble(json['location_longitude'] ?? json['locationLongitude']),
     );
   }
 
@@ -81,6 +95,13 @@ class PersonalLog {
         'is_completed': isCompleted,
         if (weather != null) 'weather': weather,
         if (keywords.isNotEmpty) 'keywords': keywords.join(','),
+        if (images.isNotEmpty) 'images': images,
+        if (locationName != null)
+          'location': {
+            'name': locationName,
+            'latitude': latitude,
+            'longitude': longitude,
+          },
       },
       'linkages': taskUpdates.map((e) => e.toJson()).toList(),
     };
@@ -94,6 +115,34 @@ class PersonalLog {
       return null;
     }
   }
+}
+
+List<String> _parseStringList(dynamic value) {
+  if (value == null) return const [];
+  if (value is List) {
+    return value.map((item) => item?.toString() ?? '').where((item) => item.isNotEmpty).toList();
+  }
+  if (value is String && value.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is List) {
+        return decoded.map((item) => item?.toString() ?? '').where((item) => item.isNotEmpty).toList();
+      }
+    } catch (_) {
+      return value.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    }
+  }
+  return const [];
+}
+
+double? _toDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is double) return value;
+  if (value is int) return value.toDouble();
+  if (value is String && value.isNotEmpty) {
+    return double.tryParse(value);
+  }
+  return null;
 }
 
 // 兼容增强视图使用的旧结构（linkages）

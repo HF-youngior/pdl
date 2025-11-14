@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/intl.dart';
@@ -1764,7 +1765,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                           child: Text(
-                            '总: ${DateFormat('M/d HH:mm').format(taskStartTime.add(const Duration(hours: 8)))} - ${DateFormat('M/d HH:mm').format(taskEndTime.add(const Duration(hours: 8)))}',
+                            '总: ${DateFormat('M/d HH:mm').format(taskStartTime.toLocal())} - ${DateFormat('M/d HH:mm').format(taskEndTime.toLocal())}',
                             style: TextStyle(
                               color: Colors.blue.shade800,
                               fontSize: 10,
@@ -1930,7 +1931,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                 // 如果是跨天任务，显示总时间范围
                 if (isMultiDay && duration * 60 > 30)
                   Text(
-                    '总时间: ${DateFormat('M/d HH:mm').format(taskStartTime.add(const Duration(hours: 8)))} - ${DateFormat('M/d HH:mm').format(taskEndTime.add(const Duration(hours: 8)))}',
+                    '总时间: ${DateFormat('M/d HH:mm').format(taskStartTime.toLocal())} - ${DateFormat('M/d HH:mm').format(taskEndTime.toLocal())}',
                     style: const TextStyle(
                       color: Colors.white60,
                       fontSize: 9,
@@ -4043,7 +4044,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       // 解析任务时间并转换为系统本地时间
       final dateTime = _parseTaskTime(dateTimeStr);
       // 增加8小时
-      final adjustedDateTime = dateTime.add(const Duration(hours: 8));
+    final adjustedDateTime = dateTime.toLocal();
 
       // 格式化为 YYYY-MM-DD HH:MM:SS 格式
       return DateFormat('yyyy-MM-dd HH:mm:ss').format(adjustedDateTime);
@@ -4297,7 +4298,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                 Text(
                                   task.isAllDay == true
                                       ? '全天任务'
-                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!).add(const Duration(hours: 8)))} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!).add(const Duration(hours: 8)))}',
+                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!).toLocal())} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!).toLocal())}',
                                   style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                                 ),
                               ],
@@ -4537,7 +4538,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                 Text(
                                   task.isAllDay == true
                                       ? '全天任务'
-                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!).add(const Duration(hours: 8)))} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!).add(const Duration(hours: 8)))}',
+                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!).toLocal())} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!).toLocal())}',
                                   style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                                 ),
                               ],
@@ -4911,13 +4912,55 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
-                    child: SelectableText(
-                      content.isNotEmpty ? content : '无内容',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: textColor,
-                        height: 1.6,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SelectableText(
+                          content.isNotEmpty ? content : '无内容',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: textColor,
+                            height: 1.6,
+                          ),
+                        ),
+                        if (log.images.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Text('图片', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: textColor)),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 90,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: log.images.length,
+                              itemBuilder: (context, index) {
+                                final path = log.images[index];
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: _buildLogImage(path),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                        if (log.locationName != null && log.locationName!.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Icon(Icons.location_on, color: accentDarkColor),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  log.locationName!,
+                                  style: TextStyle(fontSize: 14, color: textColor),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
@@ -4976,7 +5019,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       // 解析日志时间并转换为系统本地时间
       final dateTime = _parseLogTime(timeStr);
       // 增加8小时
-      final adjustedDateTime = dateTime.add(const Duration(hours: 8));
+    final adjustedDateTime = dateTime.toLocal();
       // 仅显示为 YYYY-MM-DD（不显示时分秒）
       return DateFormat('yyyy-MM-dd').format(adjustedDateTime);
     } catch (e) {
@@ -4999,6 +5042,37 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       default:
         return Colors.teal.shade800;
     }
+  }
+
+  Widget _buildLogImage(String path) {
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        width: 120,
+        height: 90,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _brokenLogImage(),
+      );
+    }
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: 120,
+        height: 90,
+        fit: BoxFit.cover,
+      );
+    }
+    return _brokenLogImage();
+  }
+
+  Widget _brokenLogImage() {
+    return Container(
+      width: 120,
+      height: 90,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.broken_image, color: Colors.grey),
+    );
   }
 }
 

@@ -7,6 +7,8 @@ class MbtiTestResult {
   final double confidenceScore;
   final List<String> strengths;
   final List<String> weaknesses;
+  final Map<String, dynamic>? personalInfo;
+  final String? recordId;
 
   const MbtiTestResult({
     required this.mbtiType,
@@ -17,6 +19,8 @@ class MbtiTestResult {
     required this.confidenceScore,
     required this.strengths,
     required this.weaknesses,
+    this.personalInfo,
+    this.recordId,
   });
 
   factory MbtiTestResult.fromJson(Map<String, dynamic> json) {
@@ -100,6 +104,10 @@ class MbtiTestResult {
       confidenceScore: parseConfidenceScore(json['confidence_score'] ?? json['confidenceScore']),
       strengths: extractStrengths(json),
       weaknesses: extractWeaknesses(json),
+      personalInfo: json['personal_info'] is Map<String, dynamic>
+          ? Map<String, dynamic>.from(json['personal_info'])
+          : null,
+      recordId: json['id']?.toString(),
     );
   }
 

@@ -8,7 +8,13 @@ import 'log_enhanced_screen.dart';
 import 'task_edit_screen.dart';
 import '../services/app_settings.dart';
 import '../services/task_service.dart';
+import '../services/api_service.dart';
+import '../services/mbti_test_service.dart';
 import '../models/task.dart';
+import '../models/important_item.dart';
+import '../models/personal_info.dart';
+import '../models/personal_log.dart';
+import '../models/mbti_test_result.dart';
 
 class DashboardScreen extends StatefulWidget {
   final User user;
@@ -22,11 +28,21 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final AppSettings _settings = AppSettings.instance;
   int _highPriorityPendingCount = 0;
+  
+  // 预览数据
+  List<String> _companyImportantItems = [];
+  List<String> _companyTasks = [];
+  List<String> _personalImportantItems = [];
+  List<String> _personalLogs = [];
+  List<String> _personalPreviewItems = [];
+  MbtiTestResult? _latestMbti;
+  bool _isLoadingPreview = true;
 
   @override
   void initState() {
     super.initState();
     _loadBadgeCount();
+    _loadPreviewData();
     _settings.addListener(_onSettingsChanged);
   }
 
@@ -48,6 +64,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) setState(() { _highPriorityPendingCount = count; });
     } catch (_) {
       if (mounted) setState(() { _highPriorityPendingCount = 0; });
+    }
+  }
+
+  Future<void> _loadPreviewData() async {
+    setState(() {
+      _isLoadingPreview = true;
+    });
+    
+    try {
+      final results = await Future.wait([
+        ApiService.getImportantItems(),
+        TaskService.getTasks(),
+        ApiService.getPersonalInfo(widget.user.id),
+        ApiService.getPersonalLogs(widget.user.id),
+        MbtiTestService.getUserLatestMbti(),
+      ]);
+
+      final importantItems = results[0] as List<ImportantItem>;
+      final tasks = results[1] as List<Task>;
+      final personalInfos = results[2] as List<PersonalInfo>;
+      final personalLogs = results[3] as List<PersonalLog>;
+      final latestMbti = results[4] as MbtiTestResult?;
+
+      if (!mounted) return;
+      setState(() {
+        _companyImportantItems =
+            importantItems.map((item) => item.title).take(3).toList();
+        _companyTasks = tasks.map((task) => task.title).take(3).toList();
+        _personalImportantItems =
+            personalInfos.map((info) => info.title).take(3).toList();
+        _personalLogs = personalLogs
+            .map((log) =>
+                (log.title != null && log.title!.isNotEmpty)
+                    ? log.title!
+                    : (log.content ?? '个人日志'))
+            .take(3)
+            .toList();
+        _latestMbti = latestMbti;
+        _personalPreviewItems = _buildPersonalPreview();
+        _isLoadingPreview = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingPreview = false;
+        });
+      }
     }
   }
   @override
@@ -180,12 +243,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         subtitle: '10大重要事项',
                         icon: Icons.business_center,
                         color: Colors.blue,
+                        previewItems: _isLoadingPreview ? null : _companyImportantItems,
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (context) => CompanyImportantScreen(user: widget.user),
                             ),
-                          );
+                          ).then((_) => _loadPreviewData()); // 返回时刷新数据
                         },
                       ),
                       // 右上：公司派发任务
@@ -194,12 +258,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         subtitle: '10大任务',
                         icon: Icons.assignment,
                         color: Colors.green,
+                        previewItems: _isLoadingPreview ? null : _companyTasks,
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (context) => CompanyTasksEnhancedScreen(user: widget.user),
                             ),
-                          );
+                          ).then((_) => _loadPreviewData()); // 返回时刷新数据
                         },
                       ),
                       // 左下：个人重要展示
@@ -208,12 +273,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         subtitle: '10大重要事项',
                         icon: Icons.person_pin,
                         color: Colors.orange,
+                        previewItems: _isLoadingPreview
+                            ? null
+                            : (_personalPreviewItems.isNotEmpty
+                                ? _personalPreviewItems
+                                : _personalImportantItems),
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (context) => PersonalResumeScreen(user: widget.user),
                             ),
-                          );
+                          ).then((_) => _loadPreviewData()); // 返回时刷新数据
                         },
                       ),
                       // 右下：个人日志
@@ -221,6 +291,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         title: '个人日志',
                         icon: Icons.description,
                         color: Colors.purple,
+                        previewItems: _isLoadingPreview ? null : _personalLogs,
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
@@ -238,5 +309,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
     );
+  }
+
+  List<String> _buildPersonalPreview() {
+    final List<String> items = [];
+    if (_latestMbti != null && _latestMbti!.mbtiType.isNotEmpty) {
+      items.add('MBTI: ${_latestMbti!.mbtiType}');
+    }
+    final profile = _latestMbti?.personalInfo ?? {};
+    if (profile['birthday'] != null && (profile['birthday'] as String).isNotEmpty) {
+      items.add('生日: ${profile['birthday']}');
+    }
+    if (profile['address'] != null && (profile['address'] as String).isNotEmpty) {
+      items.add('住址: ${profile['address']}');
+    }
+    if (!items.any((item) => item.startsWith('姓名'))) {
+      items.add('姓名: ${widget.user.name}');
+    }
+    return items.take(3).toList();
   }
 }

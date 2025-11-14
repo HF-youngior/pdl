@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/personal_info.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
@@ -23,6 +24,7 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
   bool _isLoading = true;
   String? _error;
   MbtiTestResult? _latestMbti;
+  Map<String, dynamic> _personalProfile = {};
 
   @override
   void initState() {
@@ -47,6 +49,7 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
         _personalInfo = info;
         _autoPersonalInfo = autoTop;
         _latestMbti = mbti;
+        _personalProfile = Map<String, dynamic>.from(mbti?.personalInfo ?? {});
         _isLoading = false;
       });
     } catch (e) {
@@ -172,16 +175,14 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('个人简历'),
+        title: const Text('个人重要信息'),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.edit),
-            onPressed: () {
-              _showEditDialog();
-            },
-            tooltip: '编辑个人信息',
+            onPressed: _latestMbti?.recordId == null ? null : _openEditBasicInfoSheet,
+            tooltip: '编辑基础信息',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -237,6 +238,7 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
         children: [
           // 个人信息头部
           _buildHeader(),
+          _buildBasicInfoCard(),
           
           // 四象限信息展示
           _buildQuadrantSections(),
@@ -340,6 +342,78 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBasicInfoCard() {
+    final birthday = _personalProfile['birthday']?.toString();
+    final address = _personalProfile['address']?.toString();
+    final mbti = _latestMbti?.mbtiType ?? '未测试';
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  '基础信息',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _latestMbti?.recordId == null ? null : _openEditBasicInfoSheet,
+                  icon: const Icon(Icons.edit, size: 18),
+                  label: const Text('编辑'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildBasicInfoRow('姓名', widget.user.name),
+            const SizedBox(height: 8),
+            _buildBasicInfoRow('生日', birthday != null && birthday.isNotEmpty ? birthday : '未设置'),
+            const SizedBox(height: 8),
+            _buildBasicInfoRow('住址', address != null && address.isNotEmpty ? address : '未设置'),
+            const SizedBox(height: 8),
+            _buildBasicInfoRow('最近MBTI', mbti),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBasicInfoRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 70,
+          child: Text(
+            '$label：',
+            style: const TextStyle(
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 15,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -782,19 +856,132 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
     );
   }
 
-  void _showEditDialog() {
-    showDialog(
+  void _openEditBasicInfoSheet() {
+    DateTime? tempBirthday;
+    final birthdayStr = _personalProfile['birthday']?.toString();
+    if (birthdayStr != null && birthdayStr.isNotEmpty) {
+      tempBirthday = DateTime.tryParse(birthdayStr);
+    }
+    final addressController = TextEditingController(text: _personalProfile['address']?.toString() ?? '');
+
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('编辑个人信息'),
-        content: const Text('个人信息将根据您的日志自动生成，您也可以在日志页面手动添加重要信息'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                left: 16,
+                right: 16,
+                top: 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '编辑基础信息',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('生日'),
+                    subtitle: Text(
+                      tempBirthday != null ? DateFormat('yyyy-MM-dd').format(tempBirthday!) : '未设置',
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.calendar_month),
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: tempBirthday ?? DateTime.now(),
+                          firstDate: DateTime(1950),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) {
+                          setModalState(() {
+                            tempBirthday = picked;
+                          });
+                        }
+                      },
+                    ),
+                  ),
+                  TextField(
+                    controller: addressController,
+                    decoration: const InputDecoration(
+                      labelText: '住址',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        Navigator.of(context).pop();
+                        await _saveBasicInfo(tempBirthday, addressController.text);
+                      },
+                      child: const Text('保存'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
+  }
+
+  Future<void> _saveBasicInfo(DateTime? birthday, String address) async {
+    if (_latestMbti?.recordId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先完成一次MBTI测试以保存基础信息')),
+      );
+      return;
+    }
+
+    final info = <String, dynamic>{};
+    // 复制现有信息，排除 undefined 和 null 值
+    _personalProfile.forEach((key, value) {
+      if (value != null) {
+        info[key] = value;
+      }
+    });
+    
+    if (birthday != null) {
+      info['birthday'] = DateFormat('yyyy-MM-dd').format(birthday);
+    } else if (info.containsKey('birthday')) {
+      info.remove('birthday');
+    }
+    if (address.trim().isNotEmpty) {
+      info['address'] = address.trim();
+    } else if (info.containsKey('address')) {
+      info.remove('address');
+    }
+
+    try {
+      await MbtiTestService.updatePersonalInfo(
+        recordId: _latestMbti!.recordId!,
+        personalInfo: info,
+      );
+      if (mounted) {
+        setState(() {
+          _personalProfile = info;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('基础信息已更新')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新失败: $e')),
+        );
+      }
+    }
   }
 }

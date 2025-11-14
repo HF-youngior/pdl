@@ -266,6 +266,10 @@ class CalendarLog {
   final String quadrant;
   final bool isCompleted;
   final String createdAt;
+  final List<String> images;
+  final String? locationName;
+  final double? latitude;
+  final double? longitude;
 
   CalendarLog({
     required this.id,
@@ -275,6 +279,10 @@ class CalendarLog {
     required this.quadrant,
     required this.isCompleted,
     required this.createdAt,
+    required this.images,
+    this.locationName,
+    this.latitude,
+    this.longitude,
   });
 
   factory CalendarLog.fromJson(Map<String, dynamic> json) {
@@ -286,8 +294,39 @@ class CalendarLog {
       quadrant: json['quadrant'] ?? '',
       isCompleted: json['is_completed'] == 1 || json['is_completed'] == true,
       createdAt: json['created_at'] ?? '',
+      images: _parseImages(json['images']),
+      locationName: json['location_name'],
+      latitude: _toDouble(json['location_latitude']),
+      longitude: _toDouble(json['location_longitude']),
     );
   }
+}
+
+List<String> _parseImages(dynamic value) {
+  if (value == null) return const [];
+  if (value is List) {
+    return value.map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty).toList();
+  }
+  if (value is String && value.isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is List) {
+        return decoded.map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty).toList();
+      }
+    } catch (_) {}
+    return value.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  }
+  return const [];
+}
+
+double? _toDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is double) return value;
+  if (value is int) return value.toDouble();
+  if (value is String && value.isNotEmpty) {
+    return double.tryParse(value);
+  }
+  return null;
 }
 
 // 月视图摘要

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../models/task.dart';
 import '../models/user.dart';
 import '../services/task_service.dart';
@@ -43,6 +45,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   List<User> _availableUsers = [];
   User? _selectedAssignee;
   bool _isLoadingUsers = false;
+  
+  // 图片相关
+  final List<File> _selectedImages = [];
+  final List<String> _persistedAttachments = [];
+  final ImagePicker _imagePicker = ImagePicker();
 
   // 可用的优先级选项
   final List<Map<String, dynamic>> _priorityOptions = [
@@ -149,7 +156,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     if (widget.task != null) {
       // 编辑现有任务
       _titleController.text = widget.task!.title;
-      _descriptionController.text = widget.task!.description;
+      _descriptionController.text = _stripImageTag(widget.task!.description);
       _progressPercentage = (widget.task!.progressPercentage).toDouble();
       _priority = widget.task!.priority;
       _status = widget.task!.status;
@@ -157,10 +164,12 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       _startTime = widget.task!.startTime;
       _endTime = widget.task!.endTime;
       _isAllDay = widget.task!.isAllDay;
+      _persistedAttachments.addAll(widget.task!.attachments);
         } else {
-      // 创建新任务，设置默认值（增加8小时）
-      _startTime = DateTime.now().add(const Duration(hours: 8));
-      _endTime = DateTime.now().add(const Duration(hours: 9));
+      // 创建新任务，默认使用当前本地时间
+      final now = DateTime.now();
+      _startTime = now;
+      _endTime = now.add(const Duration(hours: 1));
     }
   }
 
@@ -202,6 +211,11 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // 如果是邀约任务，只更新描述，其他字段保持不变
       final isRequest = widget.task?.isRequest ?? false;
       
+      final attachmentPaths = [
+        ..._persistedAttachments,
+        ..._selectedImages.map((img) => img.path),
+      ];
+      
       final task = Task(
         id: widget.task?.id ?? const Uuid().v4(),
         title: isRequest ? (widget.task?.title ?? _titleController.text.trim()) : _titleController.text.trim(),
@@ -223,6 +237,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         requestType: widget.task?.requestType,
         requestResponse: widget.task?.requestResponse,
         specialNotes: widget.task?.specialNotes,
+        attachments: attachmentPaths,
       );
 
       // 调用服务保存任务
@@ -383,6 +398,136 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   }
                   return null;
                 } : null,
+              ),
+              const SizedBox(height: 16),
+              
+              // 图片上传
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '图片',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _pickImage(ImageSource.gallery),
+                              icon: const Icon(Icons.photo_library),
+                              label: const Text('从相册选择'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _pickImage(ImageSource.camera),
+                              icon: const Icon(Icons.camera_alt),
+                              label: const Text('拍照'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_selectedImages.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 100,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _selectedImages.length,
+                            itemBuilder: (context, index) {
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(
+                                        _selectedImages[index],
+                                        width: 100,
+                                        height: 100,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: GestureDetector(
+                                        onTap: () => _removeImage(index),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.red,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.close,
+                                            color: Colors.white,
+                                            size: 16,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+            if (_persistedAttachments.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 100,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _persistedAttachments.length,
+                  itemBuilder: (context, index) {
+                    final path = _persistedAttachments[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: _buildPersistedAttachment(path),
+                          ),
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () => _removePersistedAttachment(index),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 24),
 
@@ -645,7 +790,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         ),
         child: Text(
           value != null
-              ? DateFormat('yyyy-MM-dd HH:mm').format(value.add(const Duration(hours: 8)))
+              ? DateFormat('yyyy-MM-dd HH:mm').format(value.toLocal())
               : isOptional
                   ? '未设置'
                   : '请选择',
@@ -980,5 +1125,70 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         return null;
       },
     );
+  }
+
+  // 选择图片
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(source: source, imageQuality: 80);
+      if (image != null) {
+        setState(() {
+          _selectedImages.add(File(image.path));
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('选择图片失败: $e')),
+      );
+    }
+  }
+
+  // 删除图片
+  void _removeImage(int index) {
+    setState(() {
+      _selectedImages.removeAt(index);
+    });
+  }
+
+  void _removePersistedAttachment(int index) {
+    setState(() {
+      _persistedAttachments.removeAt(index);
+    });
+  }
+
+  Widget _buildPersistedAttachment(String path) {
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        width: 100,
+        height: 100,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildBrokenAttachment(),
+      );
+    }
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: 100,
+        height: 100,
+        fit: BoxFit.cover,
+      );
+    }
+    return _buildBrokenAttachment();
+  }
+
+  Widget _buildBrokenAttachment() {
+    return Container(
+      width: 100,
+      height: 100,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.broken_image, color: Colors.grey),
+    );
+  }
+
+  String _stripImageTag(String text) {
+    final pattern = RegExp(r'\[图片:.*?\]', multiLine: true, dotAll: true);
+    return text.replaceAll(pattern, '').trim();
   }
 }
