@@ -78,14 +78,48 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   
   Future<void> _loadHistory() async {
     try {
-      final wordCloudHistory = await AiService.getWordCloudHistory();
-      final personalityHistory = await AiService.getPersonalityHistory();
-      setState(() {
-        _wordCloudHistory = wordCloudHistory;
-        _personalityHistory = personalityHistory;
-      });
+      // 分别加载词云历史和性格分析历史，避免一个失败影响另一个
+      try {
+        final wordCloudHistory = await AiService.getWordCloudHistory();
+        if (mounted) {
+          setState(() {
+            _wordCloudHistory = wordCloudHistory;
+          });
+        }
+      } catch (e) {
+        // 词云历史加载失败，不影响其他功能
+        print('加载词云历史失败（不影响使用）: $e');
+        if (mounted) {
+          setState(() {
+            _wordCloudHistory = [];
+          });
+        }
+      }
+      
+      try {
+        final personalityHistory = await AiService.getPersonalityHistory();
+        if (mounted) {
+          setState(() {
+            _personalityHistory = personalityHistory;
+          });
+        }
+      } catch (e) {
+        // 性格分析历史加载失败，不影响其他功能
+        print('加载性格分析历史失败（不影响使用）: $e');
+        if (mounted) {
+          setState(() {
+            _personalityHistory = [];
+          });
+        }
+      }
+      
+      // 如果两个都失败，使用测试数据
+      if (_wordCloudHistory.isEmpty && _personalityHistory.isEmpty) {
+        _loadTestData();
+      }
     } catch (e) {
-      // 如果API不可用，使用测试数据
+      // 如果API完全不可用，使用测试数据
+      print('历史记录加载失败，使用测试数据: $e');
       _loadTestData();
     }
   }
@@ -371,6 +405,312 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       items.add('适合职业: ${analysis['career_suitability'].join(', ')}');
     }
     return items;
+  }
+
+  // 构建工作建议Widget（支持新的详细结构）
+  List<Widget> _buildWorkSuggestionsWidget(Map<String, dynamic> suggestions) {
+    final widgets = <Widget>[];
+    
+    // 日志分析摘要
+    if (suggestions.containsKey('日志分析摘要')) {
+      widgets.add(_buildSuggestionSection(
+        '📊 日志分析摘要',
+        suggestions['日志分析摘要'].toString(),
+        icon: Icons.analytics_outlined,
+      ));
+    }
+    
+    // 当前工作适配度
+    if (suggestions.containsKey('当前工作适配度')) {
+      final score = suggestions['当前工作适配度'];
+      final scoreValue = score is num 
+          ? score.toDouble() 
+          : (double.tryParse(score.toString()) ?? 0.0);
+      widgets.add(_buildSuggestionSection(
+        '🎯 当前工作适配度',
+        '${(scoreValue * 100).toStringAsFixed(0)}%',
+        subtitle: _getAdaptabilityDescription(scoreValue),
+        icon: Icons.gps_fixed,
+      ));
+    }
+    
+    // 适合职业（新格式：对象数组）
+    if (suggestions.containsKey('适合职业')) {
+      final careers = suggestions['适合职业'];
+      if (careers is List) {
+        widgets.add(_buildSuggestionSection(
+          '💼 适合职业',
+          null,
+          icon: Icons.work_outline,
+          children: careers.map((career) {
+            if (career is Map) {
+              return _buildCareerCard(career);
+            } else {
+              return Padding(
+                padding: const EdgeInsets.only(left: 8, bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('• ', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                    Expanded(child: Text(career.toString(), style: const TextStyle(color: Color(0xFF6B7280)))),
+                  ],
+                ),
+              );
+            }
+          }).toList(),
+        ));
+      } else if (careers is List<String>) {
+        // 兼容旧格式
+        widgets.add(_buildSuggestionSection(
+          '💼 适合职业',
+          null,
+          icon: Icons.work_outline,
+          children: careers.map((career) => Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('• ', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                Expanded(child: Text(career, style: const TextStyle(color: Color(0xFF6B7280)))),
+              ],
+            ),
+          )).toList(),
+        ));
+      }
+    }
+    
+    // 职业发展路径
+    if (suggestions.containsKey('职业发展路径')) {
+      final path = suggestions['职业发展路径'];
+      if (path is Map) {
+        widgets.add(_buildSuggestionSection(
+          '🚀 职业发展路径',
+          null,
+          icon: Icons.trending_up,
+          children: [
+            if (path.containsKey('短期目标'))
+              _buildPathItem('短期目标（1-2年）', path['短期目标'].toString()),
+            if (path.containsKey('长期目标'))
+              _buildPathItem('长期目标（3-5年）', path['长期目标'].toString()),
+          ],
+        ));
+      }
+    }
+    
+    // 能力提升建议
+    if (suggestions.containsKey('能力提升建议')) {
+      final skills = suggestions['能力提升建议'];
+      if (skills is List) {
+        widgets.add(_buildSuggestionSection(
+          '📈 能力提升建议',
+          null,
+          icon: Icons.school_outlined,
+          children: skills.map((skill) => Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('• ', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
+                Expanded(child: Text(skill.toString(), style: const TextStyle(color: Color(0xFF6B7280)))),
+              ],
+            ),
+          )).toList(),
+        ));
+      }
+    }
+    
+    // 工作环境建议
+    if (suggestions.containsKey('工作环境建议')) {
+      final env = suggestions['工作环境建议'];
+      if (env is Map) {
+        widgets.add(_buildSuggestionSection(
+          '🏢 工作环境建议',
+          null,
+          icon: Icons.business_outlined,
+          children: [
+            if (env.containsKey('理想工作环境'))
+              _buildEnvItem('理想工作环境', env['理想工作环境'].toString()),
+            if (env.containsKey('团队文化'))
+              _buildEnvItem('团队文化', env['团队文化'].toString()),
+            if (env.containsKey('工作方式'))
+              _buildEnvItem('工作方式', env['工作方式'].toString()),
+          ],
+        ));
+      }
+    }
+    
+    // 发展建议
+    if (suggestions.containsKey('发展建议')) {
+      widgets.add(_buildSuggestionSection(
+        '💡 综合发展建议',
+        suggestions['发展建议'].toString(),
+        icon: Icons.lightbulb_outline,
+      ));
+    }
+    
+    // 兼容旧格式：遍历其他所有字段
+    suggestions.forEach((key, value) {
+      if (!['日志分析摘要', '当前工作适配度', '适合职业', '职业发展路径', 
+            '能力提升建议', '工作环境建议', '发展建议'].contains(key)) {
+        widgets.add(_buildSuggestionSection(
+          key,
+          value is List ? null : value.toString(),
+          children: value is List ? (value as List).map((item) => Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('• ', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                Expanded(child: Text(item.toString(), style: const TextStyle(color: Color(0xFF6B7280)))),
+              ],
+            ),
+          )).toList() : null,
+        ));
+      }
+    });
+    
+    return widgets;
+  }
+  
+  Widget _buildSuggestionSection(String title, String? content, {IconData? icon, String? subtitle, List<Widget>? children}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 20, color: const Color(0xFF3B82F6)),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF374151),
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF9CA3AF),
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          if (content != null)
+            Text(
+              content,
+              style: const TextStyle(color: Color(0xFF6B7280), height: 1.6),
+            ),
+          if (children != null) ...children,
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildCareerCard(Map<dynamic, dynamic> career) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            career['职业名称']?.toString() ?? '未知职业',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1F2937),
+              fontSize: 15,
+            ),
+          ),
+          if (career.containsKey('匹配原因')) ...[
+            const SizedBox(height: 6),
+            Text(
+              '匹配原因：${career['匹配原因']}',
+              style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+            ),
+          ],
+          if (career.containsKey('发展前景')) ...[
+            const SizedBox(height: 4),
+            Text(
+              '发展前景：${career['发展前景']}',
+              style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildPathItem(String label, String content) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            content,
+            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildEnvItem(String label, String content) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label + '：',
+            style: const TextStyle(
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF374151),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            content,
+            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  String _getAdaptabilityDescription(double score) {
+    if (score >= 0.8) return '高度匹配，当前工作非常适合你的性格特点';
+    if (score >= 0.6) return '较为匹配，工作内容与性格特点基本契合';
+    if (score >= 0.4) return '中等匹配，部分工作内容与性格特点相符';
+    return '匹配度较低，建议考虑调整工作内容或方向';
   }
 
   List<String> _formatWorkSuggestions(Map<String, dynamic> suggestions) {
@@ -1282,44 +1622,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
                     ),
                     const SizedBox(height: 12),
-                    ..._currentPersonalityAnalysis!.workSuggestions.entries.map((entry) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              entry.key,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF374151),
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            if (entry.value is List) ...[
-                              ...(entry.value as List).map((item) => 
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 8, bottom: 4),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('• ', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
-                                      Expanded(child: Text(item.toString(), style: const TextStyle(color: Color(0xFF6B7280)))),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ] else ...[
-                              Text(
-                                entry.value.toString(),
-                                style: const TextStyle(color: Color(0xFF6B7280)),
-                              ),
-                            ],
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                    ..._buildWorkSuggestionsWidget(_currentPersonalityAnalysis!.workSuggestions),
                   ],
                 ),
               ),
@@ -1593,8 +1896,10 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   }
 
   // 构建MBTI小人头像
-  Widget _buildMbtiAvatar(String mbtiType) {
-    final imagePath = _getMbtiImagePath(mbtiType);
+  Widget _buildMbtiAvatar(dynamic mbtiType) {
+    // 确保转换为字符串
+    final String mbtiTypeStr = mbtiType?.toString() ?? '';
+    final imagePath = _getMbtiImagePath(mbtiTypeStr);
     
     return Container(
       width: 50,
@@ -1615,15 +1920,16 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 height: 50,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) {
-                  // 如果图片加载失败，显示文本标签作为后备
+                  // 如果图片加载失败，打印错误信息并显示文本标签作为后备
+                  print('MBTI图片加载失败: $imagePath, 错误: $error');
                   return Container(
                     decoration: BoxDecoration(
-                      color: _getMbtiTypeColor(mbtiType),
+                      color: _getMbtiTypeColor(mbtiTypeStr),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Center(
                       child: Text(
-                        mbtiType,
+                        mbtiTypeStr,
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -1636,12 +1942,12 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               )
             : Container(
                 decoration: BoxDecoration(
-                  color: _getMbtiTypeColor(mbtiType),
+                  color: _getMbtiTypeColor(mbtiTypeStr),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Center(
                   child: Text(
-                    mbtiType,
+                    mbtiTypeStr,
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -1656,7 +1962,10 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
 
   // 获取MBTI类型对应的图片路径
   String? _getMbtiImagePath(String mbtiType) {
-    if (mbtiType == null || mbtiType.isEmpty) return null;
+    if (mbtiType == null || mbtiType.isEmpty) {
+      print('MBTI类型为空: $mbtiType');
+      return null;
+    }
     
     // 所有16种MBTI类型
     const validTypes = [
@@ -1666,11 +1975,15 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       'ISTP', 'ISFP', 'ESTP', 'ESFP'
     ];
     
-    if (!validTypes.contains(mbtiType.toUpperCase())) {
+    final upperType = mbtiType.toUpperCase().trim();
+    if (!validTypes.contains(upperType)) {
+      print('MBTI类型无效: $mbtiType (转换为: $upperType)');
       return null;
     }
     
-    return 'assets/images/mbti/${mbtiType.toUpperCase()}.png';
+    final imagePath = 'assets/images/mbti/$upperType.png';
+    print('MBTI图片路径: $imagePath');
+    return imagePath;
   }
 
   // 格式化测试日期

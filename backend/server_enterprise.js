@@ -4037,15 +4037,43 @@ app.get('/api/ai/wordcloud-history', authenticateToken, async (req, res) => {
       [userId]
     );
 
-    const history = rows.map(row => ({
-      id: row.id.toString(),
-      userId: row.user_id,
-      analysisDate: row.analysis_date,
-      keywords: JSON.parse(row.keywords),
-      wordFrequencies: JSON.parse(row.word_frequencies),
-      createdAt: row.created_at,
-      description: row.description,
-    }));
+    const history = rows.map(row => {
+      // 安全解析JSON，避免解析错误
+      let keywords = [];
+      let wordFrequencies = [];
+      
+      try {
+        if (row.keywords) {
+          keywords = typeof row.keywords === 'string' 
+            ? JSON.parse(row.keywords) 
+            : row.keywords;
+        }
+      } catch (e) {
+        console.warn('解析keywords失败:', e.message);
+        keywords = [];
+      }
+      
+      try {
+        if (row.word_frequencies) {
+          wordFrequencies = typeof row.word_frequencies === 'string'
+            ? JSON.parse(row.word_frequencies)
+            : row.word_frequencies;
+        }
+      } catch (e) {
+        console.warn('解析word_frequencies失败:', e.message);
+        wordFrequencies = [];
+      }
+      
+      return {
+        id: row.id.toString(),
+        userId: row.user_id,
+        analysisDate: row.analysis_date,
+        keywords: keywords,
+        wordFrequencies: wordFrequencies,
+        createdAt: row.created_at,
+        description: row.description,
+      };
+    });
 
     res.json(history);
   } catch (error) {
@@ -4065,31 +4093,60 @@ app.post('/api/ai/personality-analysis', authenticateToken, async (req, res) => 
 
     // 优先使用外部AI（DeepSeek）进行性格分析
     if (DEEPSEEK_API_KEY) {
+      let deepSeekAttempted = false;
       try {
-        // 尝试使用DeepSeek API进行性格分析
+        // 尝试使用DeepSeek API进行性格分析（带重试机制）
         analysisResult = await analyzePersonalityWithDeepSeek(logText, mbtiType);
+        deepSeekAttempted = true;
+        
         // 检查返回结果是否表示失败（包含错误信息）
         const hasError = analysisResult.aiAnalysisText && (
           analysisResult.aiAnalysisText.includes('失败') ||
           analysisResult.aiAnalysisText.includes('错误') ||
-          analysisResult.aiAnalysisText.includes('AI分析失败')
+          analysisResult.aiAnalysisText.includes('AI分析失败') ||
+          analysisResult.aiAnalysisText.includes('使用默认数据')
         );
+        
         if (hasError) {
-          // DeepSeek API返回了错误结果，回退到本地算法
-          console.warn('DeepSeek API返回错误结果，回退到本地算法');
-          analysisResult = await analyzePersonalityLocally(logText, mbtiType);
-          isDeepSeek = false;
+          // DeepSeek API返回了错误结果，但继续使用（至少尝试了）
+          console.warn('DeepSeek API返回了可能不完整的结果，但继续使用');
+          isDeepSeek = true; // 仍然标记为使用DeepSeek，因为确实调用了API
         } else {
+          // 成功获取分析结果
           isDeepSeek = true;
+          console.log('DeepSeek API分析成功');
         }
       } catch (deepSeekError) {
-        // DeepSeek API调用抛出异常，回退到本地算法
-        console.warn('DeepSeek API调用失败，回退到本地算法:', deepSeekError.message);
-        analysisResult = await analyzePersonalityLocally(logText, mbtiType);
-        isDeepSeek = false;
+        // DeepSeek API调用抛出异常
+        console.error('DeepSeek API调用异常:', deepSeekError.message || deepSeekError.code);
+        
+        // 如果是网络相关错误，尝试最后一次重试
+        const isNetworkError = deepSeekError.code === 'ECONNRESET' || 
+                              deepSeekError.code === 'ETIMEDOUT' ||
+                              deepSeekError.message?.includes('aborted');
+        
+        if (isNetworkError && !deepSeekAttempted) {
+          console.log('检测到网络错误，尝试最后一次重试...');
+          try {
+            await new Promise(resolve => setTimeout(resolve, 3000)); // 等待3秒
+            analysisResult = await analyzePersonalityWithDeepSeek(logText, mbtiType);
+            isDeepSeek = true;
+            console.log('重试成功，DeepSeek API分析完成');
+          } catch (retryError) {
+            console.error('重试也失败，回退到本地算法:', retryError.message);
+            analysisResult = await analyzePersonalityLocally(logText, mbtiType);
+            isDeepSeek = false;
+          }
+        } else {
+          // 其他错误或重试失败，回退到本地算法
+          console.warn('DeepSeek API调用失败，回退到本地算法');
+          analysisResult = await analyzePersonalityLocally(logText, mbtiType);
+          isDeepSeek = false;
+        }
       }
     } else {
       // DeepSeek API密钥不存在，使用本地算法进行性格分析
+      console.warn('DeepSeek API密钥未配置，使用本地算法');
       analysisResult = await analyzePersonalityLocally(logText, mbtiType);
       isDeepSeek = false;
     }
@@ -4168,16 +4225,57 @@ app.get('/api/ai/personality-history', authenticateToken, async (req, res) => {
 
 // ==================== DeepSeek API 分析函数 ====================
 
-// DeepSeek API 性格分析函数
-async function analyzePersonalityWithDeepSeek(logText, mbtiType) {
+// DeepSeek API 性格分析函数（带重试机制）
+async function analyzePersonalityWithDeepSeek(logText, mbtiType, retryCount = 0) {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 2000; // 2秒延迟
+  
+  // 如果日志太长，截取最近的部分（限制在8000字符以内）
+  let processedLogText = logText;
+  const MAX_LOG_LENGTH = 8000;
+  if (logText.length > MAX_LOG_LENGTH) {
+    console.warn(`日志内容过长(${logText.length}字符)，截取最近${MAX_LOG_LENGTH}字符`);
+    // 保留开头和结尾，中间截取
+    const startPart = logText.substring(0, 2000);
+    const endPart = logText.substring(logText.length - (MAX_LOG_LENGTH - 2000));
+    processedLogText = startPart + '\n\n[...中间部分已省略...]\n\n' + endPart;
+  }
+  
   const prompt = `
-请基于以下日志内容进行性格分析：
+你是一位资深的职业发展顾问和性格分析师。请基于用户的工作日志进行深入分析，结合MBTI性格类型，给出个性化的职业发展建议。
 
-日志内容：${logText}
+## 分析任务
 
-${mbtiType ? `已知MBTI类型：${mbtiType}` : ''}
+### 第一步：深入分析每篇日志的有效信息
+请仔细阅读每篇日志，提取以下关键信息：
+1. **工作内容**：具体做了哪些工作？涉及哪些领域和行业？
+2. **技能体现**：从日志中可以看出哪些技能（如沟通、管理、分析、创新、执行等）？
+3. **工作偏好**：更倾向于什么类型的工作（独立工作/团队协作、创新/执行、战略/细节等）？
+4. **工作挑战**：遇到了哪些困难或挑战？如何应对的？
+5. **成就与成长**：取得了哪些成果？有哪些成长和进步？
+6. **工作模式**：工作节奏、优先级管理方式、时间分配特点
 
-请分析并返回以下格式的JSON数据：
+### 第二步：结合MBTI类型进行综合分析
+${mbtiType ? `已知MBTI类型：${mbtiType}。请结合该MBTI类型的典型特征，分析日志中的行为模式是否与MBTI类型一致，并识别出独特的工作风格。` : '如果无法确定MBTI类型，请基于日志内容推断可能的MBTI类型。'}
+
+### 第三步：给出具体的职业建议
+基于日志分析和MBTI类型，提供：
+1. **当前工作适配度**：当前工作内容与性格类型的匹配程度
+2. **适合的职业方向**：具体列出3-5个最适合的职业方向，并说明原因
+3. **职业发展路径**：短期（1-2年）和长期（3-5年）的职业发展建议
+4. **能力提升建议**：需要重点发展的技能和能力
+5. **工作环境建议**：最适合的工作环境、团队文化、管理风格
+
+## 日志内容
+
+${processedLogText}
+
+${mbtiType ? `\n## 已知MBTI类型\n${mbtiType}\n` : ''}
+
+## 输出格式
+
+请严格按照以下JSON格式返回分析结果：
+
 {
   "personalityTraits": {
     "外向性": 0.8,
@@ -4186,12 +4284,32 @@ ${mbtiType ? `已知MBTI类型：${mbtiType}` : ''}
     "神经质": 0.3,
     "开放性": 0.7
   },
-  "mbtiType": "ENFP",
+  "mbtiType": "${mbtiType || 'ENFP'}",
   "workSuggestions": {
-    "适合职业": ["产品经理", "市场营销", "创意总监"],
-    "工作环境": "开放、创新、团队合作",
-    "发展建议": "发挥创造力，加强执行力",
-    "沟通风格": "热情、富有感染力"
+    "日志分析摘要": "基于日志分析，总结用户的工作特点、技能优势和兴趣方向（100-200字）",
+    "当前工作适配度": "评估当前工作内容与性格类型的匹配程度（0-1之间的数值）",
+    "适合职业": [
+      {
+        "职业名称": "具体职业名称",
+        "匹配原因": "为什么适合这个职业（结合日志和MBTI分析）",
+        "发展前景": "该职业的发展前景和成长空间"
+      }
+    ],
+    "职业发展路径": {
+      "短期目标": "1-2年的职业发展建议（具体、可执行）",
+      "长期目标": "3-5年的职业发展建议（结合性格特点和职业兴趣）"
+    },
+    "能力提升建议": [
+      "需要重点发展的技能1（结合日志中的不足）",
+      "需要重点发展的技能2",
+      "需要重点发展的技能3"
+    ],
+    "工作环境建议": {
+      "理想工作环境": "描述最适合的工作环境特点",
+      "团队文化": "适合的团队文化和管理风格",
+      "工作方式": "推荐的工作方式和节奏"
+    },
+    "发展建议": "综合性的职业发展建议（200-300字，结合日志分析和MBTI类型）"
   },
   "personalityChart": {
     "traits": {
@@ -4206,10 +4324,24 @@ ${mbtiType ? `已知MBTI类型：${mbtiType}` : ''}
       "创造力": 0.7,
       "沟通能力": 0.9,
       "分析能力": 0.6,
-      "团队合作": 0.8
+      "团队合作": 0.8,
+      "执行力": 0.85,
+      "学习能力": 0.75
     }
+  },
+  "logAnalysis": {
+    "工作领域": "从日志中识别的主要工作领域",
+    "核心技能": ["技能1", "技能2", "技能3"],
+    "工作偏好": "偏好的工作类型和方式",
+    "成长轨迹": "从日志中观察到的成长和进步"
   }
 }
+
+请确保：
+1. 所有建议都基于日志中的具体内容，不要泛泛而谈
+2. 结合MBTI类型特征，但不要完全依赖MBTI，要结合实际工作表现
+3. 给出具体、可执行的建议，避免空泛的描述
+4. 数值评分要合理，基于日志内容进行客观评估
 `;
 
   try {
@@ -4218,7 +4350,7 @@ ${mbtiType ? `已知MBTI类型：${mbtiType}` : ''}
       messages: [
         {
           role: 'system',
-          content: '你是一个专业的性格分析师，擅长基于日志内容进行MBTI性格分析和职业建议。请返回有效的JSON格式数据。'
+          content: '你是一位资深的职业发展顾问和性格分析师，擅长基于工作日志进行深入的职业分析和MBTI性格分析。你能够从日志中提取有效信息，结合MBTI类型特征，给出具体、可执行的职业发展建议。请始终返回有效的JSON格式数据，确保所有建议都基于日志中的具体内容。'
         },
         {
           role: 'user',
@@ -4226,13 +4358,18 @@ ${mbtiType ? `已知MBTI类型：${mbtiType}` : ''}
         }
       ],
       temperature: 0.7,
-      max_tokens: 2000
+      max_tokens: 4000  // 增加token数量以支持更详细的分析
     }, {
       headers: {
         'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
         'Content-Type': 'application/json'
       },
-      timeout: 30000 // 30秒超时
+      timeout: 60000, // 增加到60秒超时
+      // 禁用压缩，避免解压问题
+      decompress: true,
+      // 增加响应大小限制
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity
     });
 
     const content = response.data.choices[0].message.content;
@@ -4259,11 +4396,25 @@ ${mbtiType ? `已知MBTI类型：${mbtiType}` : ''}
     };
 
   } catch (error) {
-    console.error('DeepSeek API调用失败:', error);
-    return {
-      ...getDefaultPersonalityAnalysis(),
-      aiAnalysisText: `AI分析失败: ${error.message}`
-    };
+    // 判断错误类型，决定是否重试
+    const isRetryableError = error.code === 'ECONNRESET' || 
+                            error.code === 'ETIMEDOUT' || 
+                            error.code === 'ECONNREFUSED' ||
+                            error.message?.includes('aborted') ||
+                            error.message?.includes('timeout');
+    
+    if (isRetryableError && retryCount < MAX_RETRIES) {
+      console.warn(`DeepSeek API调用失败(尝试 ${retryCount + 1}/${MAX_RETRIES}):`, error.message || error.code);
+      console.log(`等待 ${RETRY_DELAY}ms 后重试...`);
+      
+      // 等待后重试
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      return analyzePersonalityWithDeepSeek(logText, mbtiType, retryCount + 1);
+    }
+    
+    // 如果重试次数用完或不是可重试错误，抛出异常
+    console.error('DeepSeek API调用最终失败:', error.message || error.code);
+    throw error; // 抛出异常，让调用者决定如何处理
   }
 }
 

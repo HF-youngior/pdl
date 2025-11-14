@@ -12,8 +12,12 @@ class AiAnalyzeResult {
 }
 
 class AiService {
+  // 可替换的 HTTP 客户端，默认使用真实客户端。
+  // 在单元测试中可注入 MockClient 命中不同分支以提升覆盖率。
+  static http.Client httpClient = http.Client();
+
   static Future<AiAnalyzeResult> analyzeLog(String text, {int topK = 20}) async {
-    final response = await http.post(
+    final response = await httpClient.post(
       Uri.parse('${ApiService.baseUrl}/ai/analyze-log'),
       headers: ApiService.getAuthHeaders(),
       body: jsonEncode({'text': text, 'topK': topK}),
@@ -32,7 +36,7 @@ class AiService {
   }
 
   static Future<AiAnalyzeResult> analyzeToday({int topK = 20}) async {
-    final response = await http.get(
+    final response = await httpClient.get(
       Uri.parse('${ApiService.baseUrl}/ai/analyze-today?topK=$topK'),
       headers: ApiService.getAuthHeaders(),
     );
@@ -56,7 +60,7 @@ class AiService {
     required List<Map<String, dynamic>> wordFrequencies,
     String? description,
   }) async {
-    final response = await http.post(
+    final response = await httpClient.post(
       Uri.parse('${ApiService.baseUrl}/ai/save-wordcloud'),
       headers: ApiService.getAuthHeaders(),
       body: jsonEncode({
@@ -75,7 +79,7 @@ class AiService {
 
   // 获取词云分析历史
   static Future<List<WordCloudAnalysis>> getWordCloudHistory() async {
-    final response = await http.get(
+    final response = await httpClient.get(
       Uri.parse('${ApiService.baseUrl}/ai/wordcloud-history'),
       headers: ApiService.getAuthHeaders(),
     );
@@ -92,7 +96,7 @@ class AiService {
     String? mbtiType,
   }) async {
     // baseUrl已经包含/api，所以不需要再加/api前缀
-    final response = await http.post(
+    final response = await httpClient.post(
       Uri.parse('${ApiService.baseUrl}/ai/personality-analysis'),
       headers: ApiService.getAuthHeaders(),
       body: jsonEncode({
@@ -120,7 +124,7 @@ class AiService {
 
   // 获取性格分析历史
   static Future<List<PersonalityAnalysis>> getPersonalityHistory() async {
-    final response = await http.get(
+    final response = await httpClient.get(
       Uri.parse('${ApiService.baseUrl}/ai/personality-history'),
       headers: ApiService.getAuthHeaders(),
     );
@@ -134,7 +138,7 @@ class AiService {
   // 获取用户最新的MBTI记录
   static Future<Map<String, dynamic>?> getUserLatestMbti() async {
     try {
-      final response = await http.get(
+      final response = await httpClient.get(
         Uri.parse('${ApiService.baseUrl}/mbti-records?limit=1'),
         headers: ApiService.getAuthHeaders(),
       );
@@ -153,9 +157,10 @@ class AiService {
   }
 
   // 获取用户日志内容（用于性格分析）
+  // 返回格式化的日志文本，包含详细的工作信息
   static Future<String> getUserLogsText({int days = 30}) async {
     try {
-      final response = await http.get(
+      final response = await httpClient.get(
         Uri.parse('${ApiService.baseUrl}/personal-logs'),
         headers: ApiService.getAuthHeaders(),
       );
@@ -173,23 +178,80 @@ class AiService {
         }).toList();
         
         if (recentLogs.isEmpty) {
-          return '最近${days}天内暂无日志记录，使用全部日志进行分析。';
+          // 如果最近N天没有日志，使用全部日志
+          return _formatLogsForAnalysis(logs);
         }
         
-        // 合并日志内容
-        final logTexts = recentLogs.map((log) {
-          final title = log['title'] ?? '';
-          final content = log['content'] ?? '';
-          return '$title $content';
-        }).join('\n');
-        
-        return logTexts.isEmpty ? '日志内容为空' : logTexts;
+        return _formatLogsForAnalysis(recentLogs);
       }
       return '获取日志失败';
     } catch (e) {
       print('获取用户日志失败: $e');
       return '获取日志失败: $e';
     }
+  }
+
+  // 格式化日志为分析文本，包含详细信息
+  static String _formatLogsForAnalysis(List<dynamic> logs) {
+    if (logs.isEmpty) {
+      return '日志内容为空';
+    }
+
+    final logEntries = logs.map((log) {
+      final title = log['title'] ?? '';
+      final content = log['content'] ?? '';
+      final category = log['category'] ?? '';
+      final quadrant = log['quadrant'] ?? '';
+      final createdAt = log['created_at'] ?? '';
+      
+      // 获取关联任务信息
+      final taskUpdates = log['taskUpdates'] as List<dynamic>?;
+      String taskInfo = '';
+      if (taskUpdates != null && taskUpdates.isNotEmpty) {
+        final taskNames = taskUpdates.map((task) {
+          final taskName = task['taskName'] ?? '';
+          final progress = task['progress_percentage'] ?? 0;
+          return '$taskName(进度: $progress%)';
+        }).join('、');
+        taskInfo = '关联任务: $taskNames';
+      }
+
+      // 格式化日期
+      String dateStr = '';
+      try {
+        final date = DateTime.parse(createdAt);
+        dateStr = '${date.year}年${date.month}月${date.day}日';
+      } catch (e) {
+        dateStr = createdAt;
+      }
+
+      // 构建日志条目
+      final parts = <String>[];
+      parts.add('【$dateStr】$title');
+      if (category.isNotEmpty) {
+        parts.add('分类: $category');
+      }
+      if (quadrant.isNotEmpty) {
+        // 转换四象限为中文
+        final quadrantMap = {
+          'important_urgent': '重要且紧急',
+          'important_not_urgent': '重要不紧急',
+          'not_important_urgent': '不重要但紧急',
+          'not_important_not_urgent': '不重要不紧急',
+        };
+        parts.add('优先级: ${quadrantMap[quadrant] ?? quadrant}');
+      }
+      if (taskInfo.isNotEmpty) {
+        parts.add(taskInfo);
+      }
+      if (content.isNotEmpty) {
+        parts.add('内容: $content');
+      }
+
+      return parts.join('\n');
+    }).join('\n\n');
+
+    return logEntries;
   }
 }
 
