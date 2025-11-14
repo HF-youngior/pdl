@@ -15,6 +15,7 @@ import '../widgets/personality_chart.dart';
 import '../utils/time_utils.dart';
 import 'mbti_test_screen.dart';
 import 'log_enhanced_screen.dart';
+import 'package:intl/intl.dart';
 
 class AiMapScreen extends StatefulWidget {
   final User user;
@@ -36,6 +37,12 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   List<PersonalityAnalysis> _personalityHistory = [];
   PersonalityAnalysis? _currentPersonalityAnalysis;
   late TabController _tabController;
+  
+  // 词云分析结果相关状态
+  Map<String, dynamic>? _wordCloudAnalysis;
+  bool _isDeepSeekAnalysis = false;
+  String _selectedRange = 'today'; // 'today', 'last7days', 'all'
+  DateTime _selectedLogDate = DateTime.now();
   
   // MBTI记录相关状态
   List<Map<String, dynamic>> _mbtiRecords = [];
@@ -62,7 +69,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _loadHistory();
     _loadTodayLogs();
     _loadMbtiRecords();
@@ -124,47 +131,71 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     }
   }
   
-  Future<void> _loadTodayLogs() async {
+  Future<void> _loadTodayLogs({DateTime? targetDate}) async {
+    final selectedDate = targetDate != null
+        ? DateTime(targetDate.year, targetDate.month, targetDate.day)
+        : DateTime.now();
     setState(() {
       _loadingTodayLogs = true;
     });
     
     try {
       final allLogs = await ApiService.getPersonalLogs(widget.user.id);
-      final today = DateTime.now();
       
       // 优先使用log_date字段，如果为空则使用created_at
-      final todayLogs = allLogs.where((log) {
-        // 优先使用logDate字段
+      final filteredLogs = allLogs.where((log) {
         DateTime? logDate = log.logDate;
-        
-        // 如果logDate为空，使用createdAtDate
         if (logDate == null) {
           logDate = log.createdAtDate;
         }
-        
-        // 如果仍然为空，跳过这条日志
         if (logDate == null) return false;
-        
-        // 比较年月日
-        return logDate.year == today.year &&
-               logDate.month == today.month &&
-               logDate.day == today.day;
+        return logDate.year == selectedDate.year &&
+               logDate.month == selectedDate.month &&
+               logDate.day == selectedDate.day;
       }).toList();
       
       setState(() {
-        _todayLogs = todayLogs;
+        _todayLogs = filteredLogs;
+        _selectedLogDate = selectedDate;
         _loadingTodayLogs = false;
       });
     } catch (e) {
       setState(() {
         _loadingTodayLogs = false;
       });
-      print('加载今日日志失败: $e');
+      print('加载指定日期日志失败: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('加载今日日志失败: $e')),
+        SnackBar(content: Text('加载日志失败: $e')),
       );
     }
+  }
+
+  String _formatDisplayDate(DateTime date) {
+    return DateFormat('yyyy年MM月dd日').format(date);
+  }
+
+  Future<void> _pickLogDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedLogDate,
+      firstDate: DateTime(now.year - 1, now.month, now.day),
+      lastDate: now,
+      helpText: '选择要分析的日期',
+      locale: const Locale('zh', 'CN'),
+    );
+    if (picked != null) {
+      if (_selectedRange != 'today') {
+        setState(() {
+          _selectedRange = 'today';
+        });
+      }
+      await _loadTodayLogs(targetDate: picked);
+    }
+  }
+
+  bool _isSameDate(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
   // 加载最新的MBTI测试结果
@@ -350,8 +381,18 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               ]),
               _buildDetailSection('测试分数', _formatTestScores(_selectedMbtiRecord!['test_scores'])),
               _buildDetailSection('性格特质', _formatPersonalityTraits(_selectedMbtiRecord!['personality_traits'])),
-              _buildDetailSection('AI分析', _formatAiAnalysis(_selectedMbtiRecord!['ai_analysis'])),
-              _buildDetailSection('工作建议', _formatWorkSuggestions(_selectedMbtiRecord!['work_suggestions'])),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  '详细的AI分析报告已迁移至“性格分析历史”板块，可结合日志与MBTI查看完整内容。',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+                ),
+              ),
             ],
           ),
         ),
@@ -391,20 +432,6 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
 
   List<String> _formatPersonalityTraits(Map<String, dynamic> traits) {
     return traits.entries.map((e) => '${e.key}: ${e.value}').toList();
-  }
-
-  List<String> _formatAiAnalysis(Map<String, dynamic> analysis) {
-    List<String> items = [];
-    if (analysis['strengths'] != null) {
-      items.add('优势: ${analysis['strengths'].join(', ')}');
-    }
-    if (analysis['weaknesses'] != null) {
-      items.add('劣势: ${analysis['weaknesses'].join(', ')}');
-    }
-    if (analysis['career_suitability'] != null) {
-      items.add('适合职业: ${analysis['career_suitability'].join(', ')}');
-    }
-    return items;
   }
 
   // 构建工作建议Widget（支持新的详细结构）
@@ -753,22 +780,34 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     }
   }
   
-  Future<void> _analyzeAndSave() async {
+  Future<void> _analyzeAndSave({DateTime? targetDate}) async {
     setState(() { _loading = true; });
     try {
-      // 先刷新今日日志
-      await _loadTodayLogs();
+      DateTime? normalizedTargetDate;
+      if (targetDate != null) {
+        normalizedTargetDate = DateTime(targetDate.year, targetDate.month, targetDate.day);
+        await _loadTodayLogs(targetDate: normalizedTargetDate);
+      } else if (_selectedRange == 'today') {
+        await _loadTodayLogs(targetDate: _selectedLogDate);
+      }
       
-      // 调用后端API分析今日日志
-      final result = await AiService.analyzeToday(topK: 30);
+      // 调用后端API分析日志（根据选择的日期范围）
+      final result = await AiService.analyzeToday(
+        topK: 30,
+        range: normalizedTargetDate != null ? 'today' : _selectedRange,
+        date: normalizedTargetDate,
+      );
       
       if (result.wordFrequencies.isEmpty) {
         setState(() {
           _keywords = [];
           _wordFreq = [];
         });
+        final emptyLabel = normalizedTargetDate != null
+            ? '${_formatDisplayDate(normalizedTargetDate)}没有可分析的日志'
+            : '今日没有可分析的日志，请先记录一些日志';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('今日没有可分析的日志，请先记录一些日志')),
+          SnackBar(content: Text(emptyLabel)),
         );
         return;
       }
@@ -776,23 +815,49 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       setState(() {
         _keywords = result.keywords;
         _wordFreq = result.wordFrequencies;
+        _wordCloudAnalysis = result.analysis;
+        _isDeepSeekAnalysis = result.isDeepSeek ?? false;
       });
       
       // 保存分析结果到历史记录
       try {
+        final description = (() {
+          if (normalizedTargetDate != null) {
+            final label = _formatDisplayDate(normalizedTargetDate);
+            return _isDeepSeekAnalysis
+                ? 'DeepSeek AI智能分析 - $label 日志'
+                : '$label 日志分析';
+          }
+          final rangeText = _selectedRange == 'today'
+              ? '今日'
+              : (_selectedRange == 'last7days' ? '7日内' : '全部历史');
+          return _isDeepSeekAnalysis 
+              ? 'DeepSeek AI智能分析 - $rangeText日志'
+              : '$rangeText日志分析';
+        })();
         final savedAnalysis = await AiService.saveWordCloudAnalysis(
           analysisDate: DateTime.now(),
           keywords: result.keywords,
           wordFrequencies: result.wordFrequencies,
-          description: '今日日志分析',
+          description: description,
         );
         
         setState(() {
           _wordCloudHistory.insert(0, savedAnalysis);
         });
         
+        final message = normalizedTargetDate != null
+            ? (_isDeepSeekAnalysis
+                ? '✨ 已完成${_formatDisplayDate(normalizedTargetDate)}日志的DeepSeek分析'
+                : '已完成${_formatDisplayDate(normalizedTargetDate)}日志分析')
+            : (_isDeepSeekAnalysis
+                ? '✨ DeepSeek AI智能分析完成并已保存到历史记录'
+                : '今日日志分析完成并已保存到历史记录');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('今日日志分析完成并已保存到历史记录')),
+          SnackBar(
+            content: Text(message),
+            backgroundColor: _isDeepSeekAnalysis ? const Color(0xFF8B5CF6) : null,
+          ),
         );
       } catch (saveError) {
         // 保存失败不影响分析结果的显示
@@ -1147,6 +1212,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
             Tab(text: '词云分析', icon: Icon(Icons.cloud, size: 20)),
             Tab(text: '性格分析', icon: Icon(Icons.psychology, size: 20)),
             Tab(text: 'MBTI记录', icon: Icon(Icons.assessment, size: 20)),
+            Tab(text: '性格分析历史', icon: Icon(Icons.timeline, size: 20)),
             Tab(text: '词云历史', icon: Icon(Icons.history, size: 20)),
           ],
         ),
@@ -1165,13 +1231,173 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
             _buildWordCloudTab(),
             _buildPersonalityTab(),
             _buildMbtiRecordsTab(),
-            _buildHistoryTab(),
+            _buildPersonalityHistoryTab(),
+            _buildWordCloudHistoryTab(),
           ],
         ),
       ),
     );
   }
   
+  // 构建日期范围选择选项
+  Widget _buildRangeOption(String value, String label, IconData icon) {
+    final isSelected = _selectedRange == value;
+    final isTodayOption = value == 'today';
+    const double optionHeight = 130;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedRange = value;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFF3B82F6).withOpacity(0.08)
+              : Colors.grey[50],
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFF3B82F6)
+                : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: SizedBox(
+          height: optionHeight,
+          child: isTodayOption
+              ? _buildTodayRangeContent(isSelected, icon)
+              : _buildDefaultRangeContent(isSelected, label, icon),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDefaultRangeContent(bool isSelected, String label, IconData icon) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          icon,
+          color: isSelected
+              ? const Color(0xFF3B82F6)
+              : Colors.grey[600],
+          size: 26,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected
+                ? const Color(0xFF1E3A8A)
+                : Colors.grey[700],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTodayRangeContent(bool isSelected, IconData icon) {
+    final bool isToday = _isSameDate(_selectedLogDate, DateTime.now());
+    final themeColor = isSelected ? const Color(0xFF1E3A8A) : const Color(0xFF374151);
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          icon,
+          size: 28,
+          color: isSelected ? const Color(0xFF3B82F6) : Colors.grey[600],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '今日',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: themeColor,
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget _buildDateSelectorOverlay() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: _loadingTodayLogs
+            ? null
+            : () async {
+                if (_selectedRange != 'today') {
+                  setState(() {
+                    _selectedRange = 'today';
+                  });
+                }
+                await _pickLogDate();
+              },
+        child: Container(
+          width: 160,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.75),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.35)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.035),
+                blurRadius: 5,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.calendar_month,
+                size: 20,
+                color: const Color(0xFF3B82F6).withOpacity(0.95),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _formatDisplayDate(_selectedLogDate),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 获取分析按钮文本
+  String _getAnalyzeButtonText() {
+    switch (_selectedRange) {
+      case 'today':
+        final isToday = _isSameDate(_selectedLogDate, DateTime.now());
+        return isToday
+            ? '一键分析今日日志'
+            : '分析${_formatDisplayDate(_selectedLogDate)}日志';
+      case 'last7days':
+        return '一键分析7日内日志';
+      case 'all':
+        return '一键分析全部历史';
+      default:
+        return '一键分析日志';
+    }
+  }
+
   Widget _buildWordCloudTab() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -1181,6 +1407,67 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           children: [
             // 今日日志展示
             _buildTodayLogsSection(),
+            const SizedBox(height: 20),
+            
+            // 日期范围选择器
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '选择分析范围',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E3A8A),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildRangeOption('today', '今日', Icons.today),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildRangeOption('last7days', '7日内', Icons.date_range),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildRangeOption('all', '全部', Icons.history),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      Positioned(
+                        left: -6,
+                        top: -6,
+                        child: _buildDateSelectorOverlay(),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 20),
             
             // 一键分析按钮 - 优化样式
@@ -1202,10 +1489,18 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 ],
               ),
               child: ElevatedButton.icon(
-                onPressed: _loading ? null : _analyzeAndSave,
-                icon: const Icon(Icons.today, color: Colors.white),
+                onPressed: _loading
+                    ? null
+                    : () {
+                        if (_selectedRange == 'today') {
+                          _analyzeAndSave(targetDate: _selectedLogDate);
+                        } else {
+                          _analyzeAndSave();
+                        }
+                      },
+                icon: const Icon(Icons.analytics, color: Colors.white),
                 label: Text(
-                  _loading ? '分析中...' : '一键分析今日日志',
+                  _loading ? '分析中...' : _getAnalyzeButtonText(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -1223,6 +1518,106 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               ),
             ),
             const SizedBox(height: 20),
+            
+            // AI分析摘要（如果使用DeepSeek API）
+            if (_wordCloudAnalysis != null && _isDeepSeekAnalysis) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'AI智能分析摘要',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'DeepSeek',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_wordCloudAnalysis!['summary'] != null)
+                      Text(
+                        _wordCloudAnalysis!['summary'].toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          height: 1.5,
+                        ),
+                      ),
+                    if (_wordCloudAnalysis!['mainThemes'] != null &&
+                        (_wordCloudAnalysis!['mainThemes'] as List).isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: (_wordCloudAnalysis!['mainThemes'] as List)
+                            .map((theme) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.3),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    theme.toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ))
+                            .toList(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
             
             // 当前分析结果
               if (_keywords.isNotEmpty) ...[
@@ -2040,11 +2435,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     }
   }
   
-  Widget _buildHistoryTab() {
-    return _buildWordCloudHistory();
-  }
-  
-  Widget _buildWordCloudHistory() {
+  Widget _buildWordCloudHistoryTab() {
     if (_wordCloudHistory.isEmpty) {
       return Center(
         child: Column(
@@ -2105,7 +2496,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     );
   }
   
-  Widget _buildPersonalityHistory() {
+  Widget _buildPersonalityHistoryTab() {
     if (_personalityHistory.isEmpty) {
       return Center(
         child: Column(
@@ -2127,43 +2518,239 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       itemCount: _personalityHistory.length,
       itemBuilder: (context, index) {
         final analysis = _personalityHistory[index];
+        final traitEntries = analysis.personalityTraits.entries.toList();
+        final workSuggestionEntries = analysis.workSuggestions.entries.toList();
+        final summaryText = analysis.workSuggestions['日志分析摘要']?.toString()
+            ?? analysis.description
+            ?? analysis.aiAnalysisText
+            ?? 'AI已结合日志与MBTI生成综合分析。';
+        
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(16),
-            leading: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B5CF6).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildMbtiAvatar(analysis.mbtiType),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${analysis.mbtiType} 性格分析',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E3A8A),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '分析时间：${TimeUtils.formatDateTime(analysis.analysisDate.toLocal())}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (analysis.isDeepSeek == true)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'DeepSeek',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF047857),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
               ),
-              child: const Icon(Icons.psychology, color: Color(0xFF8B5CF6)),
-            ),
-            title: Text(
-              '${analysis.mbtiType} - ${analysis.description ?? '性格分析'}',
-              style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
-            ),
-            subtitle: Text(
-              '分析日期: ${analysis.analysisDate.toString().split(' ')[0]}',
-              style: const TextStyle(color: Color(0xFF6B7280)),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF8B5CF6)),
-            onTap: () => _showPersonalityDetail(analysis),
+              const SizedBox(height: 12),
+              _buildHistoryInfoRow(
+                icon: Icons.notes_outlined,
+                title: '日志&MBTI综合摘要',
+                content: _truncateText(summaryText),
+              ),
+              if (traitEntries.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  '核心性格特质',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: traitEntries.take(6).map((entry) {
+                    return _buildTraitChip(
+                      entry.key,
+                      entry.value.toString(),
+                    );
+                  }).toList(),
+                ),
+              ],
+              if (workSuggestionEntries.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'AI分析数据',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...workSuggestionEntries.take(3).map((entry) {
+                  return _buildHistoryInfoRow(
+                    icon: Icons.data_usage_outlined,
+                    title: entry.key,
+                    content: _truncateText(_formatHistoryValue(entry.value)),
+                  );
+                }),
+              ],
+              if ((analysis.aiAnalysisText ?? '').isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildHistoryInfoRow(
+                  icon: Icons.insights_outlined,
+                  title: 'AI深度分析',
+                  content: _truncateText(analysis.aiAnalysisText!),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => _showPersonalityDetail(analysis),
+                  icon: const Icon(Icons.visibility_outlined),
+                  label: const Text('查看完整报告'),
+                ),
+              ),
+            ],
           ),
         );
       },
     );
+  }
+
+  Widget _buildHistoryInfoRow({
+    required IconData icon,
+    required String title,
+    required String content,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFF6366F1), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  content,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF4B5563),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTraitChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF2FF),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF4338CA),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF4C1D95),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _truncateText(String text, {int maxLength = 160}) {
+    if (text.length <= maxLength) return text;
+    return '${text.substring(0, maxLength)}...';
+  }
+
+  String _formatHistoryValue(dynamic value) {
+    if (value == null) return '暂无数据';
+    if (value is List) {
+      return value.map((e) => e.toString()).join('、');
+    }
+    if (value is Map) {
+      return value.entries.map((e) => '${e.key}: ${e.value}').join('；');
+    }
+    return value.toString();
   }
   
   void _showWordCloudDetail(WordCloudAnalysis analysis) {
@@ -2300,6 +2887,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   
   // 今日日志展示组件
   Widget _buildTodayLogsSection() {
+    final bool isTodaySelected = _isSameDate(_selectedLogDate, DateTime.now());
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -2349,15 +2937,16 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        '今日日志',
+                        '日期日志',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF1E3A8A),
                         ),
                       ),
+                      const SizedBox(height: 4),
                       Text(
-                        '${DateTime.now().year}年${DateTime.now().month}月${DateTime.now().day}日',
+                        '当前选择：${_formatDisplayDate(_selectedLogDate)}',
                         style: const TextStyle(
                           fontSize: 14,
                           color: Color(0xFF6B7280),
@@ -2374,14 +2963,13 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                   )
                 else
                   IconButton(
-                    onPressed: _loadTodayLogs,
+                    onPressed: () => _loadTodayLogs(targetDate: _selectedLogDate),
                     icon: const Icon(Icons.refresh, color: Color(0xFF3B82F6)),
-                    tooltip: '刷新今日日志',
+                    tooltip: '刷新当前日期日志',
                   ),
               ],
             ),
           ),
-          
           // 日志内容
           if (_loadingTodayLogs)
             const Padding(
@@ -2393,7 +2981,12 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           else if (_todayLogs.isEmpty)
             _buildEmptyLogsState()
           else
-            _buildLogsList(),
+            Column(
+              children: [
+                _buildSelectedDateSummary(),
+                _buildLogsList(),
+              ],
+            ),
         ],
       ),
     );
@@ -2401,6 +2994,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   
   // 空日志状态
   Widget _buildEmptyLogsState() {
+    final selectedLabel = _formatDisplayDate(_selectedLogDate);
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -2413,7 +3007,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           ),
           const SizedBox(height: 16),
           Text(
-            '今日还没有日志记录',
+            '$selectedLabel 暂无日志记录',
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey[700],
@@ -2422,7 +3016,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           ),
           const SizedBox(height: 8),
           Text(
-            '开始记录今天的工作和生活吧',
+            '可以选择其他日期或记录这一天的内容',
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey[500],
@@ -2491,7 +3085,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       tasks: tasks,
       onLogAdded: () async {
         // 日志添加成功后，刷新今日日志列表
-        await _loadTodayLogs();
+        await _loadTodayLogs(targetDate: _selectedLogDate);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2527,6 +3121,121 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               ),
             ],
           ]),
+      ),
+    );
+  }
+
+  Widget _buildSelectedDateSummary() {
+    final previewLogs = _todayLogs.take(3).toList();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F8FF),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_stories_outlined, color: Color(0xFF3B82F6)),
+                const SizedBox(width: 8),
+                const Text(
+                  '日志速览',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E3A8A),
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B82F6).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_todayLogs.length} 条',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF1E3A8A),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...previewLogs.map((log) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        margin: const EdgeInsets.only(top: 6, right: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3B82F6),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              log.logTitle,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1F2937),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(Icons.category_outlined,
+                                    size: 14, color: Colors.grey[600]),
+                                const SizedBox(width: 4),
+                                Text(
+                                  log.category ?? '未分类',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Icon(Icons.access_time,
+                                    size: 14, color: Colors.grey[600]),
+                                const SizedBox(width: 4),
+                                Text(
+                                  log.logDate != null
+                                      ? '${log.logDate!.hour.toString().padLeft(2, '0')}:${log.logDate!.minute.toString().padLeft(2, '0')}'
+                                      : log.createdAtDate != null
+                                          ? '${log.createdAtDate!.hour.toString().padLeft(2, '0')}:${log.createdAtDate!.minute.toString().padLeft(2, '0')}'
+                                          : '--:--',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+        ),
       ),
     );
   }

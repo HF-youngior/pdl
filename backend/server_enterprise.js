@@ -3890,30 +3890,58 @@ app.post('/api/ai/analyze-log', async (req, res) => {
   }
 });
 
-// 基于当天个人日志的一键分析（需登录）
+// 基于个人日志的一键分析（需登录）- 使用DeepSeek API智能分析
+// 支持日期范围选择：today（今日）、last7days（最近7天）、all（全部历史）
 app.get('/api/ai/analyze-today', authenticateToken, async (req, res) => {
   try {
-    const { topK = 20 } = req.query;
+    const { topK = 20, range = 'today', date } = req.query;
     const userId = req.user.id;
 
-    // 查询当天该用户的个人日志（优先使用log_date字段，如果为空则使用created_at）
-    // 同时获取title和content字段（兼容log_title和log_content）
-    let [rows] = await db.execute(
-      `SELECT
-         COALESCE(log_title, title) as title,
-         COALESCE(log_content, content) as content
-       FROM personal_logs
-       WHERE user_id = ?
-         AND (
-           (log_date IS NOT NULL AND DATE(log_date) = CURDATE())
-           OR (log_date IS NULL AND DATE(created_at) = CURDATE())
-         )`,
-      [userId]
-    );
-    let usedRange = 'today';
+    let rows = [];
+    let usedRange = range;
+    let selectedDate = null;
+    const limitCount = 100; // 默认限制数量，避免数据过大
 
-    // 如果今天没有日志，尝试获取最近7天的日志
-    if (!rows || rows.length === 0) {
+    if (date) {
+      // 如果传入了指定日期，则优先分析该日期
+      const sanitizedDate = date.toString().split('T')[0];
+      const parsedDate = new Date(sanitizedDate);
+      if (isNaN(parsedDate.getTime())) {
+        return res.status(400).json({ error: '无效的日期参数' });
+      }
+      const [dateRows] = await db.execute(
+        `SELECT
+           COALESCE(log_title, title) as title,
+           COALESCE(log_content, content) as content
+         FROM personal_logs
+         WHERE user_id = ?
+           AND (
+             (log_date IS NOT NULL AND DATE(log_date) = ?)
+             OR (log_date IS NULL AND DATE(created_at) = ?)
+           )
+         ORDER BY COALESCE(log_date, created_at) DESC`,
+        [userId, sanitizedDate, sanitizedDate]
+      );
+      rows = dateRows;
+      usedRange = 'date';
+      selectedDate = sanitizedDate;
+    } else if (range === 'today') {
+      const [todayRows] = await db.execute(
+        `SELECT
+           COALESCE(log_title, title) as title,
+           COALESCE(log_content, content) as content
+         FROM personal_logs
+         WHERE user_id = ?
+           AND (
+             (log_date IS NOT NULL AND DATE(log_date) = CURDATE())
+             OR (log_date IS NULL AND DATE(created_at) = CURDATE())
+           )
+         ORDER BY COALESCE(log_date, created_at) DESC`,
+        [userId]
+      );
+      rows = todayRows;
+      usedRange = 'today';
+    } else if (range === 'last7days') {
       const [rows7] = await db.execute(
         `SELECT
            COALESCE(log_title, title) as title,
@@ -3925,53 +3953,285 @@ app.get('/api/ai/analyze-today', authenticateToken, async (req, res) => {
              OR (log_date IS NULL AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY))
            )
          ORDER BY COALESCE(log_date, created_at) DESC
-         LIMIT 50`,
+         LIMIT ${parseInt(limitCount)}`,
         [userId]
       );
-      rows = rows7 || [];
+      rows = rows7;
       usedRange = 'last7days';
+    } else if (range === 'all') {
+      const [allRows] = await db.execute(
+        `SELECT
+           COALESCE(log_title, title) as title,
+           COALESCE(log_content, content) as content
+         FROM personal_logs
+         WHERE user_id = ?
+         ORDER BY COALESCE(log_date, created_at) DESC
+         LIMIT ${parseInt(limitCount * 2)}`,
+        [userId]
+      );
+      rows = allRows;
+      usedRange = 'all';
+    } else {
+      const [defaultRows] = await db.execute(
+        `SELECT
+           COALESCE(log_title, title) as title,
+           COALESCE(log_content, content) as content
+         FROM personal_logs
+         WHERE user_id = ?
+           AND (
+             (log_date IS NOT NULL AND DATE(log_date) = CURDATE())
+             OR (log_date IS NULL AND DATE(created_at) = CURDATE())
+           )
+         ORDER BY COALESCE(log_date, created_at) DESC`,
+        [userId]
+      );
+      rows = defaultRows;
+      usedRange = 'today';
     }
 
     if (!rows || rows.length === 0) {
-      return res.json({ keywords: [], wordFrequencies: [], range: usedRange });
+      return res.json({ keywords: [], wordFrequencies: [], range: usedRange, isDeepSeek: false });
     }
 
-    // 合并日志内容（title和content）
+    // 合并日志内容（title和content），格式化为结构化文本
     const combined = rows
-      .map(r => `${r.title || ''} ${r.content || ''}`)
+      .map((r, index) => {
+        const title = r.title || '';
+        const content = r.content || '';
+        return `【日志${index + 1}】\n标题：${title}\n内容：${content}`;
+      })
       .filter(text => text.trim().length > 0)
-      .join(' \n ');
+      .join('\n\n');
 
     if (!combined || combined.trim().length === 0) {
-      return res.json({ keywords: [], wordFrequencies: [], range: usedRange });
+      return res.json({ keywords: [], wordFrequencies: [], range: usedRange, isDeepSeek: false });
     }
 
-    // 临时使用简单分词（等segmentit安装后恢复）
-    const tokens = combined.split(/[\s\n\r\t,，。！？；：""''（）()【】\[\]{}]+/)
-      .filter(w => w && w.trim().length > 1);
+    let analysisResult;
+    let isDeepSeek = false;
 
-    if (tokens.length === 0) {
-      return res.json({ keywords: [], wordFrequencies: [], range: usedRange });
+    // 优先使用DeepSeek API进行智能分析
+    if (DEEPSEEK_API_KEY) {
+      try {
+        analysisResult = await analyzeWordCloudWithDeepSeek(combined, Number(topK));
+        isDeepSeek = true;
+        console.log('使用DeepSeek API进行词云分析成功');
+      } catch (deepSeekError) {
+        console.warn('DeepSeek API词云分析失败，回退到本地算法:', deepSeekError.message);
+        // 回退到本地算法
+        isDeepSeek = false;
+      }
     }
 
-    const freqMap = {};
-    for (const w of tokens) {
-      freqMap[w] = (freqMap[w] || 0) + 1;
+    // 如果DeepSeek API未配置或失败，使用本地算法
+    if (!isDeepSeek) {
+      // 临时使用简单分词（等segmentit安装后恢复）
+      const tokens = combined.split(/[\s\n\r\t,，。！？；：""''（）()【】\[\]{}]+/)
+        .filter(w => w && w.trim().length > 1);
+
+      if (tokens.length === 0) {
+        return res.json({ keywords: [], wordFrequencies: [], range: usedRange, isDeepSeek: false });
+      }
+
+      const freqMap = {};
+      for (const w of tokens) {
+        freqMap[w] = (freqMap[w] || 0) + 1;
+      }
+      const wordFrequencies = Object.entries(freqMap)
+        .map(([word, count]) => ({ word, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, Number(topK));
+
+      const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
+      const keywords = wordFrequencies.map(x => ({ 
+        word: x.word, 
+        weight: x.count / (maxCount || 1),
+        importance: x.count / (maxCount || 1) // 本地算法使用weight作为importance
+      }));
+
+      // 为本地算法添加importance字段
+      const wordFrequenciesWithImportance = wordFrequencies.map(x => ({
+        word: x.word,
+        count: x.count,
+        importance: x.count / (maxCount || 1)
+      }));
+
+      analysisResult = {
+        keywords,
+        wordFrequencies: wordFrequenciesWithImportance,
+        analysis: {
+          summary: '基于词频统计的本地分析结果',
+          mainThemes: keywords.slice(0, 3).map(k => k.word),
+          workFocus: '基于词频分析的工作重点'
+        }
+      };
     }
-    const wordFrequencies = Object.entries(freqMap)
-      .map(([word, count]) => ({ word, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, Number(topK));
 
-    const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
-    const keywords = wordFrequencies.map(x => ({ word: x.word, weight: x.count / (maxCount || 1) }));
+    // 确保返回的数据格式一致
+    const result = {
+      keywords: analysisResult.keywords || [],
+      wordFrequencies: analysisResult.wordFrequencies || [],
+      range: usedRange,
+      isDeepSeek: isDeepSeek,
+      analysis: analysisResult.analysis || null,
+      selectedDate
+    };
 
-    return res.json({ keywords, wordFrequencies, range: usedRange });
+    return res.json(result);
   } catch (e) {
     console.error('AI当天日志分析失败:', e);
     return res.status(500).json({ error: 'AI当天日志分析失败: ' + e.message });
   }
 });
+
+// ==================== DeepSeek API 词云分析 ====================
+
+// DeepSeek API 词云分析函数（带重试机制）
+async function analyzeWordCloudWithDeepSeek(logText, topK = 20, retryCount = 0) {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 2000; // 2秒延迟
+  
+  // 如果日志太长，截取最近的部分（限制在8000字符以内）
+  let processedLogText = logText;
+  const MAX_LOG_LENGTH = 8000;
+  if (logText.length > MAX_LOG_LENGTH) {
+    console.warn(`日志内容过长(${logText.length}字符)，截取最近${MAX_LOG_LENGTH}字符`);
+    const startPart = logText.substring(0, 2000);
+    const endPart = logText.substring(logText.length - (MAX_LOG_LENGTH - 2000));
+    processedLogText = startPart + '\n\n[...中间部分已省略...]\n\n' + endPart;
+  }
+  
+  const prompt = `
+你是一位专业的数据分析师和文本挖掘专家。请基于用户的工作日志，进行智能词云分析。
+
+## 分析任务
+
+请仔细分析日志内容，提取关键词并评估其重要程度。重要程度不仅考虑词频，还要考虑：
+1. **语义重要性**：该词在工作日志中的语义价值和意义
+2. **业务相关性**：与工作核心业务的关联度
+3. **情感倾向**：是否代表重要的工作内容或成就
+4. **上下文价值**：在整体工作模式中的代表性
+
+## 日志内容
+
+${processedLogText}
+
+## 输出格式
+
+请严格按照以下JSON格式返回分析结果，包含${topK}个最重要的关键词：
+
+{
+  "keywords": [
+    {
+      "word": "关键词",
+      "importance": 0.95,
+      "category": "工作类型/技能/领域/情感等分类",
+      "reason": "为什么这个关键词重要（简短说明）"
+    }
+  ],
+  "wordFrequencies": [
+    {
+      "word": "关键词",
+      "count": 15,
+      "importance": 0.95
+    }
+  ],
+  "analysis": {
+    "summary": "对日志内容的整体分析摘要（50-100字）",
+    "mainThemes": ["主题1", "主题2", "主题3"],
+    "workFocus": "工作重点和关注领域的描述"
+  }
+}
+
+## 要求
+
+1. 关键词应该是有意义的词汇或短语（2-6个字），避免无意义的单字
+2. importance值范围0-1，表示重要程度（0.9以上为极高重要，0.7-0.9为高重要，0.5-0.7为中等重要，0.5以下为一般重要）
+3. 关键词应该反映工作的核心内容、技能、领域、成就等
+4. 按importance从高到低排序
+5. 确保返回有效的JSON格式，不要包含markdown代码块标记
+`;
+
+  try {
+    if (!DEEPSEEK_API_KEY) {
+      throw new Error('DeepSeek API密钥未配置');
+    }
+
+    const response = await axios.post(DEEPSEEK_API_URL, {
+      model: 'deepseek-chat',
+      messages: [
+        {
+          role: 'system',
+          content: '你是一位专业的数据分析师和文本挖掘专家，擅长从工作日志中提取关键信息并进行智能分析。请严格按照JSON格式返回结果，不要添加任何额外的markdown标记。'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.3, // 降低温度以获得更稳定的分析结果
+      max_tokens: 3000
+    }, {
+      timeout: 60000, // 60秒超时
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+      },
+    });
+
+    const content = response.data.choices[0].message.content.trim();
+    
+    // 提取JSON部分（去除可能的markdown代码块）
+    let jsonStr = content;
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
+    
+    const parsedData = JSON.parse(jsonStr);
+    
+    // 验证和规范化数据
+    if (!parsedData.keywords || !Array.isArray(parsedData.keywords)) {
+      throw new Error('DeepSeek API返回的数据格式不正确：缺少keywords数组');
+    }
+    
+    if (!parsedData.wordFrequencies || !Array.isArray(parsedData.wordFrequencies)) {
+      // 如果没有wordFrequencies，从keywords生成
+      parsedData.wordFrequencies = parsedData.keywords.map(k => ({
+        word: k.word,
+        count: Math.round((k.importance || 0.5) * 20), // 根据importance估算count
+        importance: k.importance || 0.5
+      }));
+    }
+    
+    // 确保数据按importance排序
+    parsedData.keywords.sort((a, b) => (b.importance || 0) - (a.importance || 0));
+    parsedData.wordFrequencies.sort((a, b) => (b.importance || 0) - (a.importance || 0));
+    
+    // 限制返回数量
+    parsedData.keywords = parsedData.keywords.slice(0, topK);
+    parsedData.wordFrequencies = parsedData.wordFrequencies.slice(0, topK);
+    
+    console.log(`DeepSeek API词云分析成功，返回${parsedData.keywords.length}个关键词`);
+    return parsedData;
+    
+  } catch (error) {
+    // 网络错误或超时，尝试重试
+    if (retryCount < MAX_RETRIES && (
+      error.code === 'ECONNRESET' || 
+      error.code === 'ETIMEDOUT' ||
+      error.message?.includes('timeout') ||
+      error.message?.includes('aborted')
+    )) {
+      console.warn(`DeepSeek API调用失败(尝试 ${retryCount + 1}/${MAX_RETRIES}):`, error.message || error.code);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      return analyzeWordCloudWithDeepSeek(logText, topK, retryCount + 1);
+    }
+    
+    console.error('DeepSeek API词云分析失败:', error.message || error.code);
+    throw error;
+  }
+}
 
 // ==================== DeepSeek API 性格分析 ====================
 
@@ -4003,18 +4263,39 @@ app.post('/api/ai/save-wordcloud', authenticateToken, async (req, res) => {
     }
 
     const row = rows[0];
+    
+    // 安全解析JSON，处理可能已经是对象的情况
+    let parsedKeywords, parsedWordFrequencies;
+    try {
+      parsedKeywords = typeof row.keywords === 'string' 
+        ? JSON.parse(row.keywords) 
+        : row.keywords;
+    } catch (e) {
+      console.warn('解析keywords失败，使用空数组:', e.message);
+      parsedKeywords = [];
+    }
+    
+    try {
+      parsedWordFrequencies = typeof row.word_frequencies === 'string'
+        ? JSON.parse(row.word_frequencies)
+        : row.word_frequencies;
+    } catch (e) {
+      console.warn('解析word_frequencies失败，使用空数组:', e.message);
+      parsedWordFrequencies = [];
+    }
+    
     const analysis = {
       id: row.id.toString(),
       userId: row.user_id,
       analysisDate: row.analysis_date,
-      keywords: JSON.parse(row.keywords),
-      wordFrequencies: JSON.parse(row.word_frequencies),
+      keywords: parsedKeywords,
+      wordFrequencies: parsedWordFrequencies,
       createdAt: row.created_at,
       description: row.description,
       // 兼容前端期望的字段名
       user_id: row.user_id,
       analysis_date: row.analysis_date,
-      word_frequencies: JSON.parse(row.word_frequencies),
+      word_frequencies: parsedWordFrequencies,
       created_at: row.created_at,
     };
 

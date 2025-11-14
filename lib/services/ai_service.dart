@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'api_service.dart';
 import '../models/wordcloud_analysis.dart';
 import '../models/personality_analysis.dart';
@@ -7,8 +8,15 @@ import '../models/personality_analysis.dart';
 class AiAnalyzeResult {
   final List<Map<String, dynamic>> keywords;
   final List<Map<String, dynamic>> wordFrequencies;
+  final Map<String, dynamic>? analysis;
+  final bool? isDeepSeek;
 
-  AiAnalyzeResult({required this.keywords, required this.wordFrequencies});
+  AiAnalyzeResult({
+    required this.keywords,
+    required this.wordFrequencies,
+    this.analysis,
+    this.isDeepSeek,
+  });
 }
 
 class AiService {
@@ -35,9 +43,22 @@ class AiService {
     throw Exception('AI分析失败，状态码: ${response.statusCode}');
   }
 
-  static Future<AiAnalyzeResult> analyzeToday({int topK = 20}) async {
+  static Future<AiAnalyzeResult> analyzeToday({
+    int topK = 20,
+    String range = 'today', // 'today', 'last7days', 'all'
+    DateTime? date, // 指定日期分析
+  }) async {
+    final queryParameters = {
+      'topK': topK.toString(),
+      'range': range,
+    };
+    if (date != null) {
+      queryParameters['date'] = DateFormat('yyyy-MM-dd').format(date);
+    }
+    final uri = Uri.parse('${ApiService.baseUrl}/ai/analyze-today')
+        .replace(queryParameters: queryParameters);
     final response = await httpClient.get(
-      Uri.parse('${ApiService.baseUrl}/ai/analyze-today?topK=$topK'),
+      uri,
       headers: ApiService.getAuthHeaders(),
     );
     if (response.statusCode == 200) {
@@ -48,7 +69,16 @@ class AiService {
       final wordFrequencies = (data['wordFrequencies'] as List<dynamic>)
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
-      return AiAnalyzeResult(keywords: keywords, wordFrequencies: wordFrequencies);
+      final analysis = data['analysis'] != null
+          ? Map<String, dynamic>.from(data['analysis'] as Map)
+          : null;
+      final isDeepSeek = data['isDeepSeek'] as bool? ?? false;
+      return AiAnalyzeResult(
+        keywords: keywords,
+        wordFrequencies: wordFrequencies,
+        analysis: analysis,
+        isDeepSeek: isDeepSeek,
+      );
     }
     throw Exception('AI今日日志分析失败，状态码: ${response.statusCode}');
   }
