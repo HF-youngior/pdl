@@ -7,7 +7,9 @@
     "start": "node server_enterprise.js",
     "dev": "nodemon server_enterprise.js",
     "init-db": "node -e \"require('./server_enterprise.js')\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "keywords": [
     "enterprise",
@@ -30,6 +32,9 @@
     "segmentit": "^2.0.3"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
     "nodemon": "^3.0.1"
   },
   "engines": {
