@@ -6,6 +6,7 @@ import '../utils/config.dart';
 
 class LogService {
   static String? _authToken;
+  static http.Client httpClient = http.Client();
 
   // 设置认证token
   static void setAuthToken(String token) {
@@ -63,7 +64,7 @@ class LogService {
       final uri = Uri.parse('${Config.baseUrl}${Config.logsEndpoint}')
           .replace(queryParameters: queryParams);
 
-      final response = await http.get(
+      final response = await httpClient.get(
         uri,
         headers: _getAuthHeaders(),
       ).timeout(const Duration(milliseconds: Config.requestTimeout));
@@ -164,7 +165,7 @@ class LogService {
       final uri = Uri.parse('${Config.baseUrl}/api/personal-logs')
           .replace(queryParameters: queryParams);
 
-      final response = await http.get(
+      final response = await httpClient.get(
         uri,
         headers: _getAuthHeaders(),
       ).timeout(const Duration(milliseconds: Config.requestTimeout));
@@ -187,7 +188,7 @@ class LogService {
   // 创建日志
   static Future<bool> createLog(Log log) async {
     try {
-      final response = await http.post(
+      final response = await httpClient.post(
         Uri.parse('${Config.baseUrl}${Config.logsEndpoint}'),
         headers: _getAuthHeaders(),
         body: json.encode(log.toJson()),
@@ -203,7 +204,7 @@ class LogService {
   // 更新日志
   static Future<bool> updateLog(String logId, Log log) async {
     try {
-      final response = await http.put(
+      final response = await httpClient.put(
         Uri.parse('${Config.baseUrl}${Config.logsEndpoint}/$logId'),
         headers: _getAuthHeaders(),
         body: json.encode(log.toJson()),
@@ -219,7 +220,7 @@ class LogService {
   // 删除日志
   static Future<bool> deleteLog(String logId) async {
     try {
-      final response = await http.delete(
+      final response = await httpClient.delete(
         Uri.parse('${Config.baseUrl}${Config.logsEndpoint}/$logId'),
         headers: _getAuthHeaders(),
       ).timeout(const Duration(milliseconds: Config.requestTimeout));
@@ -234,7 +235,7 @@ class LogService {
   // 获取日志统计信息
   static Future<Map<String, int>> getLogStatistics() async {
     try {
-      final response = await http.get(
+      final response = await httpClient.get(
         Uri.parse('${Config.baseUrl}${Config.logsEndpoint}/statistics'),
         headers: _getAuthHeaders(),
       ).timeout(const Duration(milliseconds: Config.requestTimeout));
@@ -254,7 +255,7 @@ class LogService {
   // 获取关联任务列表（用于日志关联显示）
   static Future<List<Task>> fetchRelatedTasks(String logId) async {
     try {
-      final response = await http.get(
+      final response = await httpClient.get(
         Uri.parse('${Config.baseUrl}${Config.logsEndpoint}/$logId/tasks'),
         headers: _getAuthHeaders(),
       ).timeout(const Duration(milliseconds: Config.requestTimeout));

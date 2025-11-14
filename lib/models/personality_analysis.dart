@@ -52,6 +52,8 @@ class PersonalityAnalysis {
       'personalityChart': personalityChart,
       'createdAt': createdAt.toIso8601String(),
       'description': description,
+      'aiAnalysisText': aiAnalysisText,
+      'isDeepSeek': isDeepSeek,
       // 后端期望的字段名
       'user_id': userId,
       'analysis_date': analysisDate.toIso8601String(),
@@ -60,6 +62,8 @@ class PersonalityAnalysis {
       'work_suggestions': workSuggestions,
       'personality_chart': personalityChart,
       'created_at': createdAt.toIso8601String(),
+      'ai_analysis_text': aiAnalysisText,
+      'is_deep_seek': isDeepSeek,
     };
   }
 }

@@ -1,10 +1,12 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// 注意：这是 Flutter 项目创建时自动生成的示例测试
+// 由于本项目不是计数器应用，此测试已注释掉
+// 实际的单元测试请查看：
+// - test/log_model_test.dart
+// - test/log_service_test.dart
+// - test/ai_map_models_test.dart
+// - test/ai_service_test.dart
 
+/*
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -27,4 +29,10 @@ void main() {
     expect(find.text('0'), findsNothing);
     expect(find.text('1'), findsOneWidget);
   });
+}
+*/
+
+// 空测试文件，避免测试框架报错
+void main() {
+  // 所有实际的单元测试都在其他文件中
 }
