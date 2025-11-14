@@ -11,7 +11,7 @@ Write-Host ""
 $DB_HOST = "localhost"
 $DB_PORT = "3306"
 $DB_USER = "root"
-$DB_PASS = "Zs462581379"
+$DB_PASS = "Pyx_07091817"
 $DB_NAME = "enterprise_management"
 
 Write-Host "正在读取 SQL 脚本..."

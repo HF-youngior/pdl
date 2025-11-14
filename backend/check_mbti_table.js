@@ -11,7 +11,7 @@ async function checkMbtiTable() {
     connection = await mysql.createConnection({
       host: process.env.DB_HOST || 'localhost',
       user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || 'Zs462581379',
+      password: process.env.DB_PASSWORD || 'Pyx_07091817',
       database: process.env.DB_NAME || 'enterprise_management'
     });
     
