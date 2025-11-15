@@ -51,6 +51,20 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   String _searchQuery = '';
   String _selectedMbtiType = '全部';
   Map<String, int> _mbtiTypeCounts = {}; // 每个MBTI类型的记录数量
+  
+  // 历史记录子标签控制器
+  late TabController _historyTabController;
+  
+  // 词云历史搜索相关状态
+  String _wordCloudSearchQuery = '';
+  List<WordCloudAnalysis> _filteredWordCloudHistory = [];
+  DateTime? _wordCloudSelectedDate; // 词云历史日期筛选
+  
+  // 性格分析历史搜索相关状态
+  String _personalitySearchQuery = '';
+  List<PersonalityAnalysis> _filteredPersonalityHistory = [];
+  DateTime? _personalitySelectedDate; // 性格分析历史日期筛选
+  String _selectedPersonalityMbtiType = '全部'; // 性格分析历史MBTI类型筛选
   // 所有16种MBTI类型
   static const List<String> _allMbtiTypes = [
     '全部',
@@ -69,7 +83,8 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
+    _historyTabController = TabController(length: 3, vsync: this);
     _loadHistory();
     _loadTodayLogs();
     _loadMbtiRecords();
@@ -79,6 +94,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   @override
   void dispose() {
     _tabController.dispose();
+    _historyTabController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -91,6 +107,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         if (mounted) {
           setState(() {
             _wordCloudHistory = wordCloudHistory;
+            _filteredWordCloudHistory = wordCloudHistory;
           });
         }
       } catch (e) {
@@ -99,6 +116,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         if (mounted) {
           setState(() {
             _wordCloudHistory = [];
+            _filteredWordCloudHistory = [];
           });
         }
       }
@@ -108,6 +126,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         if (mounted) {
           setState(() {
             _personalityHistory = personalityHistory;
+            _filteredPersonalityHistory = personalityHistory;
           });
         }
       } catch (e) {
@@ -116,6 +135,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         if (mounted) {
           setState(() {
             _personalityHistory = [];
+            _filteredPersonalityHistory = [];
           });
         }
       }
@@ -758,6 +778,8 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     setState(() {
       _wordCloudHistory = _generateTestWordCloudData();
       _personalityHistory = _generateTestPersonalityData();
+      _filteredWordCloudHistory = _wordCloudHistory;
+      _filteredPersonalityHistory = _personalityHistory;
     });
   }
 
@@ -1211,9 +1233,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           tabs: const [
             Tab(text: '词云分析', icon: Icon(Icons.cloud, size: 20)),
             Tab(text: '性格分析', icon: Icon(Icons.psychology, size: 20)),
-            Tab(text: 'MBTI记录', icon: Icon(Icons.assessment, size: 20)),
-            Tab(text: '性格分析历史', icon: Icon(Icons.timeline, size: 20)),
-            Tab(text: '词云历史', icon: Icon(Icons.history, size: 20)),
+            Tab(text: '历史记录', icon: Icon(Icons.history, size: 20)),
           ],
         ),
       ),
@@ -1230,9 +1250,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           children: [
             _buildWordCloudTab(),
             _buildPersonalityTab(),
-            _buildMbtiRecordsTab(),
-            _buildPersonalityHistoryTab(),
-            _buildWordCloudHistoryTab(),
+            _buildHistoryTab(),
           ],
         ),
       ),
@@ -2028,6 +2046,41 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     );
   }
 
+  // 历史记录标签页（包含嵌套的TabBar）
+  Widget _buildHistoryTab() {
+    return Column(
+      children: [
+        Container(
+          color: const Color(0xFF1E3A8A),
+          child: TabBar(
+            controller: _historyTabController,
+            indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 14),
+            tabs: const [
+              Tab(text: 'MBTI记录', icon: Icon(Icons.assessment, size: 20)),
+              Tab(text: '性格分析历史', icon: Icon(Icons.timeline, size: 20)),
+              Tab(text: '词云历史', icon: Icon(Icons.history, size: 20)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _historyTabController,
+            children: [
+              _buildMbtiRecordsTab(),
+              _buildPersonalityHistoryTab(),
+              _buildWordCloudHistoryTab(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // MBTI记录标签页
   Widget _buildMbtiRecordsTab() {
     return Padding(
@@ -2436,226 +2489,606 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   }
   
   Widget _buildWordCloudHistoryTab() {
-    if (_wordCloudHistory.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.cloud_off, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              '暂无词云分析历史',
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      );
+    // 过滤词云历史
+    void _filterWordCloudHistory() {
+      setState(() {
+        _filteredWordCloudHistory = _wordCloudHistory.where((analysis) {
+          // 日期筛选
+          if (_wordCloudSelectedDate != null) {
+            final analysisDate = analysis.analysisDate.toLocal();
+            final selectedDate = _wordCloudSelectedDate!;
+            if (analysisDate.year != selectedDate.year ||
+                analysisDate.month != selectedDate.month ||
+                analysisDate.day != selectedDate.day) {
+              return false;
+            }
+          }
+          
+          // 文本搜索筛选
+          if (_wordCloudSearchQuery.isNotEmpty) {
+            final description = analysis.description ?? '';
+            final dateStr = analysis.analysisDate.toString();
+            if (!description.toLowerCase().contains(_wordCloudSearchQuery.toLowerCase()) &&
+                !dateStr.toLowerCase().contains(_wordCloudSearchQuery.toLowerCase())) {
+              return false;
+            }
+          }
+          
+          return true;
+        }).toList();
+      });
     }
     
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _wordCloudHistory.length,
-      itemBuilder: (context, index) {
-        final analysis = _wordCloudHistory[index];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(16),
-            leading: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF3B82F6).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.cloud, color: Color(0xFF3B82F6)),
-            ),
-            title: Text(
-              analysis.description ?? '词云分析',
-              style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
-            ),
-            subtitle: Text(
-              '分析日期: ${analysis.analysisDate.toString().split(' ')[0]}',
-              style: const TextStyle(color: Color(0xFF6B7280)),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF3B82F6)),
-            onTap: () => _showWordCloudDetail(analysis),
-          ),
-        );
-      },
-    );
-  }
-  
-  Widget _buildPersonalityHistoryTab() {
-    if (_personalityHistory.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.psychology_outlined, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              '暂无性格分析历史',
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-            ),
-          ],
-        ),
+    // 选择日期
+    Future<void> _pickWordCloudDate() async {
+      final now = DateTime.now();
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: _wordCloudSelectedDate ?? now,
+        firstDate: DateTime(now.year - 1, now.month, now.day),
+        lastDate: now,
+        helpText: '选择要筛选的日期',
+        locale: const Locale('zh', 'CN'),
       );
+      if (picked != null) {
+        setState(() {
+          _wordCloudSelectedDate = picked;
+          _filterWordCloudHistory();
+        });
+      }
     }
     
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _personalityHistory.length,
-      itemBuilder: (context, index) {
-        final analysis = _personalityHistory[index];
-        final traitEntries = analysis.personalityTraits.entries.toList();
-        final workSuggestionEntries = analysis.workSuggestions.entries.toList();
-        final summaryText = analysis.workSuggestions['日志分析摘要']?.toString()
-            ?? analysis.description
-            ?? analysis.aiAnalysisText
-            ?? 'AI已结合日志与MBTI生成综合分析。';
-        
-        return Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(16),
+    return Column(
+      children: [
+        // 搜索和筛选控件
+        Container(
+          padding: const EdgeInsets.all(16.0),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withOpacity(0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 搜索框
+              TextField(
+                decoration: InputDecoration(
+                  hintText: '搜索词云分析描述或日期...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _wordCloudSearchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            setState(() {
+                              _wordCloudSearchQuery = '';
+                              _filterWordCloudHistory();
+                            });
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF10B981)),
+                  ),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _wordCloudSearchQuery = value;
+                    _filterWordCloudHistory();
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              // 日期筛选
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildMbtiAvatar(analysis.mbtiType),
-                  const SizedBox(width: 12),
+                  const Text('日期筛选: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${analysis.mbtiType} 性格分析',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E3A8A),
-                          ),
+                    child: InkWell(
+                      onTap: _pickWordCloudDate,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey[300]!),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '分析时间：${TimeUtils.formatDateTime(analysis.analysisDate.toLocal())}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF6B7280),
-                          ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _wordCloudSelectedDate != null
+                                  ? DateFormat('yyyy-MM-dd').format(_wordCloudSelectedDate!)
+                                  : '选择日期',
+                              style: TextStyle(
+                                color: _wordCloudSelectedDate != null
+                                    ? Colors.black87
+                                    : Colors.grey[600],
+                              ),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_wordCloudSelectedDate != null)
+                                  IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    color: Colors.grey[600],
+                                    onPressed: () {
+                                      setState(() {
+                                        _wordCloudSelectedDate = null;
+                                        _filterWordCloudHistory();
+                                      });
+                                    },
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                const Icon(Icons.calendar_today, size: 18, color: Color(0xFF10B981)),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                  if (analysis.isDeepSeek == true)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        'DeepSeek',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF047857),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
                 ],
-              ),
-              const SizedBox(height: 12),
-              _buildHistoryInfoRow(
-                icon: Icons.notes_outlined,
-                title: '日志&MBTI综合摘要',
-                content: _truncateText(summaryText),
-              ),
-              if (traitEntries.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                const Text(
-                  '核心性格特质',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1F2937),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: traitEntries.take(6).map((entry) {
-                    return _buildTraitChip(
-                      entry.key,
-                      entry.value.toString(),
-                    );
-                  }).toList(),
-                ),
-              ],
-              if (workSuggestionEntries.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                const Text(
-                  'AI分析数据',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1F2937),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ...workSuggestionEntries.take(3).map((entry) {
-                  return _buildHistoryInfoRow(
-                    icon: Icons.data_usage_outlined,
-                    title: entry.key,
-                    content: _truncateText(_formatHistoryValue(entry.value)),
-                  );
-                }),
-              ],
-              if ((analysis.aiAnalysisText ?? '').isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _buildHistoryInfoRow(
-                  icon: Icons.insights_outlined,
-                  title: 'AI深度分析',
-                  content: _truncateText(analysis.aiAnalysisText!),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () => _showPersonalityDetail(analysis),
-                  icon: const Icon(Icons.visibility_outlined),
-                  label: const Text('查看完整报告'),
-                ),
               ),
             ],
           ),
-        );
-      },
+        ),
+        Expanded(
+          child: _filteredWordCloudHistory.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _wordCloudHistory.isEmpty
+                            ? Icons.cloud_off
+                            : Icons.search_off,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _wordCloudHistory.isEmpty
+                            ? '暂无词云分析历史'
+                            : '未找到匹配的记录',
+                        style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _filteredWordCloudHistory.length,
+                  itemBuilder: (context, index) {
+                    final analysis = _filteredWordCloudHistory[index];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(16),
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3B82F6).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.cloud, color: Color(0xFF3B82F6)),
+                        ),
+                        title: Text(
+                          analysis.description ?? '词云分析',
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                        ),
+                        subtitle: Text(
+                          '分析日期: ${analysis.analysisDate.toString().split(' ')[0]}',
+                          style: const TextStyle(color: Color(0xFF6B7280)),
+                        ),
+                        trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF3B82F6)),
+                        onTap: () => _showWordCloudDetail(analysis),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildPersonalityHistoryTab() {
+    // 过滤性格分析历史
+    void _filterPersonalityHistory() {
+      setState(() {
+        _filteredPersonalityHistory = _personalityHistory.where((analysis) {
+          // MBTI类型筛选
+          if (_selectedPersonalityMbtiType != '全部') {
+            final mbtiType = analysis.mbtiType ?? '';
+            if (mbtiType != _selectedPersonalityMbtiType) {
+              return false;
+            }
+          }
+          
+          // 日期筛选
+          if (_personalitySelectedDate != null) {
+            final analysisDate = analysis.analysisDate.toLocal();
+            final selectedDate = _personalitySelectedDate!;
+            if (analysisDate.year != selectedDate.year ||
+                analysisDate.month != selectedDate.month ||
+                analysisDate.day != selectedDate.day) {
+              return false;
+            }
+          }
+          
+          // 文本搜索筛选
+          if (_personalitySearchQuery.isNotEmpty) {
+            final mbtiType = analysis.mbtiType ?? '';
+            final description = analysis.description ?? '';
+            final aiAnalysisText = analysis.aiAnalysisText ?? '';
+            final dateStr = analysis.analysisDate.toString();
+            final query = _personalitySearchQuery.toLowerCase();
+            if (!mbtiType.toLowerCase().contains(query) &&
+                !description.toLowerCase().contains(query) &&
+                !aiAnalysisText.toLowerCase().contains(query) &&
+                !dateStr.toLowerCase().contains(query)) {
+              return false;
+            }
+          }
+          
+          return true;
+        }).toList();
+      });
+    }
+    
+    // 选择日期
+    Future<void> _pickPersonalityDate() async {
+      final now = DateTime.now();
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: _personalitySelectedDate ?? now,
+        firstDate: DateTime(now.year - 1, now.month, now.day),
+        lastDate: now,
+        helpText: '选择要筛选的日期',
+        locale: const Locale('zh', 'CN'),
+      );
+      if (picked != null) {
+        setState(() {
+          _personalitySelectedDate = picked;
+          _filterPersonalityHistory();
+        });
+      }
+    }
+    
+    return Column(
+      children: [
+        // 搜索和筛选控件
+        Container(
+          padding: const EdgeInsets.all(16.0),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // 搜索框
+              TextField(
+                decoration: InputDecoration(
+                  hintText: '搜索MBTI类型、分析内容或日期...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _personalitySearchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            setState(() {
+                              _personalitySearchQuery = '';
+                              _filterPersonalityHistory();
+                            });
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF10B981)),
+                  ),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _personalitySearchQuery = value;
+                    _filterPersonalityHistory();
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              // MBTI类型筛选
+              Row(
+                children: [
+                  const Text('MBTI类型筛选: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: DropdownButton<String>(
+                        value: _selectedPersonalityMbtiType,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        icon: const Icon(Icons.arrow_drop_down),
+                        items: _allMbtiTypes.map((type) {
+                          return DropdownMenuItem<String>(
+                            value: type,
+                            child: Text(type),
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          if (newValue != null) {
+                            setState(() {
+                              _selectedPersonalityMbtiType = newValue;
+                              _filterPersonalityHistory();
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // 日期筛选
+              Row(
+                children: [
+                  const Text('日期筛选: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: InkWell(
+                      onTap: _pickPersonalityDate,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey[300]!),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _personalitySelectedDate != null
+                                  ? DateFormat('yyyy-MM-dd').format(_personalitySelectedDate!)
+                                  : '选择日期',
+                              style: TextStyle(
+                                color: _personalitySelectedDate != null
+                                    ? Colors.black87
+                                    : Colors.grey[600],
+                              ),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_personalitySelectedDate != null)
+                                  IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    color: Colors.grey[600],
+                                    onPressed: () {
+                                      setState(() {
+                                        _personalitySelectedDate = null;
+                                        _filterPersonalityHistory();
+                                      });
+                                    },
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                const Icon(Icons.calendar_today, size: 18, color: Color(0xFF10B981)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _filteredPersonalityHistory.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _personalityHistory.isEmpty
+                            ? Icons.psychology_outlined
+                            : Icons.search_off,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _personalityHistory.isEmpty
+                            ? '暂无性格分析历史'
+                            : '未找到匹配的记录',
+                        style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _filteredPersonalityHistory.length,
+                  itemBuilder: (context, index) {
+                    final analysis = _filteredPersonalityHistory[index];
+                    final traitEntries = analysis.personalityTraits.entries.toList();
+                    final workSuggestionEntries = analysis.workSuggestions.entries.toList();
+                    final summaryText = analysis.workSuggestions['日志分析摘要']?.toString()
+                        ?? analysis.description
+                        ?? analysis.aiAnalysisText
+                        ?? 'AI已结合日志与MBTI生成综合分析。';
+                    
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildMbtiAvatar(analysis.mbtiType),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${analysis.mbtiType} 性格分析',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1E3A8A),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '分析时间：${TimeUtils.formatDateTime(analysis.analysisDate.toLocal())}',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFF6B7280),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (analysis.isDeepSeek == true)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF10B981).withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'DeepSeek',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF047857),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          _buildHistoryInfoRow(
+                            icon: Icons.notes_outlined,
+                            title: '日志&MBTI综合摘要',
+                            content: _truncateText(summaryText),
+                          ),
+                          if (traitEntries.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            const Text(
+                              '核心性格特质',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1F2937),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: traitEntries.take(6).map((entry) {
+                                return _buildTraitChip(
+                                  entry.key,
+                                  entry.value.toString(),
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                          if (workSuggestionEntries.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            const Text(
+                              'AI分析数据',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1F2937),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ...workSuggestionEntries.take(3).map((entry) {
+                              return _buildHistoryInfoRow(
+                                icon: Icons.data_usage_outlined,
+                                title: entry.key,
+                                content: _truncateText(_formatHistoryValue(entry.value)),
+                              );
+                            }),
+                          ],
+                          if ((analysis.aiAnalysisText ?? '').isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            _buildHistoryInfoRow(
+                              icon: Icons.insights_outlined,
+                              title: 'AI深度分析',
+                              content: _truncateText(analysis.aiAnalysisText!),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: () => _showPersonalityDetail(analysis),
+                              icon: const Icon(Icons.visibility_outlined),
+                              label: const Text('查看完整报告'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
