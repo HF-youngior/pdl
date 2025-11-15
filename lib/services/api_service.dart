@@ -14,7 +14,7 @@ class ApiService {
   // Dynamically resolve host/port for different platforms
   static http.Client _client = http.Client();
 
-  @visibleForTesting
+ @visibleForTesting
   static void setMockClient(http.Client mockClient) {
     _client = mockClient;
   }
