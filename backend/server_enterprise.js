@@ -33,10 +33,10 @@ app.use('/', express.static(path.join(__dirname, 'public')));
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Pyx_07091817',
-  database: process.env.DB_NAME || 'enterprise_management',
+  password: pNAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
-  charset: 'utf8mb4',
+  charset: 'utf8mb4rocess.env.DB_PASSWORD || 'Pyx_07091817',
+                                              database: process.env.DB_',
   multipleStatements: true,
   timezone: '+08:00',  // 设置为北京时间
   waitForConnections: true,
