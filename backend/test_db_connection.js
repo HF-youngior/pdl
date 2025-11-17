@@ -5,9 +5,9 @@ async function testConnection() {
     console.log('正在测试数据库连接...');
     
     const connection = await mysql.createConnection({
-      host: 'localhost',
-      user: 'root',
-      password: 'Pyx_07091817',
+      host: 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
+      user: 'pdl',
+      password: 'Pdl123456',
       database: 'enterprise_management',
       port: 3306,
       charset: 'utf8mb4'

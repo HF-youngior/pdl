@@ -29,11 +29,11 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 // 静态文件服务 - 根路径访问public目录
 app.use('/', express.static(path.join(__dirname, 'public')));
 
-// 数据库连接
+// 数据库连接 - 云数据库配置
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Pyx_07091817',
+  host: process.env.DB_HOST || 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
+  user: process.env.DB_USER || 'pdl',
+  password: process.env.DB_PASSWORD || 'Pdl123456',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
   charset: 'utf8mb4',
@@ -132,8 +132,8 @@ async function createTables() {
       name VARCHAR(100) NOT NULL UNIQUE,
       description TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )`,
-    
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
     // 用户表 - 扩展支持多层级权限
     `CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(36) PRIMARY KEY,
@@ -149,8 +149,8 @@ async function createTables() {
       last_login_at TIMESTAMP NULL,
       FOREIGN KEY (department_id) REFERENCES departments(id),
       FOREIGN KEY (parent_id) REFERENCES users(id)
-    )`,
-    
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
     // 公司十大重要事项表
     `CREATE TABLE IF NOT EXISTS company_important_items (
       id VARCHAR(36) PRIMARY KEY,
@@ -165,8 +165,8 @@ async function createTables() {
       updated_by VARCHAR(36) NULL,
       FOREIGN KEY (created_by) REFERENCES users(id),
       FOREIGN KEY (updated_by) REFERENCES users(id)
-    )`,
-    
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
     // 任务表 - 支持层级任务关系
     `CREATE TABLE IF NOT EXISTS tasks (
       id VARCHAR(36) PRIMARY KEY,
@@ -200,8 +200,8 @@ async function createTables() {
       FOREIGN KEY (department_id) REFERENCES departments(id),
       FOREIGN KEY (created_by) REFERENCES users(id),
       FOREIGN KEY (related_task_id) REFERENCES tasks(id)
-    )`,
-    
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
     // 任务通知表
     `CREATE TABLE IF NOT EXISTS task_notifications (
       id VARCHAR(36) PRIMARY KEY,
@@ -215,8 +215,8 @@ async function createTables() {
       FOREIGN KEY (task_id) REFERENCES tasks(id),
       FOREIGN KEY (from_user_id) REFERENCES users(id),
       FOREIGN KEY (to_user_id) REFERENCES users(id)
-    )`,
-    
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
     // 个人日志表
     `CREATE TABLE IF NOT EXISTS personal_logs (
       id VARCHAR(36) PRIMARY KEY,
@@ -242,8 +242,8 @@ async function createTables() {
       is_archived BOOLEAN DEFAULT FALSE,
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (related_task_id) REFERENCES tasks(id)
-    )`,
-    
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
     // 系统日志表
     `CREATE TABLE IF NOT EXISTS system_logs (
       id VARCHAR(36) PRIMARY KEY,
@@ -255,7 +255,7 @@ async function createTables() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       metadata JSON,
       FOREIGN KEY (user_id) REFERENCES users(id)
-    )`,
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
 
     // MBTI记录表 - 存储用户性格测试结果和AI分析建议
     `CREATE TABLE IF NOT EXISTS mbti_records (
@@ -280,7 +280,7 @@ async function createTables() {
       INDEX idx_mbti_type (mbti_type),
       INDEX idx_is_active (is_active),
       INDEX idx_user_test_date (user_id, test_date)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MBTI测试记录表，存储用户性格测试结果和AI分析建议'`,
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MBTI测试记录表，存储用户性格测试结果和AI分析建议';`,
 
     // 词云分析表 - 存储用户日志的词云分析结果
     `CREATE TABLE IF NOT EXISTS wordcloud_analysis (
@@ -295,7 +295,7 @@ async function createTables() {
       INDEX idx_user_id (user_id),
       INDEX idx_analysis_date (analysis_date),
       INDEX idx_user_analysis_date (user_id, analysis_date)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='词云分析表，存储用户日志的词云分析结果'`,
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='词云分析表，存储用户日志的词云分析结果';`,
 
     // 性格分析表 - 存储AI性格分析结果
     `CREATE TABLE IF NOT EXISTS personality_analysis (
@@ -314,7 +314,7 @@ async function createTables() {
       INDEX idx_analysis_date (analysis_date),
       INDEX idx_mbti_type (mbti_type),
       INDEX idx_user_analysis_date (user_id, analysis_date)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='性格分析表，存储AI性格分析结果'`,
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='性格分析表，存储AI性格分析结果';`,
 
     `CREATE TABLE IF NOT EXISTS log_task_linkage (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -326,7 +326,7 @@ async function createTables() {
       UNIQUE KEY log_task_unique (log_id, task_id),
       FOREIGN KEY (log_id) REFERENCES personal_logs(id) ON DELETE CASCADE,
       FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-    )`
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
   ];
 
   for (const table of tables) {
