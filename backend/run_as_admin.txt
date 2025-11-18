@@ -1,0 +1,21 @@
+========================================
+快速配置防火墙规则 - 管理员命令
+========================================
+
+请按以下步骤操作：
+
+1. 按 Win + X，选择"Windows PowerShell (管理员)"或"终端 (管理员)"
+2. 在弹出的UAC对话框中点击"是"
+3. 复制并运行以下命令：
+
+cd D:\pdl\backend
+powershell -ExecutionPolicy Bypass -File ".\allow_port_8080.ps1"
+
+或者直接运行这个单行命令：
+
+New-NetFirewallRule -DisplayName "Flutter Backend Server Port 8080" -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow -Profile Any -Description "允许 Flutter 后端服务器端口 8080，用于手机连接"
+
+========================================
+
+
+

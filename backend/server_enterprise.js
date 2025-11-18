@@ -33,7 +33,7 @@ app.use('/', express.static(path.join(__dirname, 'public')));
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Pyx_07091817',
+  password: process.env.DB_PASSWORD || '23301144',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
   charset: 'utf8mb4',
@@ -3905,10 +3905,12 @@ app.get('/api/mbti-records/statistics', authenticateToken, async (req, res) => {
 async function startServer() {
   await initDatabase();
   
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`企业管理系统服务器运行在端口 ${PORT}`);
     console.log(`API地址: http://localhost:${PORT}/api`);
     console.log(`Web管理端: http://localhost:${PORT}/web_admin`);
+    console.log(`\n📱 手机访问地址（同一WiFi网络）:`);
+    console.log(`   请使用电脑的IP地址: http://[电脑IP]:${PORT}/api`);
     console.log(`\n📱 测试账户:`);
     console.log(`   管理员: admin / admin123`);
     console.log(`   创始人: founder1 / founder123, founder2 / founder123`);
