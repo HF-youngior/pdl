@@ -45,6 +45,8 @@ const dbConfig = {
   connectTimeout: 10000
 };
 
+const allowedUserRoles = ['admin', 'founder', 'department_head', 'team_leader', 'employee'];
+
 let db; // 连接池
 
 // 时区处理工具函数
@@ -133,7 +135,7 @@ async function createTables() {
       description TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-
+    
     // 用户表 - 扩展支持多层级权限
     `CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(36) PRIMARY KEY,
@@ -150,7 +152,7 @@ async function createTables() {
       FOREIGN KEY (department_id) REFERENCES departments(id),
       FOREIGN KEY (parent_id) REFERENCES users(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
-
+    
     // 公司十大重要事项表
     `CREATE TABLE IF NOT EXISTS company_important_items (
       id VARCHAR(36) PRIMARY KEY,
@@ -166,7 +168,7 @@ async function createTables() {
       FOREIGN KEY (created_by) REFERENCES users(id),
       FOREIGN KEY (updated_by) REFERENCES users(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
-
+    
     // 任务表 - 支持层级任务关系
     `CREATE TABLE IF NOT EXISTS tasks (
       id VARCHAR(36) PRIMARY KEY,
@@ -201,7 +203,7 @@ async function createTables() {
       FOREIGN KEY (created_by) REFERENCES users(id),
       FOREIGN KEY (related_task_id) REFERENCES tasks(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
-
+    
     // 任务通知表
     `CREATE TABLE IF NOT EXISTS task_notifications (
       id VARCHAR(36) PRIMARY KEY,
@@ -216,7 +218,7 @@ async function createTables() {
       FOREIGN KEY (from_user_id) REFERENCES users(id),
       FOREIGN KEY (to_user_id) REFERENCES users(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
-
+    
     // 个人日志表
     `CREATE TABLE IF NOT EXISTS personal_logs (
       id VARCHAR(36) PRIMARY KEY,
@@ -243,7 +245,7 @@ async function createTables() {
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (related_task_id) REFERENCES tasks(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
-
+    
     // 系统日志表
     `CREATE TABLE IF NOT EXISTS system_logs (
       id VARCHAR(36) PRIMARY KEY,
@@ -1217,6 +1219,185 @@ app.get('/api/users', authenticateToken, async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error('获取用户列表错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 创建用户
+app.post('/api/users', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { username, password, name, position, department_id, role, parent_id } = req.body || {};
+
+    if (!username || !password || !name || !position || !department_id || !role) {
+      return res.status(400).json({ error: '用户名、密码、姓名、职位、部门和角色为必填项' });
+    }
+
+    if (!allowedUserRoles.includes(role)) {
+      return res.status(400).json({ error: '不支持的角色类型' });
+    }
+
+    const [[existingUser]] = await db.execute('SELECT id FROM users WHERE username = ?', [username]);
+    if (existingUser) {
+      return res.status(409).json({ error: '该用户名已被使用' });
+    }
+
+    const [[departmentExists]] = await db.execute('SELECT id FROM departments WHERE id = ?', [department_id]);
+    if (!departmentExists) {
+      return res.status(400).json({ error: '部门不存在，请重新选择' });
+    }
+
+    let parentToUse = parent_id || null;
+    if (parentToUse) {
+      const [[parentExists]] = await db.execute('SELECT id FROM users WHERE id = ?', [parentToUse]);
+      if (!parentExists) {
+        return res.status(400).json({ error: '指定的上级用户不存在' });
+      }
+    }
+
+    const userId = require('crypto').randomUUID();
+    await db.execute(
+      `INSERT INTO users (id, username, password, name, position, department_id, role, parent_id, is_active, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, NOW())`,
+      [userId, username.trim(), password, name.trim(), position.trim(), department_id, role, parentToUse]
+    );
+
+    const [rows] = await db.execute(
+      `SELECT u.id, u.username, u.name, u.position, u.role, u.department_id, d.name as department_name, u.parent_id
+       FROM users u
+       LEFT JOIN departments d ON u.department_id = d.id
+       WHERE u.id = ?`,
+      [userId]
+    );
+
+    res.status(201).json({ message: '用户创建成功', user: rows[0] });
+  } catch (error) {
+    console.error('创建用户错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 更新用户
+app.put('/api/users/:id', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { password, name, position, department_id, role, parent_id } = req.body || {};
+
+    const [existingRows] = await db.execute('SELECT * FROM users WHERE id = ? AND is_active = TRUE', [id]);
+    if (existingRows.length === 0) {
+      return res.status(404).json({ error: '用户不存在或已被删除' });
+    }
+
+    const updates = [];
+    const values = [];
+
+    if (password && password.trim()) {
+      updates.push('password = ?');
+      values.push(password.trim());
+    }
+    if (name && name.trim()) {
+      updates.push('name = ?');
+      values.push(name.trim());
+    }
+    if (position && position.trim()) {
+      updates.push('position = ?');
+      values.push(position.trim());
+    }
+    if (typeof department_id === 'string' && department_id.trim()) {
+      const [[departmentExists]] = await db.execute('SELECT id FROM departments WHERE id = ?', [department_id.trim()]);
+      if (!departmentExists) {
+        return res.status(400).json({ error: '部门不存在，请重新选择' });
+      }
+      updates.push('department_id = ?');
+      values.push(department_id.trim());
+    }
+    if (role) {
+      if (!allowedUserRoles.includes(role)) {
+        return res.status(400).json({ error: '不支持的角色类型' });
+      }
+      updates.push('role = ?');
+      values.push(role);
+    }
+    if (parent_id !== undefined) {
+      if (parent_id) {
+        const [[parentExists]] = await db.execute('SELECT id FROM users WHERE id = ?', [parent_id]);
+        if (!parentExists) {
+          return res.status(400).json({ error: '指定的上级用户不存在' });
+        }
+        updates.push('parent_id = ?');
+        values.push(parent_id);
+      } else {
+        updates.push('parent_id = NULL');
+      }
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: '没有可更新的字段' });
+    }
+
+    const updateSql = `UPDATE users SET ${updates.join(', ')} WHERE id = ?`;
+    values.push(id);
+    await db.execute(updateSql, values);
+
+    const [rows] = await db.execute(
+      `SELECT u.id, u.username, u.name, u.position, u.role, u.department_id, d.name as department_name, u.parent_id
+       FROM users u
+       LEFT JOIN departments d ON u.department_id = d.id
+       WHERE u.id = ?`,
+      [id]
+    );
+
+    res.json({ message: '用户更新成功', user: rows[0] });
+  } catch (error) {
+    console.error('更新用户错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 删除用户（软删除）
+app.delete('/api/users/:id', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (id === req.user.id) {
+      return res.status(400).json({ error: '不能删除当前登录的账号' });
+    }
+
+    const [existingRows] = await db.execute('SELECT id FROM users WHERE id = ? AND is_active = TRUE', [id]);
+    if (existingRows.length === 0) {
+      return res.status(404).json({ error: '用户不存在或已被删除' });
+    }
+
+    await db.execute('UPDATE users SET is_active = FALSE WHERE id = ?', [id]);
+    res.json({ message: '用户已删除' });
+  } catch (error) {
+    console.error('删除用户错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 仪表盘统计数据
+app.get('/api/admin/dashboard-stats', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
+  try {
+    const [
+      [userRows],
+      [importantRows],
+      [pendingRows],
+      [todayLogRows]
+    ] = await Promise.all([
+      db.execute('SELECT COUNT(*) AS total FROM users WHERE is_active = TRUE'),
+      db.execute('SELECT COUNT(*) AS total FROM company_important_items WHERE is_selected = TRUE'),
+      db.execute(`SELECT COUNT(*) AS total FROM tasks WHERE status IN ('pending', 'in_progress')`),
+      db.execute(`SELECT COUNT(*) AS total FROM system_logs WHERE DATE(created_at) = CURDATE()`)
+    ]);
+
+    res.json({
+      totalUsers: Number(userRows?.[0]?.total || 0),
+      totalImportantItems: Number(importantRows?.[0]?.total || 0),
+      pendingTasks: Number(pendingRows?.[0]?.total || 0),
+      todayLogs: Number(todayLogRows?.[0]?.total || 0)
+    });
+  } catch (error) {
+    console.error('获取仪表盘统计数据错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
@@ -3328,12 +3509,12 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
       logs: logs.map(l => {
         const images = safeParseJSON(l.images) || [];
         return {
-          id: l.id,
-          title: l.title,
-          content: l.content,
-          category: l.category,
-          quadrant: l.quadrant,
-          is_completed: l.is_completed,
+        id: l.id,
+        title: l.title,
+        content: l.content,
+        category: l.category,
+        quadrant: l.quadrant,
+        is_completed: l.is_completed,
           created_at: formatDateTimeForBeijing(l.created_at),
           images,
           location_name: l.location_name,
@@ -3812,18 +3993,18 @@ app.put('/api/mbti-records/:id', authenticateToken, async (req, res) => {
     // 记录系统日志 - 确保所有参数都不是 undefined，user_name 不能为 null
     // 即使日志插入失败，也不影响主操作的成功
     try {
-      await db.execute(
-        `INSERT INTO system_logs (id, user_id, user_name, action, description, category)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          `log-${Date.now()}`,
+    await db.execute(
+      `INSERT INTO system_logs (id, user_id, user_name, action, description, category)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        `log-${Date.now()}`,
           safeUserId || null,
           req.user?.name || '未知用户',
-          'update_mbti_record',
+        'update_mbti_record',
           `更新MBTI记录: ${safeId || 'unknown'}`,
-          'mbti'
+        'mbti'
         ].map(v => v === undefined ? null : v)
-      );
+    );
     } catch (logError) {
       // 记录日志错误，但不影响主操作
       console.error('记录系统日志失败:', logError);
@@ -3999,18 +4180,18 @@ app.get('/api/ai/analyze-today', authenticateToken, async (req, res) => {
       selectedDate = sanitizedDate;
     } else if (range === 'today') {
       const [todayRows] = await db.execute(
-        `SELECT
-           COALESCE(log_title, title) as title,
-           COALESCE(log_content, content) as content
-         FROM personal_logs
-         WHERE user_id = ?
-           AND (
-             (log_date IS NOT NULL AND DATE(log_date) = CURDATE())
-             OR (log_date IS NULL AND DATE(created_at) = CURDATE())
+      `SELECT
+         COALESCE(log_title, title) as title,
+         COALESCE(log_content, content) as content
+       FROM personal_logs
+       WHERE user_id = ?
+         AND (
+           (log_date IS NOT NULL AND DATE(log_date) = CURDATE())
+           OR (log_date IS NULL AND DATE(created_at) = CURDATE())
            )
          ORDER BY COALESCE(log_date, created_at) DESC`,
-        [userId]
-      );
+      [userId]
+    );
       rows = todayRows;
       usedRange = 'today';
     } else if (range === 'last7days') {
@@ -4097,24 +4278,24 @@ app.get('/api/ai/analyze-today', authenticateToken, async (req, res) => {
 
     // 如果DeepSeek API未配置或失败，使用本地算法
     if (!isDeepSeek) {
-      // 临时使用简单分词（等segmentit安装后恢复）
-      const tokens = combined.split(/[\s\n\r\t,，。！？；：""''（）()【】\[\]{}]+/)
-        .filter(w => w && w.trim().length > 1);
+    // 临时使用简单分词（等segmentit安装后恢复）
+    const tokens = combined.split(/[\s\n\r\t,，。！？；：""''（）()【】\[\]{}]+/)
+      .filter(w => w && w.trim().length > 1);
 
-      if (tokens.length === 0) {
+    if (tokens.length === 0) {
         return res.json({ keywords: [], wordFrequencies: [], range: usedRange, isDeepSeek: false });
-      }
+    }
 
-      const freqMap = {};
-      for (const w of tokens) {
-        freqMap[w] = (freqMap[w] || 0) + 1;
-      }
-      const wordFrequencies = Object.entries(freqMap)
-        .map(([word, count]) => ({ word, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, Number(topK));
+    const freqMap = {};
+    for (const w of tokens) {
+      freqMap[w] = (freqMap[w] || 0) + 1;
+    }
+    const wordFrequencies = Object.entries(freqMap)
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, Number(topK));
 
-      const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
+    const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
       const keywords = wordFrequencies.map(x => ({ 
         word: x.word, 
         weight: x.count / (maxCount || 1),

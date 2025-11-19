@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/user.dart';
 import '../widgets/quadrant_widget.dart';
 import 'company_important_screen.dart';
@@ -37,6 +38,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<String> _personalPreviewItems = [];
   MbtiTestResult? _latestMbti;
   bool _isLoadingPreview = true;
+  List<Task> _myAssignedTasks = [];
 
   @override
   void initState() {
@@ -59,11 +61,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadBadgeCount() async {
     try {
       final List<Task> tasks = await TaskService.getTasks();
-      final myTasks = tasks.where((t) => t.assigneeId == widget.user.id).toList();
+      final myTasks = tasks.where((t) => t.assigneeId == widget.user.id || t.assigneeName == widget.user.name).toList();
       final count = myTasks.where((t) => (t.priority.toLowerCase() == 'p0' || t.priority.toLowerCase() == 'p1') && t.status != 'completed').length;
-      if (mounted) setState(() { _highPriorityPendingCount = count; });
+      if (mounted) {
+        setState(() {
+          _highPriorityPendingCount = count;
+          _myAssignedTasks = myTasks;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() { _highPriorityPendingCount = 0; });
+      if (mounted) {
+        setState(() {
+          _highPriorityPendingCount = 0;
+          _myAssignedTasks = [];
+        });
+      }
     }
   }
 
@@ -129,9 +141,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.notifications),
-                  onPressed: () {
-                    _loadBadgeCount();
-                  },
+                  onPressed: _openNotificationsPanel,
                 ),
                 if (_settings.notificationsEnabled && _highPriorityPendingCount > 0)
                   Positioned(
@@ -327,5 +337,168 @@ class _DashboardScreenState extends State<DashboardScreen> {
       items.add('姓名: ${widget.user.name}');
     }
     return items.take(3).toList();
+  }
+
+  Future<void> _openNotificationsPanel() async {
+    if (_myAssignedTasks.isEmpty) {
+      await _loadBadgeCount();
+    }
+    if (!mounted) return;
+
+    final pendingTasks = _myAssignedTasks
+        .where((task) => task.status != 'completed')
+        .toList()
+      ..sort((a, b) {
+        DateTime? aDeadline = a.deadline ?? a.endTime ?? a.startTime;
+        DateTime? bDeadline = b.deadline ?? b.endTime ?? b.startTime;
+        if (aDeadline != null && bDeadline != null) {
+          return aDeadline.compareTo(bDeadline);
+        }
+        if (aDeadline != null) return -1;
+        if (bDeadline != null) return 1;
+        return b.createdAt.compareTo(a.createdAt);
+      });
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, controller) {
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.notifications_active, color: Colors.orange),
+                      const SizedBox(width: 8),
+                      Text(
+                        '任务提醒（${pendingTasks.length}）',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: () async {
+                          await _loadBadgeCount();
+                          if (!mounted) return;
+                          Navigator.of(context).pop();
+                          _openNotificationsPanel();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (pendingTasks.isEmpty)
+                    const Expanded(
+                      child: Center(
+                        child: Text(
+                          '当前没有需要处理的任务',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: ListView.builder(
+                        controller: controller,
+                        itemCount: pendingTasks.length,
+                        itemBuilder: (context, index) {
+                          final task = pendingTasks[index];
+                          final deadline = task.deadline ?? task.endTime ?? task.startTime;
+                          final deadlineText = deadline != null
+                              ? DateFormat('MM-dd HH:mm').format(deadline.toLocal())
+                              : '未设置';
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: _priorityColor(task.priority).withOpacity(0.15),
+                                child: Icon(
+                                  Icons.assignment,
+                                  color: _priorityColor(task.priority),
+                                ),
+                              ),
+                              title: Text(task.title),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('截止：$deadlineText'),
+                                  Text('状态：${_statusLabel(task.status)}'),
+                                ],
+                              ),
+                              trailing: Text(
+                                _priorityLabel(task.priority),
+                                style: TextStyle(
+                                  color: _priorityColor(task.priority),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Color _priorityColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'p0':
+        return Colors.red;
+      case 'p1':
+        return Colors.orange;
+      case 'p2':
+        return Colors.blue;
+      case 'p3':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _priorityLabel(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'p0':
+        return '重要且紧急';
+      case 'p1':
+        return '重要不紧急';
+      case 'p2':
+        return '紧急不重要';
+      case 'p3':
+        return '不重要不紧急';
+      default:
+        return priority.toUpperCase();
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'pending':
+        return '待处理';
+      case 'in_progress':
+        return '进行中';
+      case 'completed':
+        return '已完成';
+      case 'cancelled':
+        return '已取消';
+      default:
+        return status;
+    }
   }
 }

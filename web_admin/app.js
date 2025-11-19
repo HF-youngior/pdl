@@ -6,11 +6,36 @@ const API_BASE_URL = (typeof window !== 'undefined' && window.API_BASE_URL)
   ? window.API_BASE_URL 
   : 'http://localhost:8080/api';
 
+// 角色与部门配置
+const ROLE_OPTIONS = [
+    { value: 'admin', label: '管理员' },
+    { value: 'founder', label: '创始人' },
+    { value: 'department_head', label: '部门总监' },
+    { value: 'team_leader', label: '团队长' },
+    { value: 'employee', label: '员工' },
+];
+
+const ROLE_BADGE_COLORS = {
+    admin: 'danger',
+    founder: 'dark',
+    department_head: 'warning',
+    team_leader: 'info',
+    employee: 'primary',
+};
+
+const DEPARTMENT_OPTIONS = [
+    { id: 'dept-001', name: 'HR Department', label: '人事部' },
+    { id: 'dept-002', name: 'Finance Department', label: '财务部' },
+    { id: 'dept-003', name: 'Marketing Department', label: '宣传部' },
+];
+
 // 当前用户信息
 let currentUser = null;
 let currentTask = null;
 let users = [];
 let authToken = null;
+let tasksList = [];
+let importantItemsList = [];
 
 // 统一清理模态框遗留的遮罩与滚动锁
 function resetModalState() {
@@ -30,6 +55,7 @@ let lastNotificationCheckTime = null;
 document.addEventListener('DOMContentLoaded', function() {
     // 检查是否已登录
     checkAuthStatus();
+    initUserFormOptions();
     
     // 添加责任人选择事件监听器
     document.addEventListener('change', function(e) {
@@ -365,15 +391,40 @@ function showSection(sectionName) {
 
 // 加载仪表板数据
 async function loadDashboardData() {
+    const totalUsersEl = document.getElementById('totalUsers');
+    const totalImportantEl = document.getElementById('totalImportantItems');
+    const pendingTasksEl = document.getElementById('pendingTasks');
+    const todayLogsEl = document.getElementById('todayLogs');
+
+    if (!authToken) {
+        totalUsersEl.textContent = '--';
+        totalImportantEl.textContent = '--';
+        pendingTasksEl.textContent = '--';
+        todayLogsEl.textContent = '--';
+        return;
+    }
+
     try {
-        // 这里应该调用API获取统计数据
-        // 由于示例数据，我们使用模拟数据
-        document.getElementById('totalUsers').textContent = '12';
-        document.getElementById('totalImportantItems').textContent = '8';
-        document.getElementById('pendingTasks').textContent = '15';
-        document.getElementById('todayLogs').textContent = '23';
+        const response = await fetch(`${API_BASE_URL}/admin/dashboard-stats`, {
+            headers: getAuthHeaders()
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        totalUsersEl.textContent = data.totalUsers ?? '0';
+        totalImportantEl.textContent = data.totalImportantItems ?? '0';
+        pendingTasksEl.textContent = data.pendingTasks ?? '0';
+        todayLogsEl.textContent = data.todayLogs ?? '0';
     } catch (error) {
         console.error('加载仪表板数据失败:', error);
+        totalUsersEl.textContent = '--';
+        totalImportantEl.textContent = '--';
+        pendingTasksEl.textContent = '--';
+        todayLogsEl.textContent = '--';
+        showAlert('加载仪表板数据失败，请检查网络或登录状态', 'danger');
     }
 }
 
@@ -398,39 +449,63 @@ async function loadUsers() {
         }
         
         users = await response.json(); // 保存到全局变量
-        
-        tbody.innerHTML = '';
-        
-        if (users.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">暂无用户数据</td></tr>';
-            return;
-        }
-        
-        users.forEach(user => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${user.username}</td>
-                <td>${user.name}</td>
-                <td>${user.position}</td>
-                <td>${user.department_name || user.department || '-'}</td>
-                <td><span class="badge bg-${getRoleBadgeColor(user.role)}">${user.role}</span></td>
-                <td>${user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '从未登录'}</td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="editUser('${user.id}')">
-                        <i class="bi bi-pencil"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${user.id}')">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(row);
-        });
+        renderUsersTable();
     } catch (error) {
         console.error('加载用户列表失败:', error);
         tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">加载失败: ' + error.message + '</td></tr>';
         showAlert('加载用户列表失败: ' + error.message, 'danger');
     }
+}
+
+function renderUsersTable() {
+    const tbody = document.getElementById('usersTableBody');
+    if (!tbody) return;
+    
+    const keyword = (document.getElementById('userSearchInput')?.value || '').trim().toLowerCase();
+    const filtered = keyword
+        ? users.filter(user => {
+            const departmentLabel = user.department_name || getDepartmentLabel(user.department_id) || user.department || '';
+            return [
+                user.username,
+                user.name,
+                user.position,
+                departmentLabel
+            ].some(field => (field || '').toLowerCase().includes(keyword));
+        })
+        : users;
+    
+    tbody.innerHTML = '';
+    
+    if (!filtered.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${keyword ? '没有匹配的用户' : '暂无用户数据'}</td></tr>`;
+        return;
+    }
+    
+    filtered.forEach(user => {
+        const departmentLabel = user.department_name || getDepartmentLabel(user.department_id) || user.department || '-';
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${user.username}</td>
+            <td>${user.name}</td>
+            <td>${user.position}</td>
+            <td>${departmentLabel}</td>
+            <td><span class="badge bg-${getRoleBadgeColor(user.role)}">${getRoleDisplay(user.role)}</span></td>
+            <td>${user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '从未登录'}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="showEditUserModal('${user.id}')">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${user.id}')">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function handleUserSearch() {
+    renderUsersTable();
 }
 
 // 加载重要事项列表
@@ -444,39 +519,66 @@ async function loadImportantItems() {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
-        const items = await response.json();
-        
-        const tbody = document.getElementById('importantItemsTableBody');
-        tbody.innerHTML = '';
-        
-        items.forEach(item => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${item.title}</td>
-                <td>${item.description || '-'}</td>
-                <td><span class="badge bg-${getPriorityBadgeColor(item.priority)}">${item.priority}</span></td>
-                <td><span class="badge bg-${getStatusBadgeColor(item.status)}">${item.status}</span></td>
-                <td>${item.department}</td>
-                <td>${item.deadline ? new Date(item.deadline).toLocaleDateString() : '-'}</td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="editImportantItem('${item.id}')">
-                        <i class="bi bi-pencil"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteImportantItem('${item.id}')">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(row);
-        });
+        importantItemsList = await response.json();
+        renderImportantItemsTable();
     } catch (error) {
         console.error('加载重要事项列表失败:', error);
         showAlert('加载重要事项列表失败', 'danger');
     }
 }
 
+function renderImportantItemsTable() {
+    const tbody = document.getElementById('importantItemsTableBody');
+    if (!tbody) return;
+    
+    const keyword = (document.getElementById('importantSearchInput')?.value || '').trim().toLowerCase();
+    const filtered = keyword
+        ? importantItemsList.filter(item =>
+            [item.title, item.description, item.department, item.priority, item.status]
+                .some(field => (field || '').toString().toLowerCase().includes(keyword))
+          )
+        : importantItemsList;
+    
+    tbody.innerHTML = '';
+    
+    if (!filtered.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${keyword ? '没有匹配的事项' : '暂无数据'}</td></tr>`;
+        return;
+    }
+    
+    filtered.forEach(item => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${item.title}</td>
+            <td>${item.description || '-'}</td>
+            <td><span class="badge bg-${getPriorityBadgeColor(item.priority)}">${item.priority}</span></td>
+            <td><span class="badge bg-${getStatusBadgeColor(item.status)}">${item.status}</span></td>
+            <td>${item.department || '-'}</td>
+            <td>${item.deadline ? new Date(item.deadline).toLocaleDateString() : '-'}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="editImportantItem('${item.id}')">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteImportantItem('${item.id}')">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function handleImportantSearch() {
+    renderImportantItemsTable();
+}
+
 // 加载任务列表
 async function loadTasks() {
+    const tbody = document.getElementById('tasksTableBody');
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center"><i class="bi bi-hourglass-split"></i> 加载中...</td></tr>';
+    }
+
     try {
         const response = await fetch(`${API_BASE_URL}/tasks`, {
             headers: getAuthHeaders()
@@ -486,103 +588,126 @@ async function loadTasks() {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
-        const tasks = await response.json();
+        tasksList = await response.json();
+        renderTasksTable();
+    } catch (error) {
+        console.error('加载任务列表失败:', error);
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">加载失败: ' + error.message + '</td></tr>';
+        }
+        showAlert('加载任务列表失败', 'danger');
+    }
+}
+
+function renderTasksTable() {
+    const tbody = document.getElementById('tasksTableBody');
+    if (!tbody) return;
+    
+    const keyword = (document.getElementById('taskSearchInput')?.value || '').trim().toLowerCase();
+    const filtered = keyword
+        ? tasksList.filter(task => {
+            const departmentDisplay = task.department || task.department_name || '';
+            return [
+                task.title,
+                task.description,
+                task.assignee_name,
+                departmentDisplay,
+                task.priority,
+                task.status
+            ].some(field => (field || '').toString().toLowerCase().includes(keyword));
+        })
+        : tasksList;
+    
+    // 统计任务数量（基于当前展示列表）
+    const totalTasks = filtered.length;
+    const inProgressTasks = filtered.filter(task => task.status === 'in_progress' || task.status === 'pending').length;
+    const completedTasks = filtered.filter(task => task.status === 'completed').length;
+    const overdueTasks = filtered.filter(task => {
+        if (!task.deadline) return false;
+        return new Date(task.deadline) < new Date() && task.status !== 'completed';
+    }).length;
+    
+    document.getElementById('totalTasksCount').textContent = totalTasks;
+    document.getElementById('inProgressTasksCount').textContent = inProgressTasks;
+    document.getElementById('completedTasksCount').textContent = completedTasks;
+    document.getElementById('overdueTasksCount').textContent = overdueTasks;
+    
+    tbody.innerHTML = '';
+    
+    if (!filtered.length) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">${keyword ? '没有匹配的任务' : '暂无任务数据'}</td></tr>`;
+        return;
+    }
+    
+    filtered.forEach(task => {
+        const row = document.createElement('tr');
+        const progress = calculateTaskProgress(task);
+        const isOverdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'completed';
         
-        const tbody = document.getElementById('tasksTableBody');
-        tbody.innerHTML = '';
+        const isRequestTask = task.is_request === true || task.is_request === 1;
+        const isAssignee = currentUser && (task.assignee_id === currentUser.id || task.assignee_name === currentUser.name);
+        const isProcessed = task.request_response;
         
-        // 统计任务数量
-        let totalTasks = tasks.length;
-        let inProgressTasks = tasks.filter(task => task.status === 'in_progress' || task.status === 'pending').length;
-        let completedTasks = tasks.filter(task => task.status === 'completed').length;
-        let overdueTasks = tasks.filter(task => {
-            if (!task.deadline) return false;
-            return new Date(task.deadline) < new Date() && task.status !== 'completed';
-        }).length;
-        
-        // 更新统计卡片
-        document.getElementById('totalTasksCount').textContent = totalTasks;
-        document.getElementById('inProgressTasksCount').textContent = inProgressTasks;
-        document.getElementById('completedTasksCount').textContent = completedTasks;
-        document.getElementById('overdueTasksCount').textContent = overdueTasks;
-        
-        tasks.forEach(task => {
-            const row = document.createElement('tr');
-            const progress = calculateTaskProgress(task);
-            const isOverdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'completed';
-            
-            // 判断是否为邀约任务
-            const isRequestTask = task.is_request === true || task.is_request === 1;
-            const isAssignee = currentUser && (task.assignee_id === currentUser.id || task.assignee_name === currentUser.name);
-            const isCreator = currentUser && (task.created_by === currentUser.id || task.created_by === currentUser.username);
-            const isProcessed = task.request_response; // 是否已处理（request_response不为空表示已处理）
-            
-            // 操作按钮：邀约任务显示特殊按钮，普通任务显示完整按钮
-            let actionButtons = '';
-            if (isRequestTask) {
-                // 邀约任务：只有被邀约人且未处理时显示"处理邀约"按钮（绿底白字）
-                // 其他情况（已处理、创建者等）显示"查看详情"按钮
-                if (isAssignee && !isProcessed) {
-                    // 被邀约人且未处理：显示"处理邀约"按钮（绿底白字）
-                    actionButtons = `
-                        <button class="btn btn-sm btn-success" onclick="showHandleRequestModal('${task.id}')" title="处理邀约">
-                            <i class="bi bi-check-circle"></i> 处理邀约
-                        </button>
-                    `;
-                } else {
-                    // 已处理或创建者：显示"查看详情"按钮
-                    actionButtons = `
-                        <button class="btn btn-sm btn-outline-info" onclick="viewTaskDetail('${task.id}')" title="查看详情">
-                            <i class="bi bi-eye"></i> 查看详情
-                        </button>
-                    `;
-                }
+        let actionButtons = '';
+        if (isRequestTask) {
+            if (isAssignee && !isProcessed) {
+                actionButtons = `
+                    <button class="btn btn-sm btn-success" onclick="showHandleRequestModal('${task.id}')" title="处理邀约">
+                        <i class="bi bi-check-circle"></i> 处理邀约
+                    </button>
+                `;
             } else {
-                // 普通任务：显示完整操作按钮（查看详情、编辑、删除）
                 actionButtons = `
                     <button class="btn btn-sm btn-outline-info" onclick="viewTaskDetail('${task.id}')" title="查看详情">
-                        <i class="bi bi-eye"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-primary" onclick="editTask('${task.id}')" title="编辑">
-                        <i class="bi bi-pencil"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTask('${task.id}')" title="删除">
-                        <i class="bi bi-trash"></i>
+                        <i class="bi bi-eye"></i> 查看详情
                     </button>
                 `;
             }
-            
-            row.innerHTML = `
-                <td>
-                    <div class="d-flex align-items-center">
-                        <div class="me-2" style="width: 12px; height: 12px; min-width: 12px; min-height: 12px; max-width: 12px; max-height: 12px; background-color: ${task.color || '#4CAF50'}; border-radius: 50%; flex-shrink: 0;"></div>
-                        ${isRequestTask ? '<span class="badge bg-danger me-2" style="font-size: 0.7rem;">邀约</span>' : ''}
-                        <span class="${isOverdue ? 'text-danger fw-bold' : ''}">${task.title}</span>
-                    </div>
-                </td>
-                <td>${task.description ? (task.description.length > 50 ? task.description.substring(0, 50) + '...' : task.description) : '-'}</td>
-                <td>${task.assignee_name}</td>
-                <td>${task.department}</td>
-                <td><span class="badge bg-${getPriorityBadgeColor(task.priority)}">${getPriorityText(task.priority)}</span></td>
-                <td><span class="badge bg-${getStatusBadgeColor(task.status)}">${isRequestTask && !isProcessed && task.status === 'pending' ? '待处理' : getStatusText(task.status)}</span></td>
-                <td>
-                    <div class="progress" style="height: 20px;">
-                        <div class="progress-bar ${getProgressBarColor(progress)}" role="progressbar" style="width: ${progress}%">
-                            ${progress}%
-                        </div>
-                    </div>
-                </td>
-                <td class="${isOverdue ? 'text-danger fw-bold' : ''}">${task.deadline ? new Date(task.deadline).toLocaleDateString() : '-'}</td>
-                <td>
-                    ${actionButtons}
-                </td>
+        } else {
+            actionButtons = `
+                <button class="btn btn-sm btn-outline-info" onclick="viewTaskDetail('${task.id}')" title="查看详情">
+                    <i class="bi bi-eye"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-primary" onclick="editTask('${task.id}')" title="编辑">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteTask('${task.id}')" title="删除">
+                    <i class="bi bi-trash"></i>
+                </button>
             `;
-            tbody.appendChild(row);
-        });
-    } catch (error) {
-        console.error('加载任务列表失败:', error);
-        showAlert('加载任务列表失败', 'danger');
-    }
+        }
+        
+        row.innerHTML = `
+            <td>
+                <div class="d-flex align-items-center">
+                    <div class="me-2" style="width: 12px; height: 12px; min-width: 12px; min-height: 12px; max-width: 12px; max-height: 12px; background-color: ${task.color || '#4CAF50'}; border-radius: 50%; flex-shrink: 0;"></div>
+                    ${isRequestTask ? '<span class="badge bg-danger me-2" style="font-size: 0.7rem;">邀约</span>' : ''}
+                    <span class="${isOverdue ? 'text-danger fw-bold' : ''}">${task.title}</span>
+                </div>
+            </td>
+            <td>${task.description ? (task.description.length > 50 ? task.description.substring(0, 50) + '...' : task.description) : '-'}</td>
+            <td>${task.assignee_name}</td>
+            <td>${task.department || task.department_name || '-'}</td>
+            <td><span class="badge bg-${getPriorityBadgeColor(task.priority)}">${getPriorityText(task.priority)}</span></td>
+            <td><span class="badge bg-${getStatusBadgeColor(task.status)}">${isRequestTask && !isProcessed && task.status === 'pending' ? '待处理' : getStatusText(task.status)}</span></td>
+            <td>
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar ${getProgressBarColor(progress)}" role="progressbar" style="width: ${progress}%">
+                        ${progress}%
+                    </div>
+                </div>
+            </td>
+            <td class="${isOverdue ? 'text-danger fw-bold' : ''}">${task.deadline ? new Date(task.deadline).toLocaleDateString() : '-'}</td>
+            <td>
+                ${actionButtons}
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function handleTaskSearch() {
+    renderTasksTable();
 }
 
 // 加载日志列表
@@ -611,8 +736,60 @@ async function loadLogs() {
     }
 }
 
+// 初始化用户表单选项
+function initUserFormOptions() {
+    populateDepartmentSelect('department');
+    populateRoleSelect('role');
+    populateDepartmentSelect('editDepartment');
+    populateRoleSelect('editRole');
+}
+
+function populateDepartmentSelect(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    select.innerHTML = '<option value="">选择部门</option>';
+    DEPARTMENT_OPTIONS.forEach(dept => {
+        const option = document.createElement('option');
+        option.value = dept.id;
+        option.textContent = `${dept.label} (${dept.name})`;
+        select.appendChild(option);
+    });
+}
+
+function populateRoleSelect(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    select.innerHTML = '<option value="">选择角色</option>';
+    ROLE_OPTIONS.forEach(role => {
+        const option = document.createElement('option');
+        option.value = role.value;
+        option.textContent = role.label;
+        select.appendChild(option);
+    });
+}
+
+function getDepartmentLabel(deptId) {
+    const match = DEPARTMENT_OPTIONS.find(d => d.id === deptId);
+    return match ? `${match.label}` : null;
+}
+
+function getDepartmentIdFromName(name) {
+    if (!name) return '';
+    const match = DEPARTMENT_OPTIONS.find(
+        d => d.id === name || d.name === name || d.label === name
+    );
+    return match ? match.id : '';
+}
+
+function getRoleDisplay(role) {
+    const match = ROLE_OPTIONS.find(r => r.value === role);
+    return match ? match.label : role || '未知';
+}
+
 // 显示添加用户模态框
 function showAddUserModal() {
+    const form = document.getElementById('addUserForm');
+    form.reset();
     const modal = new bootstrap.Modal(document.getElementById('addUserModal'));
     modal.show();
 }
@@ -620,38 +797,127 @@ function showAddUserModal() {
 // 添加用户
 async function addUser() {
     const form = document.getElementById('addUserForm');
-    const formData = new FormData(form);
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
     
-    const userData = {
-        username: document.getElementById('username').value,
+    const payload = {
+        username: document.getElementById('username').value.trim(),
         password: document.getElementById('password').value,
-        name: document.getElementById('name').value,
-        position: document.getElementById('position').value,
-        department: document.getElementById('department').value,
-        role: document.getElementById('role').value
+        name: document.getElementById('name').value.trim(),
+        position: document.getElementById('position').value.trim(),
+        department_id: document.getElementById('department').value,
+        role: document.getElementById('role').value,
     };
+
+    if (!payload.department_id || !payload.role) {
+        showAlert('请选择完整的部门与角色', 'warning');
+        return;
+    }
 
     try {
         const response = await fetch(`${API_BASE_URL}/users`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(userData)
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload),
         });
 
-        if (response.ok) {
+        if (response.ok || response.status === 201) {
             showAlert('用户添加成功', 'success');
             bootstrap.Modal.getInstance(document.getElementById('addUserModal')).hide();
             form.reset();
             loadUsers();
         } else {
-            const error = await response.json();
-            showAlert(error.message || '添加用户失败', 'danger');
+            const error = await response.json().catch(() => ({}));
+            showAlert(error.message || error.error || '添加用户失败', 'danger');
         }
     } catch (error) {
         console.error('添加用户失败:', error);
-        showAlert('添加用户失败', 'danger');
+        showAlert('添加用户失败: ' + error.message, 'danger');
+    }
+}
+
+function showEditUserModal(userId) {
+    const user = users.find(u => u.id === userId);
+    if (!user) {
+        showAlert('未找到该用户', 'warning');
+        return;
+    }
+    document.getElementById('editUserId').value = user.id;
+    document.getElementById('editUsername').value = user.username;
+    document.getElementById('editName').value = user.name || '';
+    document.getElementById('editPosition').value = user.position || '';
+    const deptValue = user.department_id || getDepartmentIdFromName(user.department_name || user.department) || '';
+    document.getElementById('editDepartment').value = deptValue;
+    document.getElementById('editRole').value = user.role || '';
+    document.getElementById('editPassword').value = '';
+    const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
+    modal.show();
+}
+
+async function updateUser() {
+    const form = document.getElementById('editUserForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+    const userId = document.getElementById('editUserId').value;
+    if (!userId) {
+        showAlert('未找到用户ID', 'danger');
+        return;
+    }
+
+    const payload = {
+        name: document.getElementById('editName').value.trim(),
+        position: document.getElementById('editPosition').value.trim(),
+        department_id: document.getElementById('editDepartment').value,
+        role: document.getElementById('editRole').value,
+    };
+    const newPassword = document.getElementById('editPassword').value;
+    if (newPassword) {
+        payload.password = newPassword;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload),
+        });
+        if (response.ok) {
+            showAlert('用户信息已更新', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
+            loadUsers();
+        } else {
+            const error = await response.json().catch(() => ({}));
+            showAlert(error.message || error.error || '更新用户失败', 'danger');
+        }
+    } catch (error) {
+        console.error('更新用户失败:', error);
+        showAlert('更新用户失败: ' + error.message, 'danger');
+    }
+}
+
+async function deleteUser(userId) {
+    if (!confirm('确定要删除该用户吗？此操作不可撤销。')) {
+        return;
+    }
+    try {
+        const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(),
+        });
+        if (response.ok) {
+            showAlert('用户已删除', 'success');
+            loadUsers();
+        } else {
+            const error = await response.json().catch(() => ({}));
+            showAlert(error.message || error.error || '删除用户失败', 'danger');
+        }
+    } catch (error) {
+        console.error('删除用户失败:', error);
+        showAlert('删除用户失败: ' + error.message, 'danger');
     }
 }
 
@@ -1766,12 +2032,7 @@ function refreshLogs() {
 
 // 工具函数
 function getRoleBadgeColor(role) {
-    switch(role) {
-        case 'admin': return 'danger';
-        case 'manager': return 'warning';
-        case 'employee': return 'primary';
-        default: return 'secondary';
-    }
+    return ROLE_BADGE_COLORS[role] || 'secondary';
 }
 
 function getPriorityBadgeColor(priority) {

@@ -113,12 +113,6 @@
                 <div id="dashboard-section" class="content-section">
                     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                         <h1 class="h2">仪表板</h1>
-                        <div class="btn-toolbar mb-2 mb-md-0">
-                            <button type="button" class="btn btn-sm btn-outline-secondary">
-                                <i class="bi bi-download"></i>
-                                导出报告
-                            </button>
-                        </div>
                     </div>
 
                     <!-- 统计卡片 -->
@@ -188,12 +182,19 @@
 
                 <!-- 用户管理 -->
                 <div id="users-section" class="content-section" style="display: none;">
-                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                        <h1 class="h2">用户管理</h1>
-                        <button type="button" class="btn btn-primary" onclick="showAddUserModal()">
-                            <i class="bi bi-plus"></i>
-                            添加用户
-                        </button>
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom gap-2">
+                        <h1 class="h2 mb-0">用户管理</h1>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <div class="input-group" style="min-width: 260px;">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" class="form-control" id="userSearchInput" placeholder="搜索用户名 / 姓名 / 职位" oninput="handleUserSearch()">
+                                <button class="btn btn-outline-secondary" type="button" onclick="handleUserSearch()">搜索</button>
+                            </div>
+                            <button type="button" class="btn btn-primary" onclick="showAddUserModal()">
+                                <i class="bi bi-plus"></i>
+                                添加用户
+                            </button>
+                        </div>
                     </div>
                     <div class="card">
                         <div class="card-body">
@@ -221,18 +222,23 @@
 
                 <!-- 重要事项 -->
                 <div id="important-items-section" class="content-section" style="display: none;">
-                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                        <h1 class="h2">重要事项管理</h1>
-                        <div class="btn-toolbar mb-2 mb-md-0">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom gap-2">
+                        <h1 class="h2 mb-0">重要事项管理</h1>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <div class="input-group" style="min-width: 260px;">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" class="form-control" id="importantSearchInput" placeholder="搜索标题 / 描述 / 关键字" oninput="handleImportantSearch()">
+                                <button class="btn btn-outline-secondary" type="button" onclick="handleImportantSearch()">搜索</button>
+                            </div>
                             <button type="button" class="btn btn-primary" onclick="showAddImportantItemModal()">
                                 <i class="bi bi-plus"></i>
                                 添加重要事项
                             </button>
-                            <button type="button" class="btn btn-success ms-2" onclick="batchSelectImportantItems()">
+                            <button type="button" class="btn btn-success" onclick="batchSelectImportantItems()">
                                 <i class="bi bi-check-square"></i>
                                 编辑十大事项
                             </button>
-                            <button type="button" class="btn btn-outline-secondary ms-2" onclick="loadImportantItems()">
+                            <button type="button" class="btn btn-outline-secondary" onclick="loadImportantItems()">
                                 <i class="bi bi-arrow-clockwise"></i>
                                 刷新
                             </button>
@@ -264,18 +270,23 @@
 
                 <!-- 任务管理 -->
                 <div id="tasks-section" class="content-section" style="display: none;">
-                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                        <h1 class="h2">任务管理</h1>
-                        <div class="btn-toolbar mb-2 mb-md-0">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom gap-2">
+                        <h1 class="h2 mb-0">任务管理</h1>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <div class="input-group" style="min-width: 280px;">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" class="form-control" id="taskSearchInput" placeholder="搜索任务标题 / 责任人 / 内容" oninput="handleTaskSearch()">
+                                <button class="btn btn-outline-secondary" type="button" onclick="handleTaskSearch()">搜索</button>
+                            </div>
                             <button type="button" class="btn btn-primary" onclick="showAddTaskModal()">
                                 <i class="bi bi-plus"></i>
                                 新建任务
                             </button>
-                            <button type="button" class="btn btn-success ms-2" id="requestButton" onclick="showRequestModal()" style="display: none;">
+                            <button type="button" class="btn btn-success" id="requestButton" onclick="showRequestModal()" style="display: none;">
                                 <i class="bi bi-send"></i>
                                 向上邀约
                             </button>
-                            <button type="button" class="btn btn-outline-secondary ms-2" onclick="loadTasks()">
+                            <button type="button" class="btn btn-outline-secondary" onclick="loadTasks()">
                                 <i class="bi bi-arrow-clockwise"></i>
                                 刷新
                             </button>
@@ -577,29 +588,64 @@
                         </div>
                         <div class="mb-3">
                             <label for="department" class="form-label">部门</label>
-                            <select class="form-select" id="department" required>
-                                <option value="">选择部门</option>
-                                <option value="IT部门">IT部门</option>
-                                <option value="销售部">销售部</option>
-                                <option value="研发部">研发部</option>
-                                <option value="人事部">人事部</option>
-                                <option value="财务部">财务部</option>
-                            </select>
+                            <select class="form-select" id="department" required></select>
+                            <small class="text-muted">部门选项会自动匹配系统中的部门列表</small>
                         </div>
                         <div class="mb-3">
                             <label for="role" class="form-label">角色</label>
-                            <select class="form-select" id="role" required>
-                                <option value="">选择角色</option>
-                                <option value="admin">管理员</option>
-                                <option value="manager">部门老总</option>
-                                <option value="employee">普通员工</option>
-                            </select>
+                            <select class="form-select" id="role" required></select>
+                            <small class="text-muted">当前支持角色：管理员、创始人、部门总监、团队长、员工</small>
                         </div>
                     </form>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                     <button type="button" class="btn btn-primary" onclick="addUser()">添加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑用户模态框 -->
+    <div class="modal fade" id="editUserModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">编辑用户</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editUserForm">
+                        <input type="hidden" id="editUserId">
+                        <div class="mb-3">
+                            <label for="editUsername" class="form-label">用户名</label>
+                            <input type="text" class="form-control" id="editUsername" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editPassword" class="form-label">重置密码（可选）</label>
+                            <input type="password" class="form-control" id="editPassword" placeholder="留空则不修改密码">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editName" class="form-label">姓名</label>
+                            <input type="text" class="form-control" id="editName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editPosition" class="form-label">职位</label>
+                            <input type="text" class="form-control" id="editPosition" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editDepartment" class="form-label">部门</label>
+                            <select class="form-select" id="editDepartment" required></select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editRole" class="form-label">角色</label>
+                            <select class="form-select" id="editRole" required></select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="updateUser()">保存修改</button>
                 </div>
             </div>
         </div>
