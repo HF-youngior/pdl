@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/app_settings.dart';
+import '../services/server_config_service.dart';
+import '../services/api_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -36,6 +38,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (v) => setState(() => _settings.setDarkMode(v)),
           ),
           _buildLanguage(),
+          const SizedBox(height: 16),
+          _buildSectionTitle('服务器配置'),
+          _buildServerConfig(),
           const SizedBox(height: 16),
           _buildSectionTitle('数据与隐私'),
           _buildNav(
@@ -131,6 +136,157 @@ class _SettingsScreenState extends State<SettingsScreen> {
         subtitle: subtitle != null ? Text(subtitle) : null,
         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
         onTap: onTap,
+      ),
+    );
+  }
+
+  Widget _buildServerConfig() {
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.settings_ethernet, color: Theme.of(context).primaryColor),
+        title: const Text('服务器地址'),
+        subtitle: FutureBuilder<Map<String, String>>(
+          future: ServerConfigService.getConfigInfo(),
+          builder: (context, snapshot) {
+            if (snapshot.hasData) {
+              final config = snapshot.data!;
+              return Text('${config['host']}:${config['port']}\n${config['baseUrl']}');
+            }
+            return const Text('加载中...');
+          },
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: () => _showServerConfigDialog(),
+      ),
+    );
+  }
+
+  void _showServerConfigDialog() {
+    final hostController = TextEditingController();
+    final portController = TextEditingController();
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return FutureBuilder<Map<String, String>>(
+            future: ServerConfigService.getConfigInfo(),
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                final config = snapshot.data!;
+                hostController.text = config['host'] ?? '';
+                portController.text = config['port'] ?? '';
+              }
+
+              return AlertDialog(
+                title: const Text('服务器配置'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '配置服务器地址以连接后端服务\n\n'
+                      '• 模拟器：使用默认值 10.0.2.2:8080\n'
+                      '• 真机：输入电脑的IP地址（如 192.168.1.100）\n'
+                      '• 确保手机和电脑在同一WiFi网络',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: hostController,
+                      decoration: const InputDecoration(
+                        labelText: '服务器IP地址',
+                        hintText: '例如: 192.168.1.100 或 10.0.2.2',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: portController,
+                      decoration: const InputDecoration(
+                        labelText: '端口',
+                        hintText: '例如: 8080',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    if (isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 16),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: isLoading
+                        ? null
+                        : () async {
+                            setDialogState(() => isLoading = true);
+                            final success = await ServerConfigService.resetToDefault();
+                            setDialogState(() => isLoading = false);
+                            if (success) {
+                              await ApiService.refreshBaseUrl();
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('已重置为默认配置')),
+                                );
+                                setState(() {});
+                              }
+                            }
+                          },
+                    child: const Text('重置默认'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                  ElevatedButton(
+                    onPressed: isLoading
+                        ? null
+                        : () async {
+                            final host = hostController.text.trim();
+                            final port = portController.text.trim();
+
+                            if (host.isEmpty || port.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('请输入服务器地址和端口')),
+                              );
+                              return;
+                            }
+
+                            setDialogState(() => isLoading = true);
+                            final hostSuccess = await ServerConfigService.setServerHost(host);
+                            final portSuccess = await ServerConfigService.setServerPort(port);
+
+                            if (hostSuccess && portSuccess) {
+                              await ApiService.refreshBaseUrl();
+                              setDialogState(() => isLoading = false);
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('配置已保存，请重启应用')),
+                                );
+                                setState(() {});
+                              }
+                            } else {
+                              setDialogState(() => isLoading = false);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('保存配置失败')),
+                                );
+                              }
+                            }
+                          },
+                    child: const Text('保存'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
       ),
     );
   }

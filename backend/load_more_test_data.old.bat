@@ -13,7 +13,7 @@ echo.
 echo 正在导入数据...
 echo.
 
-mysql -h localhost -u root -pPyx_07091817 enterprise_management < add_more_test_data.sql
+mysql -h localhost -u root -p23301144 enterprise_management < add_more_test_data.sql
 
 if %errorlevel% equ 0 (
     echo.

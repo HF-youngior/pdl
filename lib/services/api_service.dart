@@ -1,6 +1,4 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/important_item.dart';
@@ -9,25 +7,52 @@ import '../models/personal_info.dart';
 import '../models/log.dart';
 import '../models/personal_log.dart';
 import 'task_service.dart';
+import 'server_config_service.dart';
 
 class ApiService {
   /// 可注入的 HTTP 客户端，默认使用真实客户端。
   /// 在单元测试中可替换为 MockClient 以控制响应结果。
   static http.Client httpClient = http.Client();
 
-  // Dynamically resolve host/port for different platforms
-  static String get _host {
-    if (kIsWeb) return '127.0.0.1';
-    try {
-      if (Platform.isAndroid) return '10.0.2.2';
-    } catch (_) {
-      // Platform not available (e.g., web); fall through
+  // 缓存baseUrl，避免频繁读取SharedPreferences
+  static String? _cachedBaseUrl;
+  static bool _isInitialized = false;
+  
+  /// 初始化API服务（在应用启动时调用）
+  /// 从配置中加载服务器地址
+  static Future<void> initialize() async {
+    if (!_isInitialized) {
+      _cachedBaseUrl = await ServerConfigService.getBaseUrl();
+      _isInitialized = true;
+      print('API服务已初始化，baseUrl: $_cachedBaseUrl');
     }
-    return '127.0.0.1';
   }
-
-  static const int _port = 8080; // Align with backend currently running on 8080
-  static String get baseUrl => 'http://'+_host+':'+_port.toString()+'/api';
+  
+  /// 获取API基础URL
+  /// 支持动态配置，优先使用用户配置的服务器地址
+  /// 默认：模拟器使用 10.0.2.2:8080，真机需要配置电脑IP
+  /// 注意：首次使用前需要调用 initialize() 方法
+  static String get baseUrl {
+    if (_cachedBaseUrl == null) {
+      // 如果未初始化，使用默认值（向后兼容）
+      // 但建议在应用启动时调用 initialize()
+      return 'http://10.0.2.2:8080/api';
+    }
+    return _cachedBaseUrl!;
+  }
+  
+  /// 刷新baseUrl（配置更改后调用）
+  static Future<void> refreshBaseUrl() async {
+    _cachedBaseUrl = await ServerConfigService.getBaseUrl();
+    print('API服务配置已刷新，baseUrl: $_cachedBaseUrl');
+  }
+  
+  /// 清除baseUrl缓存（配置更改后调用）
+  static void clearBaseUrlCache() {
+    _cachedBaseUrl = null;
+    _isInitialized = false;
+  }
+  
   static String? _authToken;
   
   // 设置认证token

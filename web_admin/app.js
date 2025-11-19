@@ -1,5 +1,10 @@
 // API基础URL
-const API_BASE_URL = 'http://localhost:8080/api';
+// 支持通过环境变量配置，默认使用 localhost:8080
+// 在部署时可以通过设置 window.API_BASE_URL 来覆盖
+// 例如: <script>window.API_BASE_URL = 'http://192.168.1.100:8080/api';</script>
+const API_BASE_URL = (typeof window !== 'undefined' && window.API_BASE_URL) 
+  ? window.API_BASE_URL 
+  : 'http://localhost:8080/api';
 
 // 当前用户信息
 let currentUser = null;

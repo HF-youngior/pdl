@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'services/app_settings.dart';
+import 'services/api_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化API服务（加载服务器配置）
+  await ApiService.initialize();
+  
   runApp(const MyApp());
 }
 
