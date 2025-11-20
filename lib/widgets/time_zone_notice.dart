@@ -1,31 +1,72 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../utils/time_utils.dart';
 
-class TimeZoneNotice extends StatelessWidget {
+class TimeZoneNotice extends StatefulWidget {
   final EdgeInsetsGeometry? margin;
   final String? description;
   final bool includeSeconds;
+  final Duration refreshInterval;
 
   const TimeZoneNotice({
     super.key,
     this.margin,
     this.description,
     this.includeSeconds = false,
+    this.refreshInterval = const Duration(seconds: 1),
   });
 
   @override
+  State<TimeZoneNotice> createState() => _TimeZoneNoticeState();
+}
+
+class _TimeZoneNoticeState extends State<TimeZoneNotice> {
+  late DateTime _now;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    _startTicker();
+  }
+
+  @override
+  void didUpdateWidget(covariant TimeZoneNotice oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshInterval != widget.refreshInterval) {
+      _startTicker();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startTicker() {
+    _timer?.cancel();
+    if (widget.refreshInterval.inMilliseconds <= 0) return;
+    _timer = Timer.periodic(widget.refreshInterval, (_) {
+      if (!mounted) return;
+      setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
     final timeLabel = TimeUtils.formatDateTimeWithZone(
-      now,
-      includeSeconds: includeSeconds,
+      _now,
+      includeSeconds: widget.includeSeconds,
       useBeijingTime: false,
     );
-    final desc = description ??
-        '所有时间字段均按当前设备本地时区展示，便于与 Web 管理端核对。';
+    final desc = widget.description ??
+        '系统已自动使用当前设备的本地时区展示所有时间。';
 
     return Container(
-      margin: margin ?? const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      margin: widget.margin ?? const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.primary.withOpacity(0.05),

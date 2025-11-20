@@ -53,6 +53,7 @@ class TimeUtils {
     bool includeSeconds = false,
     String? label,
     bool useBeijingTime = true,
+    bool showTimeZone = false,
   }) {
     final localDateTime = useBeijingTime ? _toBeijing(dateTime) : dateTime;
     final timeString = includeSeconds
@@ -61,8 +62,16 @@ class TimeUtils {
     final zoneLabel = useBeijingTime
         ? _beijingLabel
         : _formatDeviceOffset(localDateTime);
-    final suffix = label != null && label.isNotEmpty ? ' $label' : '';
-    return '${formatDate(localDateTime)} $timeString ($zoneLabel$suffix)';
+
+    String suffix = '';
+    if (showTimeZone) {
+      final labelText = (label != null && label.isNotEmpty) ? ' $label' : '';
+      suffix = ' ($zoneLabel$labelText)';
+    } else if (label != null && label.isNotEmpty) {
+      suffix = ' $label';
+    }
+
+    return '${formatDate(localDateTime)} $timeString$suffix';
   }
 
   static DateTime _toBeijing(DateTime dateTime) {
@@ -113,7 +122,7 @@ class TimeUtils {
     final sign = totalMinutes >= 0 ? '+' : '-';
     final hours = (totalMinutes.abs() ~/ 60).toString().padLeft(2, '0');
     final minutes = (totalMinutes.abs() % 60).toString().padLeft(2, '0');
-    return 'UTC$sign$hours:$minutes 本地时区';
+    return 'UTC$sign$hours:$minutes';
   }
 }
 

@@ -2791,6 +2791,33 @@ app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
   }
 });
 
+// 批量/全部标记通知为已读
+app.put('/api/notifications/mark-all-read', authenticateToken, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.notification_ids)
+      ? req.body.notification_ids.filter(id => typeof id === 'string' && id.trim().length > 0)
+      : [];
+
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(',');
+      await db.execute(
+        `UPDATE task_notifications SET is_read = TRUE WHERE to_user_id = ? AND id IN (${placeholders})`,
+        [req.user.id, ...ids]
+      );
+    } else {
+      await db.execute(
+        'UPDATE task_notifications SET is_read = TRUE WHERE to_user_id = ?',
+        [req.user.id]
+      );
+    }
+
+    res.json({ message: '通知已全部标记为已读' });
+  } catch (error) {
+    console.error('批量标记通知已读错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 创建个人日志
 function convertPersonalLogForResponse(log, taskUpdates = []) {
   if (!log) return null;

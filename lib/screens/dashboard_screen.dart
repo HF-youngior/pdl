@@ -9,6 +9,7 @@ import 'company_tasks_enhanced_screen.dart';
 import 'personal_resume_screen.dart';
 import 'log_enhanced_screen.dart';
 import 'task_edit_screen.dart';
+import 'task_detail_screen.dart';
 import '../services/app_settings.dart';
 import '../services/task_service.dart';
 import '../services/api_service.dart';
@@ -73,11 +74,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _startDeadlineReminderMonitor() {
     _deadlineReminderTimer?.cancel();
     if (_isGuestUser) return;
-    // 立即检查一次，随后每分钟轮询
-    _deadlineReminderTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      _runDeadlineReminderCheck();
-    });
     _runDeadlineReminderCheck();
+    _deadlineReminderTimer = Timer(const Duration(minutes: 1), _scheduleNextDeadlineReminder);
+  }
+
+  void _scheduleNextDeadlineReminder() {
+    if (!mounted || _isGuestUser) return;
+    _runDeadlineReminderCheck();
+    _deadlineReminderTimer = Timer(const Duration(minutes: 1), _scheduleNextDeadlineReminder);
   }
 
   Future<void> _runDeadlineReminderCheck() async {
@@ -336,7 +340,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 TimeZoneNotice(
                   description: '系统内所有时间（任务、日志、邀约等）均以当前设备本地时区显示，'
                       '可直接与 Web 管理端核对。',
-                  includeSeconds: true,
+                  includeSeconds: false,
+                  refreshInterval: const Duration(seconds: 1),
                 ),
                 const SizedBox(height: 12),
 
@@ -447,17 +452,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final pendingTasks = _myAssignedTasks
         .where((task) => task.status != 'completed')
-        .toList()
-      ..sort((a, b) {
-        DateTime? aDeadline = a.deadline ?? a.endTime ?? a.startTime;
-        DateTime? bDeadline = b.deadline ?? b.endTime ?? b.startTime;
-        if (aDeadline != null && bDeadline != null) {
-          return aDeadline.compareTo(bDeadline);
-        }
-        if (aDeadline != null) return -1;
-        if (bDeadline != null) return 1;
-        return b.createdAt.compareTo(a.createdAt);
-      });
+        .toList();
+    String keyword = '';
 
     showModalBottomSheet(
       context: context,
@@ -466,90 +462,139 @@ class _DashboardScreenState extends State<DashboardScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.95,
-          expand: false,
-          builder: (context, controller) {
-            return Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final filteredTasks = pendingTasks
+                .where((task) {
+                  if (keyword.isEmpty) return true;
+                  final haystack = [
+                    task.title,
+                    task.description,
+                    task.assigneeName,
+                    task.status,
+                    task.department,
+                  ].join(' ').toLowerCase();
+                  return haystack.contains(keyword);
+                })
+                .toList()
+              ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.7,
+              minChildSize: 0.45,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (context, controller) {
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.notifications_active, color: Colors.orange),
-                      const SizedBox(width: 8),
-                      Text(
-                        '任务提醒（${pendingTasks.length}）',
-                        style: Theme.of(context).textTheme.titleMedium,
+                      Row(
+                        children: [
+                          const Icon(Icons.notifications_active, color: Colors.orange),
+                          const SizedBox(width: 8),
+                          Text(
+                            '任务提醒（${filteredTasks.length}/${pendingTasks.length}）',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.refresh),
+                            onPressed: () async {
+                              await _loadBadgeCount();
+                              if (!mounted) return;
+                              Navigator.of(context).pop();
+                              _openNotificationsPanel();
+                            },
+                          ),
+                        ],
                       ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.refresh),
-                        onPressed: () async {
-                          await _loadBadgeCount();
-                          if (!mounted) return;
-                          Navigator.of(context).pop();
-                          _openNotificationsPanel();
+                      const SizedBox(height: 12),
+                      TextField(
+                        decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.search),
+                          hintText: '搜索标题 / 描述 / 状态',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) {
+                          setModalState(() {
+                            keyword = value.trim().toLowerCase();
+                          });
                         },
                       ),
+                      const SizedBox(height: 12),
+                      if (filteredTasks.isEmpty)
+                        const Expanded(
+                          child: Center(
+                            child: Text(
+                              '当前没有满足条件的通知',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                        )
+                      else
+                        Expanded(
+                          child: ListView.builder(
+                            controller: controller,
+                            itemCount: filteredTasks.length,
+                            itemBuilder: (context, index) {
+                              final task = filteredTasks[index];
+                              final deadline = task.deadline ?? task.endTime ?? task.startTime;
+                              final deadlineText = deadline != null
+                                  ? DateFormat('MM-dd HH:mm').format(deadline.toLocal())
+                                  : '未设置';
+                              final createdLabel =
+                                  DateFormat('MM-dd HH:mm').format(task.createdAt.toLocal());
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: _priorityColor(task.priority).withOpacity(0.15),
+                                    child: Icon(
+                                      Icons.assignment,
+                                      color: _priorityColor(task.priority),
+                                    ),
+                                  ),
+                                  title: Text(task.title),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('通知时间：$createdLabel'),
+                                      Text('截止：$deadlineText'),
+                                      Text('状态：${_statusLabel(task.status)}'),
+                                    ],
+                                  ),
+                                  trailing: Text(
+                                    _priorityLabel(task.priority),
+                                    style: TextStyle(
+                                      color: _priorityColor(task.priority),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  onTap: () async {
+                                    Navigator.of(context).pop();
+                                    await Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) => TaskDetailScreen(
+                                          task: task,
+                                          currentUser: widget.user,
+                                        ),
+                                      ),
+                                    );
+                                    if (mounted) {
+                                      await _loadBadgeCount();
+                                    }
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                        ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  if (pendingTasks.isEmpty)
-                    const Expanded(
-                      child: Center(
-                        child: Text(
-                          '当前没有需要处理的任务',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ),
-                    )
-                  else
-                    Expanded(
-                      child: ListView.builder(
-                        controller: controller,
-                        itemCount: pendingTasks.length,
-                        itemBuilder: (context, index) {
-                          final task = pendingTasks[index];
-                          final deadline = task.deadline ?? task.endTime ?? task.startTime;
-                          final deadlineText = deadline != null
-                              ? DateFormat('MM-dd HH:mm').format(deadline.toLocal())
-                              : '未设置';
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: _priorityColor(task.priority).withOpacity(0.15),
-                                child: Icon(
-                                  Icons.assignment,
-                                  color: _priorityColor(task.priority),
-                                ),
-                              ),
-                              title: Text(task.title),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('截止：$deadlineText'),
-                                  Text('状态：${_statusLabel(task.status)}'),
-                                ],
-                              ),
-                              trailing: Text(
-                                _priorityLabel(task.priority),
-                                style: TextStyle(
-                                  color: _priorityColor(task.priority),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                ],
-              ),
+                );
+              },
             );
           },
         );

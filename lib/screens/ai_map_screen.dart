@@ -2700,7 +2700,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                           style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
                         ),
                         subtitle: Text(
-                          '分析日期: ${analysis.analysisDate.toString().split(' ')[0]}',
+                          '分析日期: ${DateFormat('yyyy-MM-dd').format(analysis.analysisDate.toLocal())}',
                           style: const TextStyle(color: Color(0xFF6B7280)),
                         ),
                         trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF3B82F6)),
@@ -2991,7 +2991,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '分析时间：${TimeUtils.formatDateTime(analysis.analysisDate.toLocal())}',
+                      '分析日期：${DateFormat('yyyy-MM-dd').format(analysis.analysisDate.toLocal())}',
                                       style: const TextStyle(
                                         fontSize: 13,
                                         color: Color(0xFF6B7280),
@@ -3196,7 +3196,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('分析日期: ${analysis.analysisDate.toString().split(' ')[0]}'),
+              Text('分析日期: ${DateFormat('yyyy-MM-dd').format(analysis.analysisDate.toLocal())}'),
               const SizedBox(height: 16),
               EnhancedWordCloud(words: analysis.wordFrequencies),
             ],
@@ -3240,7 +3240,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               children: [
                 Row(
                   children: [
-                    Text('分析日期: ${analysis.analysisDate.toString().split(' ')[0]}'),
+                    Text('分析日期: ${DateFormat('yyyy-MM-dd').format(analysis.analysisDate.toLocal())}'),
                     const SizedBox(width: 12),
                     if (analysis.isDeepSeek == true)
                       Container(

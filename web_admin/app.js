@@ -36,6 +36,13 @@ let users = [];
 let authToken = null;
 let tasksList = [];
 let importantItemsList = [];
+let pendingNotifications = [];
+let notificationModalInstance = null;
+const notificationFilters = {
+    keyword: '',
+    startTime: '',
+    endTime: ''
+};
 
 // 时间处理工具函数
 const TARGET_TIMEZONE_LABEL = 'UTC+08:00 北京时间';
@@ -92,7 +99,7 @@ function formatDateTimeDisplay(value, fallback = '-') {
     if (!date) return fallback;
     const parts = getBeijingDateParts(date);
     const formatted = `${parts.year}-${parts.month}-${parts.day} ${parts.hours}:${parts.minutes}`;
-    return `${formatted} (${TARGET_TIMEZONE_LABEL})`;
+    return formatted;
 }
 
 function formatDateInputValue(value) {
@@ -129,7 +136,8 @@ document.addEventListener('DOMContentLoaded', function() {
     checkAuthStatus();
     initUserFormOptions();
     updateTimeZoneBanner();
-    setInterval(updateTimeZoneBanner, 60000);
+    setInterval(updateTimeZoneBanner, 1000);
+    createNotificationCenterLauncher();
     
     // 添加责任人选择事件监听器
     document.addEventListener('change', function(e) {
@@ -180,88 +188,221 @@ async function checkNotifications() {
         
         // 只显示未读的通知
         const unreadNotifications = notifications.filter(n => !n.is_read);
-        
-        // 如果有新通知，显示弹窗
-        if (unreadNotifications.length > 0) {
-            showNotificationModalBatch(unreadNotifications);
+        let hasNew = false;
+        unreadNotifications.forEach(notification => {
+            if (!pendingNotifications.some(item => item.id === notification.id)) {
+                pendingNotifications.push(enhanceNotification(notification));
+                hasNew = true;
+            }
+        });
+
+        if (pendingNotifications.length > 0) {
+            openNotificationCenterModal();
+        }
+
+        if (hasNew) {
+            updateNotificationBadge();
         }
     } catch (error) {
         console.error('检查通知失败:', error);
     }
 }
 
-function showNotificationModalBatch(notifications) {
-    if (!notifications || notifications.length === 0) return;
+function enhanceNotification(notification) {
+    return {
+        ...notification,
+        created_at_label: notification.created_at ? formatDateTimeDisplay(notification.created_at) : formatDateTimeDisplay(new Date()),
+        deadline_label: notification.deadline ? formatDateTimeDisplay(notification.deadline) : '未设置',
+        keyword_source: [
+            notification.title || '',
+            notification.task_title || '',
+            notification.message || '',
+            notification.notification_type || ''
+        ].join(' ').toLowerCase()
+    };
+}
 
-    const existing = document.getElementById('notificationCenterModal');
-    if (existing) {
-        existing.remove();
+function createNotificationCenterLauncher() {
+    if (document.getElementById('notificationCenterLauncher')) return;
+    const button = document.createElement('button');
+    button.id = 'notificationCenterLauncher';
+    button.type = 'button';
+    button.className = 'btn btn-warning position-fixed shadow';
+    button.style.right = '20px';
+    button.style.bottom = '20px';
+    button.style.zIndex = '1050';
+    button.innerHTML = `
+        <i class="bi bi-bell-fill"></i>
+        <span class="ms-1">通知</span>
+        <span class="badge bg-danger ms-1" id="notificationLauncherBadge" style="display:none;">0</span>
+    `;
+    button.addEventListener('click', openNotificationCenterModal);
+    document.body.appendChild(button);
+}
+
+function updateNotificationBadge() {
+    const badge = document.getElementById('notificationLauncherBadge');
+    if (!badge) return;
+    const unreadCount = pendingNotifications.length;
+    if (unreadCount > 0) {
+        badge.style.display = 'inline-block';
+        badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function openNotificationCenterModal() {
+    if (pendingNotifications.length === 0) return;
+    if (notificationModalInstance) {
+        refreshNotificationModalContent();
+        return;
     }
 
-    const modal = document.createElement('div');
-    modal.className = 'modal fade';
-    modal.id = 'notificationCenterModal';
-    modal.setAttribute('data-bs-backdrop', 'static');
-    modal.setAttribute('data-bs-keyboard', 'false');
-
-    const cardsHtml = notifications.map((notification, index) => {
-        const createdAtLabel = notification.created_at ? formatDateTimeDisplay(notification.created_at) : formatDateTimeDisplay(new Date());
-        const deadlineLabel = notification.deadline ? formatDateTimeDisplay(notification.deadline) : '';
-        return `
-            <div class="border rounded p-3 mb-3 notification-card" data-notification-id="${notification.id}">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div>
-                        <strong>${notification.title || notification.task_title || `通知 ${index + 1}`}</strong>
-                        <div class="text-muted small">${createdAtLabel}</div>
-                    </div>
-                    <span class="badge bg-info text-dark">${notification.notification_type || '通知'}</span>
-                </div>
-                <div class="mb-2">
-                    <p class="mb-1">${notification.message || '您有新的通知'}</p>
-                    ${deadlineLabel ? `<div class="text-muted small">截止时间：${deadlineLabel}</div>` : ''}
-                    ${notification.priority ? `<div class="text-muted small">优先级：${notification.priority}</div>` : ''}
-                    ${notification.status ? `<div class="text-muted small">当前状态：${notification.status}</div>` : ''}
-                </div>
-                    <div class="d-flex flex-wrap gap-2">
-                        <button class="btn btn-sm btn-outline-primary" data-notification-action="view" data-notification-id="${notification.id}" data-notification-task-id="${notification.task_id || ''}">
-                            查看任务
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary" data-notification-action="later" data-notification-id="${notification.id}">
-                            稍后处理
-                        </button>
-                        <button class="btn btn-sm btn-success" data-notification-action="done" data-notification-id="${notification.id}">
-                            已处理
-                        </button>
-                    </div>
-            </div>
-        `;
-    }).join('');
+    let modal = document.getElementById('notificationCenterModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'notificationCenterModal';
+        modal.className = 'modal fade';
+        modal.setAttribute('data-bs-backdrop', 'static');
+        modal.setAttribute('data-bs-keyboard', 'false');
+        document.body.appendChild(modal);
+    }
 
     modal.innerHTML = `
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-fullscreen-md-down modal-lg">
             <div class="modal-content">
                 <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title"><i class="bi bi-bell-fill"></i> 通知中心</h5>
+                    <div class="d-flex align-items-center w-100 gap-3 flex-wrap">
+                        <h5 class="modal-title mb-0">
+                            <i class="bi bi-bell-fill"></i> 通知中心
+                        </h5>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <input type="text" id="notificationSearchInput" class="form-control form-control-sm" placeholder="搜索标题/内容">
+                            <input type="datetime-local" id="notificationSearchStart" class="form-control form-control-sm">
+                            <input type="datetime-local" id="notificationSearchEnd" class="form-control form-control-sm">
+                            <button class="btn btn-sm btn-light" id="notificationSearchReset">重置</button>
+                        </div>
+                    </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body notification-modal-body">
-                    ${cardsHtml}
+                <div class="modal-body notification-modal-body" style="max-height:70vh; overflow:auto;">
+                    ${renderNotificationCards()}
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <div class="modal-footer d-flex justify-content-between">
+                    <button class="btn btn-outline-secondary btn-sm" id="notificationMarkAllRead">全部已读</button>
+                    <button class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
                 </div>
             </div>
         </div>
     `;
 
+    modal.removeEventListener('click', handleNotificationModalAction, true);
     modal.addEventListener('click', handleNotificationModalAction, true);
-    modal.addEventListener('hidden.bs.modal', function() {
-        modal.remove();
-    });
+    modal.querySelector('#notificationSearchInput').addEventListener('input', handleNotificationSearchInput);
+    modal.querySelector('#notificationSearchStart').addEventListener('change', handleNotificationSearchInput);
+    modal.querySelector('#notificationSearchEnd').addEventListener('change', handleNotificationSearchInput);
+    modal.querySelector('#notificationSearchReset').addEventListener('click', resetNotificationSearchFilters);
+    modal.querySelector('#notificationMarkAllRead').addEventListener('click', markAllNotificationsAsRead);
 
-    document.body.appendChild(modal);
-    const bsModal = new bootstrap.Modal(modal);
-    bsModal.show();
+    notificationModalInstance = bootstrap.Modal.getInstance(modal) || new bootstrap.Modal(modal);
+    notificationModalInstance.show();
+    modal.addEventListener('hidden.bs.modal', () => {
+        notificationModalInstance = null;
+    });
+}
+
+function renderNotificationCards() {
+    const list = applyNotificationFilters();
+    if (list.length === 0) {
+        return '<p class="text-muted mb-0">当前没有满足条件的通知。</p>';
+    }
+
+    return list.map((notification, index) => `
+        <div class="border rounded p-3 mb-3 notification-card" data-notification-id="${notification.id}">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <div>
+                    <strong>${notification.title || notification.task_title || `通知 ${index + 1}`}</strong>
+                    <div class="text-muted small">发送时间：${notification.created_at_label}</div>
+                </div>
+                <span class="badge bg-info text-dark">${notification.notification_type || '通知'}</span>
+            </div>
+            <div class="mb-2">
+                <p class="mb-1">${notification.message || '您有新的通知'}</p>
+                <div class="text-muted small">截止时间：${notification.deadline_label}</div>
+                ${notification.priority ? `<div class="text-muted small">优先级：${notification.priority}</div>` : ''}
+                ${notification.status ? `<div class="text-muted small">当前状态：${notification.status}</div>` : ''}
+                ${notification.from_user_name ? `<div class="text-muted small">来自：${notification.from_user_name}</div>` : ''}
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-sm btn-outline-primary" data-notification-action="view" data-notification-id="${notification.id}" data-notification-task-id="${notification.task_id || ''}">
+                    查看任务
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" data-notification-action="later" data-notification-id="${notification.id}">
+                    稍后处理
+                </button>
+                <button class="btn btn-sm btn-success" data-notification-action="done" data-notification-id="${notification.id}">
+                    已处理
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function applyNotificationFilters() {
+    const keyword = notificationFilters.keyword.trim().toLowerCase();
+    const start = notificationFilters.startTime ? new Date(notificationFilters.startTime) : null;
+    const end = notificationFilters.endTime ? new Date(notificationFilters.endTime) : null;
+
+    return pendingNotifications
+        .filter(notification => {
+            if (keyword && !notification.keyword_source.includes(keyword)) {
+                return false;
+            }
+            if (start && notification.created_at && new Date(notification.created_at) < start) {
+                return false;
+            }
+            if (end && notification.created_at && new Date(notification.created_at) > end) {
+                return false;
+            }
+            return true;
+        })
+        .sort((a, b) => {
+            const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return bTime - aTime;
+        });
+}
+
+function handleNotificationSearchInput(event) {
+    const target = event.target;
+    if (target.id === 'notificationSearchInput') {
+        notificationFilters.keyword = target.value;
+    } else if (target.id === 'notificationSearchStart') {
+        notificationFilters.startTime = target.value;
+    } else if (target.id === 'notificationSearchEnd') {
+        notificationFilters.endTime = target.value;
+    }
+    refreshNotificationModalContent();
+}
+
+function resetNotificationSearchFilters() {
+    notificationFilters.keyword = '';
+    notificationFilters.startTime = '';
+    notificationFilters.endTime = '';
+    const modal = document.getElementById('notificationCenterModal');
+    if (modal) {
+        modal.querySelector('#notificationSearchInput').value = '';
+        modal.querySelector('#notificationSearchStart').value = '';
+        modal.querySelector('#notificationSearchEnd').value = '';
+    }
+    refreshNotificationModalContent();
+}
+
+function refreshNotificationModalContent() {
+    const container = document.querySelector('#notificationCenterModal .notification-modal-body');
+    if (!container) return;
+    container.innerHTML = renderNotificationCards();
 }
 
 // 标记通知为已读
@@ -278,6 +419,25 @@ async function markNotificationAsRead(notificationId) {
     }
 }
 
+async function markAllNotificationsAsRead() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/notifications/mark-all-read`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                notification_ids: pendingNotifications.map(item => item.id)
+            })
+        });
+        if (response.ok) {
+            pendingNotifications = [];
+            updateNotificationBadge();
+            refreshNotificationModalContent();
+        }
+    } catch (error) {
+        console.error('批量标记通知已读失败:', error);
+    }
+}
+
 async function handleNotificationModalAction(event) {
     const button = event.target.closest('[data-notification-action]');
     if (!button) return;
@@ -285,28 +445,34 @@ async function handleNotificationModalAction(event) {
     const action = button.dataset.notificationAction;
     const notificationId = button.dataset.notificationId;
     const taskId = button.dataset.notificationTaskId;
-    const card = button.closest('.notification-card');
-
     if (action === 'view') {
         if (taskId) {
             await viewTaskDetail(taskId);
         }
-        await markNotificationAsRead(notificationId);
-        if (card) card.remove();
+        if (await markNotificationAsRead(notificationId)) {
+            removeNotificationFromQueue(notificationId);
+        }
     } else if (action === 'done') {
-        await markNotificationAsRead(notificationId);
-        if (card) card.remove();
+        if (await markNotificationAsRead(notificationId)) {
+            removeNotificationFromQueue(notificationId);
+        }
     } else if (action === 'later') {
         const modalInstance = bootstrap.Modal.getInstance(document.getElementById('notificationCenterModal'));
         if (modalInstance) modalInstance.hide();
         return;
     }
 
-    const remainingCards = document.querySelectorAll('#notificationCenterModal .notification-card');
-    if (remainingCards.length === 0) {
+    refreshNotificationModalContent();
+    updateNotificationBadge();
+
+    if (pendingNotifications.length === 0) {
         const modalInstance = bootstrap.Modal.getInstance(document.getElementById('notificationCenterModal'));
         if (modalInstance) modalInstance.hide();
     }
+}
+
+function removeNotificationFromQueue(notificationId) {
+    pendingNotifications = pendingNotifications.filter(item => item.id !== notificationId);
 }
 
 // 启动通知轮询
@@ -448,6 +614,13 @@ async function validateToken() {
 function logout() {
     // 停止通知轮询
     stopNotificationPolling();
+    pendingNotifications = [];
+    updateNotificationBadge();
+    const modalEl = document.getElementById('notificationCenterModal');
+    if (modalEl) {
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+    }
     
     localStorage.removeItem('authToken');
     sessionStorage.removeItem('authToken');
