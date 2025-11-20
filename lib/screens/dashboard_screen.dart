@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/user.dart';
@@ -11,11 +13,15 @@ import '../services/app_settings.dart';
 import '../services/task_service.dart';
 import '../services/api_service.dart';
 import '../services/mbti_test_service.dart';
+import '../services/notification_service.dart';
 import '../models/task.dart';
 import '../models/important_item.dart';
 import '../models/personal_info.dart';
 import '../models/personal_log.dart';
 import '../models/mbti_test_result.dart';
+import '../models/deadline_reminder.dart';
+import '../widgets/time_zone_notice.dart';
+import '../utils/time_utils.dart';
 
 class DashboardScreen extends StatefulWidget {
   final User user;
@@ -39,6 +45,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   MbtiTestResult? _latestMbti;
   bool _isLoadingPreview = true;
   List<Task> _myAssignedTasks = [];
+  Timer? _deadlineReminderTimer;
+  bool _isCheckingDeadlineReminders = false;
+
+  bool get _isGuestUser => widget.user.id == 'guest';
 
   @override
   void initState() {
@@ -46,16 +56,100 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadBadgeCount();
     _loadPreviewData();
     _settings.addListener(_onSettingsChanged);
+    _startDeadlineReminderMonitor();
   }
 
   @override
   void dispose() {
+    _deadlineReminderTimer?.cancel();
     _settings.removeListener(_onSettingsChanged);
     super.dispose();
   }
 
   void _onSettingsChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _startDeadlineReminderMonitor() {
+    _deadlineReminderTimer?.cancel();
+    if (_isGuestUser) return;
+    // 立即检查一次，随后每分钟轮询
+    _deadlineReminderTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      _runDeadlineReminderCheck();
+    });
+    _runDeadlineReminderCheck();
+  }
+
+  Future<void> _runDeadlineReminderCheck() async {
+    if (!mounted ||
+        _isGuestUser ||
+        !_settings.notificationsEnabled ||
+        _isCheckingDeadlineReminders ||
+        ApiService.getToken() == null) {
+      return;
+    }
+
+    _isCheckingDeadlineReminders = true;
+    try {
+      final reminders = await NotificationService.triggerDeadlineReminders(hoursBefore: 24);
+      if (!mounted || reminders.isEmpty) return;
+      for (final reminder in reminders) {
+        await _showDeadlineReminderDialog(reminder);
+      }
+    } catch (e) {
+      debugPrint('Deadline reminder check failed: $e');
+    } finally {
+      _isCheckingDeadlineReminders = false;
+    }
+  }
+
+  Future<void> _showDeadlineReminderDialog(DeadlineReminder reminder) async {
+    if (!mounted) return;
+    final deadlineText = reminder.deadline != null
+        ? TimeUtils.formatDateTimeWithZone(reminder.deadline!)
+        : '未设置';
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('任务即将到期'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                reminder.title,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text('截止时间：$deadlineText'),
+              Text('优先级：${_priorityLabel(reminder.priority)}'),
+              Text('当前状态：${_statusLabel(reminder.status)}'),
+              const SizedBox(height: 12),
+              Text(
+                reminder.message,
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('稍后处理'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _openNotificationsPanel();
+              },
+              child: const Text('查看任务'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _loadBadgeCount() async {
@@ -239,6 +333,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
+                TimeZoneNotice(
+                  description: '系统内所有时间（任务、日志、邀约等）均以当前设备本地时区显示，'
+                      '可直接与 Web 管理端核对。',
+                  includeSeconds: true,
+                ),
+                const SizedBox(height: 12),
 
                 // 四个象限布局
                 Expanded(

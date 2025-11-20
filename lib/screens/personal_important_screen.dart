@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/personal_info.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+import '../utils/time_utils.dart';
+import '../widgets/time_zone_notice.dart';
 
 class PersonalImportantScreen extends StatefulWidget {
   final User user;
@@ -152,162 +154,181 @@ class _PersonalImportantScreenState extends State<PersonalImportantScreen> {
       );
     }
 
-    if (_personalInfo.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.person_pin,
-              size: 64,
-              color: Colors.grey,
-            ),
-            SizedBox(height: 16),
-            Text(
-              '暂无个人信息',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              '个人信息将根据您的日志自动生成',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    final notice = TimeZoneNotice(
+      description: '个人重要信息的创建时间等字段均同步为当前设备本地时区，'
+          '可与 Web 管理端时间线对照。',
+    );
 
-    return RefreshIndicator(
-      onRefresh: _loadPersonalInfo,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _personalInfo.length,
-        itemBuilder: (context, index) {
-          final info = _personalInfo[index];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            elevation: 4,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+    if (_personalInfo.isEmpty) {
+      return Column(
+        children: [
+          notice,
+          const Expanded(
+            child: Center(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // 标题和象限
-                  Row(
-                    children: [
-                      Icon(
-                        _getQuadrantIcon(info.quadrant),
-                        color: _getQuadrantColor(info.quadrant),
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          info.title,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _getQuadrantColor(info.quadrant).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _getQuadrantColor(info.quadrant),
-                            width: 1,
-                          ),
-                        ),
-                        child: Text(
-                          _getQuadrantText(info.quadrant),
-                          style: TextStyle(
-                            color: _getQuadrantColor(info.quadrant),
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
+                  Icon(
+                    Icons.person_pin,
+                    size: 64,
+                    color: Colors.grey,
                   ),
-                  const SizedBox(height: 8),
-                  
-                  // 描述
-                  if (info.description.isNotEmpty) ...[
-                    Text(
-                      info.description,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                  SizedBox(height: 16),
+                  Text(
+                    '暂无个人信息',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey,
                     ),
-                    const SizedBox(height: 8),
-                  ],
-                  
-                  // 创建时间
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 16,
-                        color: Colors.grey[600],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '创建时间: ${_formatDateTime(info.createdAt)}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
                   ),
-                  
-                  // 相关任务
-                  if (info.relatedTaskId != null) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.assignment,
-                          size: 16,
-                          color: Colors.grey[600],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '关联任务: ${info.relatedTaskId}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
+                  SizedBox(height: 8),
+                  Text(
+                    '个人信息将根据您的日志自动生成',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
-          );
-        },
-      ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        notice,
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadPersonalInfo,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _personalInfo.length,
+              itemBuilder: (context, index) {
+                final info = _personalInfo[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 标题和象限
+                        Row(
+                          children: [
+                            Icon(
+                              _getQuadrantIcon(info.quadrant),
+                              color: _getQuadrantColor(info.quadrant),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                info.title,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getQuadrantColor(info.quadrant).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: _getQuadrantColor(info.quadrant),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                _getQuadrantText(info.quadrant),
+                                style: TextStyle(
+                                  color: _getQuadrantColor(info.quadrant),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        
+                        // 描述
+                        if (info.description.isNotEmpty) ...[
+                          Text(
+                            info.description,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        
+                        // 创建时间
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.access_time,
+                              size: 16,
+                              color: Colors.grey[600],
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '创建时间: ${_formatDateTime(info.createdAt)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                        
+                        // 相关任务
+                        if (info.relatedTaskId != null) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.assignment,
+                                size: 16,
+                                color: Colors.grey[600],
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '关联任务: ${info.relatedTaskId}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
+    return TimeUtils.formatDateTimeWithZone(dateTime);
   }
 
   void _showEditDialog() {

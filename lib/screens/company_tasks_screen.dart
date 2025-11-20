@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+import '../utils/time_utils.dart';
+import '../widgets/time_zone_notice.dart';
 import 'task_edit_screen.dart';
 
 class CompanyTasksScreen extends StatefulWidget {
@@ -385,6 +387,10 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
               ],
             ),
           ),
+          TimeZoneNotice(
+            description: '任务的开始、截止及创建时间均以当前设备本地时区显示，'
+                '与 Web 管理端保持一致。',
+          ),
           // 任务列表
           Expanded(
             child: _buildBody(),
@@ -679,9 +685,7 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
   }
 
   String _formatDateTime(DateTime dateTime) {
-    // 增加8小时
-    final adjustedDateTime = dateTime.toLocal();
-    return '${adjustedDateTime.year}-${adjustedDateTime.month.toString().padLeft(2, '0')}-${adjustedDateTime.day.toString().padLeft(2, '0')}';
+    return TimeUtils.formatDateTimeWithZone(dateTime);
   }
 
   Future<void> _saveTask(Task task) async {

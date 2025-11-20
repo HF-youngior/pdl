@@ -37,6 +37,78 @@ let authToken = null;
 let tasksList = [];
 let importantItemsList = [];
 
+// 时间处理工具函数
+const TARGET_TIMEZONE_LABEL = 'UTC+08:00 北京时间';
+const TARGET_TZ_OFFSET_MINUTES = 8 * 60;
+
+function padZero(value) {
+    return value.toString().padStart(2, '0');
+}
+
+function parseLocalDateTime(value) {
+    if (!value) return null;
+    if (value instanceof Date) return new Date(value.getTime());
+    if (typeof value === 'number') return new Date(value);
+    if (typeof value !== 'string') return null;
+
+    const normalized = value.trim();
+    let parsed = new Date(normalized);
+
+    if (Number.isNaN(parsed.getTime())) {
+        const fallback = normalized.replace(' ', 'T');
+        parsed = new Date(fallback);
+    }
+
+    if (Number.isNaN(parsed.getTime())) {
+        return null;
+    }
+
+    return parsed;
+}
+
+function convertToBeijingDate(date) {
+    const utcMillis = date.getTime();
+    return new Date(utcMillis + TARGET_TZ_OFFSET_MINUTES * 60 * 1000);
+}
+
+function getBeijingDateParts(date) {
+    const beijingDate = convertToBeijingDate(date);
+    return {
+        year: beijingDate.getUTCFullYear(),
+        month: padZero(beijingDate.getUTCMonth() + 1),
+        day: padZero(beijingDate.getUTCDate()),
+        hours: padZero(beijingDate.getUTCHours()),
+        minutes: padZero(beijingDate.getUTCMinutes()),
+        seconds: padZero(beijingDate.getUTCSeconds())
+    };
+}
+
+function formatTimeZoneLabel(date) {
+    return TARGET_TIMEZONE_LABEL;
+}
+
+function formatDateTimeDisplay(value, fallback = '-') {
+    const date = parseLocalDateTime(value);
+    if (!date) return fallback;
+    const parts = getBeijingDateParts(date);
+    const formatted = `${parts.year}-${parts.month}-${parts.day} ${parts.hours}:${parts.minutes}`;
+    return `${formatted} (${TARGET_TIMEZONE_LABEL})`;
+}
+
+function formatDateInputValue(value) {
+    const date = parseLocalDateTime(value);
+    if (!date) return '';
+    const parts = getBeijingDateParts(date);
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hours}:${parts.minutes}`;
+}
+
+function updateTimeZoneBanner() {
+    const label = formatDateTimeDisplay(new Date());
+    document.querySelectorAll('.time-zone-label').forEach(el => {
+        el.textContent = label;
+    });
+}
+
 // 统一清理模态框遗留的遮罩与滚动锁
 function resetModalState() {
     try {
@@ -56,6 +128,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 检查是否已登录
     checkAuthStatus();
     initUserFormOptions();
+    updateTimeZoneBanner();
+    setInterval(updateTimeZoneBanner, 60000);
     
     // 添加责任人选择事件监听器
     document.addEventListener('change', function(e) {
@@ -109,66 +183,129 @@ async function checkNotifications() {
         
         // 如果有新通知，显示弹窗
         if (unreadNotifications.length > 0) {
-            unreadNotifications.forEach(notification => {
-                // 显示弹窗通知
-                showNotificationModal(notification);
-                
-                // 标记为已读
-                markNotificationAsRead(notification.id);
-            });
+            showNotificationModalBatch(unreadNotifications);
         }
     } catch (error) {
         console.error('检查通知失败:', error);
     }
 }
 
-// 显示通知弹窗
-function showNotificationModal(notification) {
-    // 创建通知弹窗
+function showNotificationModalBatch(notifications) {
+    if (!notifications || notifications.length === 0) return;
+
+    const existing = document.getElementById('notificationCenterModal');
+    if (existing) {
+        existing.remove();
+    }
+
     const modal = document.createElement('div');
     modal.className = 'modal fade';
-    modal.id = 'notificationModal_' + notification.id;
+    modal.id = 'notificationCenterModal';
     modal.setAttribute('data-bs-backdrop', 'static');
     modal.setAttribute('data-bs-keyboard', 'false');
+
+    const cardsHtml = notifications.map((notification, index) => {
+        const createdAtLabel = notification.created_at ? formatDateTimeDisplay(notification.created_at) : formatDateTimeDisplay(new Date());
+        const deadlineLabel = notification.deadline ? formatDateTimeDisplay(notification.deadline) : '';
+        return `
+            <div class="border rounded p-3 mb-3 notification-card" data-notification-id="${notification.id}">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <strong>${notification.title || notification.task_title || `通知 ${index + 1}`}</strong>
+                        <div class="text-muted small">${createdAtLabel}</div>
+                    </div>
+                    <span class="badge bg-info text-dark">${notification.notification_type || '通知'}</span>
+                </div>
+                <div class="mb-2">
+                    <p class="mb-1">${notification.message || '您有新的通知'}</p>
+                    ${deadlineLabel ? `<div class="text-muted small">截止时间：${deadlineLabel}</div>` : ''}
+                    ${notification.priority ? `<div class="text-muted small">优先级：${notification.priority}</div>` : ''}
+                    ${notification.status ? `<div class="text-muted small">当前状态：${notification.status}</div>` : ''}
+                </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-sm btn-outline-primary" data-notification-action="view" data-notification-id="${notification.id}" data-notification-task-id="${notification.task_id || ''}">
+                            查看任务
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" data-notification-action="later" data-notification-id="${notification.id}">
+                            稍后处理
+                        </button>
+                        <button class="btn btn-sm btn-success" data-notification-action="done" data-notification-id="${notification.id}">
+                            已处理
+                        </button>
+                    </div>
+            </div>
+        `;
+    }).join('');
+
     modal.innerHTML = `
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title">
-                        <i class="bi bi-bell-fill"></i> 新通知
-                    </h5>
+                    <h5 class="modal-title"><i class="bi bi-bell-fill"></i> 通知中心</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
-                    <p><strong>${notification.message || notification.task_title || '您有新的通知'}</strong></p>
-                    ${notification.from_user_name ? `<p class="text-muted">来自：${notification.from_user_name}</p>` : ''}
+                <div class="modal-body notification-modal-body">
+                    ${cardsHtml}
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">知道了</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
                 </div>
             </div>
         </div>
     `;
-    
-    document.body.appendChild(modal);
-    const bsModal = new bootstrap.Modal(modal);
-    bsModal.show();
-    
-    // 模态框关闭后移除元素
+
+    modal.addEventListener('click', handleNotificationModalAction, true);
     modal.addEventListener('hidden.bs.modal', function() {
         modal.remove();
     });
+
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
 }
 
 // 标记通知为已读
 async function markNotificationAsRead(notificationId) {
     try {
-        await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+        const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
             method: 'PUT',
             headers: getAuthHeaders()
         });
+        return response.ok;
     } catch (error) {
         console.error('标记通知已读失败:', error);
+        return false;
+    }
+}
+
+async function handleNotificationModalAction(event) {
+    const button = event.target.closest('[data-notification-action]');
+    if (!button) return;
+
+    const action = button.dataset.notificationAction;
+    const notificationId = button.dataset.notificationId;
+    const taskId = button.dataset.notificationTaskId;
+    const card = button.closest('.notification-card');
+
+    if (action === 'view') {
+        if (taskId) {
+            await viewTaskDetail(taskId);
+        }
+        await markNotificationAsRead(notificationId);
+        if (card) card.remove();
+    } else if (action === 'done') {
+        await markNotificationAsRead(notificationId);
+        if (card) card.remove();
+    } else if (action === 'later') {
+        const modalInstance = bootstrap.Modal.getInstance(document.getElementById('notificationCenterModal'));
+        if (modalInstance) modalInstance.hide();
+        return;
+    }
+
+    const remainingCards = document.querySelectorAll('#notificationCenterModal .notification-card');
+    if (remainingCards.length === 0) {
+        const modalInstance = bootstrap.Modal.getInstance(document.getElementById('notificationCenterModal'));
+        if (modalInstance) modalInstance.hide();
     }
 }
 
@@ -490,7 +627,7 @@ function renderUsersTable() {
             <td>${user.position}</td>
             <td>${departmentLabel}</td>
             <td><span class="badge bg-${getRoleBadgeColor(user.role)}">${getRoleDisplay(user.role)}</span></td>
-            <td>${user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '从未登录'}</td>
+            <td>${user.last_login_at ? formatDateTimeDisplay(user.last_login_at) : '从未登录'}</td>
             <td>
                 <button class="btn btn-sm btn-outline-primary" onclick="showEditUserModal('${user.id}')">
                     <i class="bi bi-pencil"></i>
@@ -554,7 +691,7 @@ function renderImportantItemsTable() {
             <td><span class="badge bg-${getPriorityBadgeColor(item.priority)}">${item.priority}</span></td>
             <td><span class="badge bg-${getStatusBadgeColor(item.status)}">${item.status}</span></td>
             <td>${item.department || '-'}</td>
-            <td>${item.deadline ? new Date(item.deadline).toLocaleDateString() : '-'}</td>
+            <td>${formatDateTimeDisplay(item.deadline)}</td>
             <td>
                 <button class="btn btn-sm btn-outline-primary" onclick="editImportantItem('${item.id}')">
                     <i class="bi bi-pencil"></i>
@@ -622,9 +759,11 @@ function renderTasksTable() {
     const totalTasks = filtered.length;
     const inProgressTasks = filtered.filter(task => task.status === 'in_progress' || task.status === 'pending').length;
     const completedTasks = filtered.filter(task => task.status === 'completed').length;
+    const now = new Date();
     const overdueTasks = filtered.filter(task => {
-        if (!task.deadline) return false;
-        return new Date(task.deadline) < new Date() && task.status !== 'completed';
+        const deadlineDate = parseLocalDateTime(task.deadline);
+        if (!deadlineDate) return false;
+        return deadlineDate < now && task.status !== 'completed';
     }).length;
     
     document.getElementById('totalTasksCount').textContent = totalTasks;
@@ -642,7 +781,8 @@ function renderTasksTable() {
     filtered.forEach(task => {
         const row = document.createElement('tr');
         const progress = calculateTaskProgress(task);
-        const isOverdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'completed';
+        const deadlineDate = parseLocalDateTime(task.deadline);
+        const isOverdue = deadlineDate && deadlineDate < now && task.status !== 'completed';
         
         const isRequestTask = task.is_request === true || task.is_request === 1;
         const isAssignee = currentUser && (task.assignee_id === currentUser.id || task.assignee_name === currentUser.name);
@@ -697,7 +837,7 @@ function renderTasksTable() {
                     </div>
                 </div>
             </td>
-            <td class="${isOverdue ? 'text-danger fw-bold' : ''}">${task.deadline ? new Date(task.deadline).toLocaleDateString() : '-'}</td>
+            <td class="${isOverdue ? 'text-danger fw-bold' : ''}">${formatDateTimeDisplay(task.deadline)}</td>
             <td>
                 ${actionButtons}
             </td>
@@ -722,7 +862,7 @@ async function loadLogs() {
         logs.forEach(log => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${new Date(log.created_at).toLocaleString()}</td>
+                <td>${formatDateTimeDisplay(log.created_at)}</td>
                 <td>${log.user_name}</td>
                 <td>${log.action}</td>
                 <td>${log.description || '-'}</td>
@@ -997,7 +1137,7 @@ async function editImportantItem(itemId) {
         document.getElementById('editImportantItemDescription').value = item.description || '';
         document.getElementById('editImportantItemPriority').value = item.priority;
         document.getElementById('editImportantItemStatus').value = item.status;
-        document.getElementById('editImportantItemDeadline').value = item.deadline ? new Date(item.deadline).toISOString().slice(0, 16) : '';
+        document.getElementById('editImportantItemDeadline').value = formatDateInputValue(item.deadline);
         
         const modal = new bootstrap.Modal(document.getElementById('editImportantItemModal'));
         modal.show();
@@ -1165,8 +1305,8 @@ function showAddTaskModal() {
     // 设置默认时间
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    document.getElementById('taskStartTime').value = now.toISOString().slice(0, 16);
-    document.getElementById('taskDeadline').value = tomorrow.toISOString().slice(0, 16);
+    document.getElementById('taskStartTime').value = formatDateInputValue(now);
+    document.getElementById('taskDeadline').value = formatDateInputValue(tomorrow);
     
     const modal = new bootstrap.Modal(document.getElementById('addTaskModal'));
     modal.show();
@@ -1536,9 +1676,9 @@ async function viewTaskDetail(taskId) {
         document.getElementById('detailTaskDepartment').textContent = currentTask.department;
         document.getElementById('detailTaskPriority').textContent = getPriorityText(currentTask.priority);
         document.getElementById('detailTaskStatus').textContent = getStatusText(currentTask.status);
-        document.getElementById('detailTaskStartTime').textContent = currentTask.start_time ? new Date(currentTask.start_time).toLocaleString() : '未设置';
-        document.getElementById('detailTaskDeadline').textContent = currentTask.deadline ? new Date(currentTask.deadline).toLocaleString() : '未设置';
-        document.getElementById('detailTaskCreatedAt').textContent = currentTask.created_at ? new Date(currentTask.created_at).toLocaleString() : '未知';
+        document.getElementById('detailTaskStartTime').textContent = currentTask.start_time ? formatDateTimeDisplay(currentTask.start_time, '未设置') : '未设置';
+        document.getElementById('detailTaskDeadline').textContent = currentTask.deadline ? formatDateTimeDisplay(currentTask.deadline, '未设置') : '未设置';
+        document.getElementById('detailTaskCreatedAt').textContent = currentTask.created_at ? formatDateTimeDisplay(currentTask.created_at, '未知') : '未知';
         document.getElementById('detailTaskCreatedBy').textContent = currentTask.created_by || '未知';
         
         // 更新进度条
@@ -1728,7 +1868,7 @@ async function loadTaskLogs(taskId) {
                         <h6 class="mb-1">${log.title || '工作日志'}</h6>
                         ${log.content ? `<p class="mb-1 text-muted small">${log.content.length > 100 ? log.content.substring(0, 100) + '...' : log.content}</p>` : ''}
                         <small class="text-muted">
-                            <i class="bi bi-clock"></i> ${new Date(log.created_at).toLocaleString()}
+                            <i class="bi bi-clock"></i> ${formatDateTimeDisplay(log.created_at)}
                         </small>
                     </div>
                     <span class="badge bg-${getCategoryBadgeColor(log.category)}">${log.category}</span>
@@ -1738,7 +1878,7 @@ async function loadTaskLogs(taskId) {
         });
         
         document.getElementById('detailTaskLogsCount').textContent = logs.length;
-        document.getElementById('detailTaskLastActivity').textContent = logs.length > 0 ? new Date(logs[0].created_at).toLocaleString() : '无';
+        document.getElementById('detailTaskLastActivity').textContent = logs.length > 0 ? formatDateTimeDisplay(logs[0].created_at, '无') : '无';
     } catch (error) {
         console.error('加载任务日志失败:', error);
         const logsList = document.getElementById('taskLogsList');
@@ -1801,7 +1941,7 @@ async function editTask(taskId) {
         document.getElementById('editTaskDepartment').value = task.department_name || task.department || '';
 
         // 时间字段
-        const toLocalInput = (dt) => dt ? new Date(dt).toISOString().slice(0,16) : '';
+        const toLocalInput = (dt) => formatDateInputValue(dt);
         document.getElementById('editTaskStartTime').value = toLocalInput(task.start_time);
         document.getElementById('editTaskEndTime').value = toLocalInput(task.end_time);
         document.getElementById('editTaskDeadline').value = toLocalInput(task.deadline);
@@ -1967,7 +2107,7 @@ async function updateTaskProgress() {
             // 刷新任务详情
             await viewTaskDetail(currentTask.id);
             // 更新“最后更新”时间显示
-            const nowStr = new Date().toLocaleString();
+            const nowStr = formatDateTimeDisplay(new Date());
             const last = document.getElementById('lastProgressUpdate');
             if (last) last.textContent = nowStr;
             // 刷新任务列表

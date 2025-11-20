@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/important_item.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+import '../utils/time_utils.dart';
+import '../widgets/time_zone_notice.dart';
 import 'company_important_edit_screen.dart';
 
 class CompanyImportantScreen extends StatefulWidget {
@@ -170,140 +172,159 @@ class _CompanyImportantScreenState extends State<CompanyImportantScreen> {
       );
     }
 
-    if (_importantItems.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.business_center,
-              size: 64,
-              color: Colors.grey,
-            ),
-            SizedBox(height: 16),
-            Text(
-              '暂无重要事项',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    final notice = TimeZoneNotice(
+      description: '十大重要事项的创建及截止时间均以当前设备本地时区显示，'
+          '请与 Web 管理端对照核验。',
+    );
 
-    return RefreshIndicator(
-      onRefresh: _loadImportantItems,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _importantItems.length,
-        itemBuilder: (context, index) {
-          final item = _importantItems[index];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            elevation: 4,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+    if (_importantItems.isEmpty) {
+      return Column(
+        children: [
+          notice,
+          const Expanded(
+            child: Center(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // 标题和优先级
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          item.title,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _getPriorityColor(item.priority).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _getPriorityColor(item.priority),
-                            width: 1,
-                          ),
-                        ),
-                        child: Text(
-                          _getPriorityText(item.priority),
-                          style: TextStyle(
-                            color: _getPriorityColor(item.priority),
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
+                  Icon(
+                    Icons.business_center,
+                    size: 64,
+                    color: Colors.grey,
                   ),
-                  const SizedBox(height: 8),
-                  
-                  // 描述
-                  if (item.description.isNotEmpty) ...[
-                    Text(
-                      item.description,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                  SizedBox(height: 16),
+                  Text(
+                    '暂无重要事项',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey,
                     ),
-                    const SizedBox(height: 8),
-                  ],
-                  
-                  // 状态和截止时间
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _getStatusColor(item.status).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _getStatusText(item.status),
-                          style: TextStyle(
-                            color: _getStatusColor(item.status),
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      if (item.deadline != null)
-                        Text(
-                          '截止: ${_formatDateTime(item.deadline!)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                    ],
                   ),
                 ],
               ),
             ),
-          );
-        },
-      ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        notice,
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadImportantItems,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _importantItems.length,
+              itemBuilder: (context, index) {
+                final item = _importantItems[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 标题和优先级
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item.title,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getPriorityColor(item.priority).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: _getPriorityColor(item.priority),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                _getPriorityText(item.priority),
+                                style: TextStyle(
+                                  color: _getPriorityColor(item.priority),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        
+                        // 描述
+                        if (item.description.isNotEmpty) ...[
+                          Text(
+                            item.description,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        
+                        // 状态和截止时间
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getStatusColor(item.status).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                _getStatusText(item.status),
+                                style: TextStyle(
+                                  color: _getStatusColor(item.status),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            if (item.deadline != null)
+                              Text(
+                                '截止: ${_formatDateTime(item.deadline!)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
+    return TimeUtils.formatDateTimeWithZone(dateTime);
   }
 
   void _showEditDialog() {

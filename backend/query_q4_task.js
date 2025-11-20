@@ -5,9 +5,9 @@ async function queryTask() {
 
   try {
     connection = await mysql.createConnection({
-      host: 'localhost',
-      user: 'root',
-      password: '23301144',
+      host: 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
+      user: 'pdl',
+      password: 'Pdl123456',
       database: 'enterprise_management',
       charset: 'utf8mb4'
     });

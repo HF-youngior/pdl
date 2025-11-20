@@ -1,10 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../models/task.dart';
 import '../models/user.dart';
 import '../services/task_service.dart';
 import '../services/api_service.dart';
+import '../utils/time_utils.dart';
+import '../widgets/time_zone_notice.dart';
 import 'task_edit_screen.dart';
 import 'request_screen.dart';
 
@@ -348,11 +349,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
-  // 格式化日期时间，处理时区问题（增加8小时）
-  String _formatDateTime(DateTime dateTime) {
-    // 增加8小时
-    final adjustedDateTime = dateTime.toLocal();
-    return DateFormat('yyyy-MM-dd HH:mm').format(adjustedDateTime);
+  // 格式化日期时间，带本地时区标签，便于与管理端对照
+  String _formatDateTime(DateTime dateTime, {bool includeSeconds = false}) {
+    return TimeUtils.formatDateTimeWithZone(
+      dateTime,
+      includeSeconds: includeSeconds,
+    );
   }
 
   @override
@@ -433,6 +435,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              TimeZoneNotice(
+                description: '任务开始/截止/完成等时间均按当前设备本地时区显示，'
+                    '可直接与 Web 管理端核对。',
+              ),
+              const SizedBox(height: 12),
               // 邀约任务信息（邀约任务专用）
               if (task.isRequest)
                 Card(

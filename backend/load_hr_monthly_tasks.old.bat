@@ -5,10 +5,10 @@ echo ========================================
 echo.
 
 REM 设置数据库连接参数
-set DB_HOST=localhost
+set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
 set DB_PORT=3306
-set DB_USER=root
-set DB_PASS=23301144
+set DB_USER=pdl
+set DB_PASS=Pdl123456
 set DB_NAME=enterprise_management
 
 echo 正在执行 SQL 脚本...

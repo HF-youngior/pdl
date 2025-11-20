@@ -85,7 +85,7 @@ CREATE TABLE task_notifications (
     task_id VARCHAR(36) NOT NULL,
     from_user_id VARCHAR(36) NOT NULL,
     to_user_id VARCHAR(36) NOT NULL,
-    notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes') NOT NULL,
+    notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes', 'deadline_warning') NOT NULL,
     message TEXT NOT NULL,
     is_read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

@@ -4,9 +4,9 @@ echo 加载修复的增强示例数据 (版本2)...
 echo.
 
 REM Set database connection parameters
-set DB_HOST=localhost
-set DB_USER=root
-set DB_PASSWORD=23301144
+set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
+set DB_USER=pdl
+set DB_PASSWORD=Pdl123456
 set DB_NAME=enterprise_management
 set DB_PORT=3306
 

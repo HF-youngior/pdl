@@ -48,7 +48,7 @@
 
 ## 重要说明
 
-- **MySQL root 密码：** 23301144
+- **云数据库账号：** pdl / Pdl123456（rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com:3306）
 - **所有应用用户密码：** 已按上表恢复
 - **数据库名：** enterprise_management
 - **后端端口：** 8080

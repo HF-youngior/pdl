@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/important_item.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+import '../widgets/time_zone_notice.dart';
+import '../utils/time_utils.dart';
 
 class CompanyImportantEditScreen extends StatefulWidget {
   final User user;
@@ -224,6 +226,10 @@ class _CompanyImportantEditScreenState extends State<CompanyImportantEditScreen>
               ),
             ],
           ),
+        ),
+        TimeZoneNotice(
+          description: '所有事项的截止时间及创建时间均以当前设备本地时区展示，'
+              '请与 Web 管理端保持一致。',
         ),
         
         // 事项列表
@@ -728,6 +734,6 @@ class _CompanyImportantEditScreenState extends State<CompanyImportantEditScreen>
   }
 
   String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    return TimeUtils.formatDateTimeWithZone(dateTime);
   }
 }

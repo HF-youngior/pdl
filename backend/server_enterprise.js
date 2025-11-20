@@ -49,43 +49,62 @@ const allowedUserRoles = ['admin', 'founder', 'department_head', 'team_leader', 
 
 let db; // 连接池
 
-// 时区处理工具函数
-// 将MySQL返回的Date对象或字符串转换为带有系统本地时区信息的ISO字符串
-function formatDateTimeForBeijing(dateTime) {
+// 时区处理工具函数（固定使用北京时间，避免依赖宿主机时区）
+const BEIJING_OFFSET_MINUTES = 8 * 60;
+
+function normalizeDateInput(dateTime) {
   if (!dateTime) return null;
-
-  let date;
-
   if (dateTime instanceof Date) {
-    date = dateTime;
-  } else if (typeof dateTime === 'string') {
-    // 如果已经包含时区信息，则直接返回，避免重复转换
-    if (/[+-]\d{2}:\d{2}$/.test(dateTime)) {
-      return dateTime;
-    }
-    date = new Date(dateTime);
-  } else {
+    return new Date(dateTime.getTime());
+  }
+  const parsed = new Date(dateTime);
+  if (Number.isNaN(parsed.getTime())) {
     return null;
   }
+  return parsed;
+}
 
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
+function shiftToBeijing(date) {
+  const utcMillis = date.getTime();
+  return new Date(utcMillis + BEIJING_OFFSET_MINUTES * 60 * 1000);
+}
 
-  const offsetMinutesTotal = -date.getTimezoneOffset();
-  const offsetSign = offsetMinutesTotal >= 0 ? '+' : '-';
-  const absOffset = Math.abs(offsetMinutesTotal);
-  const offsetHours = String(Math.floor(absOffset / 60)).padStart(2, '0');
-  const offsetMinutes = String(absOffset % 60).padStart(2, '0');
+// 将数据库中的时间统一转换为北京时间 ISO 字符串
+function formatDateTimeForBeijing(dateTime) {
+  const date = normalizeDateInput(dateTime);
+  if (!date) return null;
+  const beijingDate = shiftToBeijing(date);
+  const year = beijingDate.getUTCFullYear();
+  const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(beijingDate.getUTCDate()).padStart(2, '0');
+  const hours = String(beijingDate.getUTCHours()).padStart(2, '0');
+  const minutes = String(beijingDate.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(beijingDate.getUTCSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+08:00`;
+}
 
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
+// 将任意时间转换为北京时间的 MySQL DATETIME 字符串
+function formatDateTimeForMySQL(dateTime) {
+  const date = normalizeDateInput(dateTime);
+  if (!date) return null;
+  const beijingDate = shiftToBeijing(date);
+  const year = beijingDate.getUTCFullYear();
+  const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(beijingDate.getUTCDate()).padStart(2, '0');
+  const hours = String(beijingDate.getUTCHours()).padStart(2, '0');
+  const minutes = String(beijingDate.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(beijingDate.getUTCSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
 
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${offsetSign}${offsetHours}:${offsetMinutes}`;
+function formatDateOnlyForBeijing(dateTime) {
+  const date = normalizeDateInput(dateTime);
+  if (!date) return null;
+  const beijingDate = shiftToBeijing(date);
+  const year = beijingDate.getUTCFullYear();
+  const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(beijingDate.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // 安全解析JSON字段的辅助函数（MySQL 2可能已自动解析JSON字段）
@@ -210,7 +229,7 @@ async function createTables() {
       task_id VARCHAR(36) NOT NULL,
       from_user_id VARCHAR(36) NOT NULL,
       to_user_id VARCHAR(36) NOT NULL,
-      notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes') NOT NULL,
+      notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes', 'deadline_warning') NOT NULL,
       message TEXT NOT NULL,
       is_read BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -380,6 +399,16 @@ async function ensureSchemaCompatibility() {
     // 索引、关联关系等原有包裹不变
     try { await db.execute("CREATE INDEX IF NOT EXISTS idx_personal_logs_user_id ON personal_logs(user_id)"); } catch (_) {}
     try { await db.execute("CREATE INDEX IF NOT EXISTS idx_personal_logs_log_date ON personal_logs(log_date)"); } catch (_) {}
+    try {
+      await db.execute(`ALTER TABLE task_notifications MODIFY notification_type ENUM(
+        'task_assigned',
+        'task_progress_update',
+        'task_completed',
+        'task_cancelled',
+        'special_notes',
+        'deadline_warning'
+      ) NOT NULL`);
+    } catch (_) {}
     await db.execute(`CREATE TABLE IF NOT EXISTS log_task_linkage (
       id INT AUTO_INCREMENT PRIMARY KEY,
       log_id VARCHAR(36) NOT NULL,
@@ -2669,6 +2698,82 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
   }
 });
 
+// 登录会话内触发的截止时间提醒
+app.post('/api/notifications/deadline-reminders', authenticateToken, async (req, res) => {
+  try {
+    const rawHours = Number(req.body?.hoursBefore ?? 24);
+    const hoursBefore = Number.isFinite(rawHours)
+      ? Math.min(Math.max(Math.round(rawHours), 1), 168)
+      : 24;
+
+    const now = new Date();
+    const upcomingThreshold = new Date(now.getTime() + hoursBefore * 60 * 60 * 1000);
+    const dedupeThreshold = new Date(now.getTime() - hoursBefore * 60 * 60 * 1000);
+    const assigneeName = req.user.name || req.user.username || '';
+
+    const [tasks] = await db.execute(
+      `SELECT id, title, deadline, priority, status
+       FROM tasks
+       WHERE deadline IS NOT NULL
+         AND status NOT IN ('completed', 'cancelled')
+         AND (assignee_id = ? OR assignee_name = ?)
+         AND deadline BETWEEN ? AND ?
+       ORDER BY deadline ASC`,
+      [
+        req.user.id,
+        assigneeName,
+        formatDateTimeForMySQL(now),
+        formatDateTimeForMySQL(upcomingThreshold),
+      ]
+    );
+
+    const reminders = [];
+    for (const task of tasks) {
+      const [existing] = await db.execute(
+        `SELECT id FROM task_notifications
+         WHERE task_id = ?
+           AND to_user_id = ?
+           AND notification_type = 'deadline_warning'
+           AND created_at >= ?`,
+        [task.id, req.user.id, formatDateTimeForMySQL(dedupeThreshold)]
+      );
+
+      if (existing.length > 0) continue;
+
+      const message = `系统提醒：任务《${task.title}》将在${hoursBefore}小时内到期，请及时处理。`;
+      const notificationId = await createNotification(
+        task.id,
+        req.user.id,
+        req.user.id,
+        'deadline_warning',
+        message
+      );
+
+      if (!notificationId) continue;
+
+      reminders.push({
+        notification_id: notificationId,
+        task_id: task.id,
+        title: task.title,
+        deadline: formatDateTimeForBeijing(task.deadline),
+        priority: task.priority,
+        status: task.status,
+        message,
+      });
+    }
+
+    res.json({
+      reminders,
+      checkedTasks: tasks.length,
+      hoursBefore,
+      nextCheckSuggestedInMinutes: Math.max(1, Math.min(15, Math.round(hoursBefore / 6))),
+    });
+  } catch (error) {
+    console.error('截止时间提醒检查失败:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 标记通知为已读
 app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
   try {
@@ -2687,6 +2792,17 @@ app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
 });
 
 // 创建个人日志
+function convertPersonalLogForResponse(log, taskUpdates = []) {
+  if (!log) return null;
+  return {
+    ...log,
+    created_at: formatDateTimeForBeijing(log.created_at),
+    updated_at: formatDateTimeForBeijing(log.updated_at),
+    log_date: log.log_date ? formatDateOnlyForBeijing(log.log_date) : null,
+    taskUpdates
+  };
+}
+
 app.post('/api/personal-logs', authenticateToken, async (req, res) => {
   // 兼容旧形态：{ log, linkages }；也支持直接平铺字段
   const userId = req.user.id;
@@ -2797,7 +2913,8 @@ app.post('/api/personal-logs', authenticateToken, async (req, res) => {
       task_status: link.task_status
     }));
 
-    return res.status(201).json({ ...rows[0], taskUpdates });
+    const logRecord = rows[0];
+    return res.status(201).json(convertPersonalLogForResponse(logRecord, taskUpdates));
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('创建个人日志错误:', error);
@@ -2825,16 +2942,12 @@ app.get('/api/personal-logs', authenticateToken, async (req, res) => {
         [log.id]
       );
 
-      return {
-        ...log,
-        // 转换为 camelCase 以匹配 Flutter 模型
-        taskUpdates: links.map(link => ({
-           taskId: link.task_id,
-           taskName: link.task_name,
-           progress_percentage: link.progress_percentage,
-           task_status: link.task_status
-        }))
-      };
+      return convertPersonalLogForResponse(log, links.map(link => ({
+        taskId: link.task_id,
+        taskName: link.task_name,
+        progress_percentage: link.progress_percentage,
+        task_status: link.task_status
+      })));
     }));
 
     res.json(result);
@@ -2865,7 +2978,11 @@ app.get('/api/logs', async (req, res) => {
     const [rows] = await db.execute(
       'SELECT * FROM system_logs ORDER BY created_at DESC LIMIT 50'
     );
-    res.json(rows);
+    const converted = rows.map(log => ({
+      ...log,
+      created_at: formatDateTimeForBeijing(log.created_at)
+    }));
+    res.json(converted);
   } catch (error) {
     console.error('获取日志错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
@@ -2978,7 +3095,7 @@ app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
       progress_percentage: link.progress_percentage,
       task_status: link.task_status
     }));
-    return res.status(200).json({ ...newLogRows[0], taskUpdates: finalLinks });
+    return res.status(200).json(convertPersonalLogForResponse(newLogRows[0], finalLinks));
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('更新个人日志错误:', error);
@@ -3078,8 +3195,10 @@ async function createNotification(taskId, fromUserId, toUserId, type, message) {
       'INSERT INTO task_notifications (id, task_id, from_user_id, to_user_id, notification_type, message) VALUES (?, ?, ?, ?, ?, ?)',
       [notificationId, taskId, fromUserId, toUserId, type, message]
     );
+    return notificationId;
   } catch (error) {
     console.error('创建通知失败:', error);
+    return null;
   }
 }
 
