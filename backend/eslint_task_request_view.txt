@@ -1,0 +1,95 @@
+﻿
+  1395:9    warning  'params' is never reassigned. Use 'const' instead         
+                           prefer-const
+  1443:5    warning  Unexpected console statement                              
+                           no-console
+  1453:9    warning  'query' is never reassigned. Use 'const' instead          
+                           prefer-const
+  1460:9    warning  'params' is never reassigned. Use 'const' instead         
+                           prefer-const
+  1494:5    warning  Unexpected console statement                              
+                           no-console
+  1596:5    warning  Unexpected console statement                              
+                           no-console
+  1601:1    error    Expected indentation of 0 spaces but found 2              
+                           indent
+  1602:1    error    Expected indentation of 0 spaces but found 2              
+                           indent
+  1629:1    error    Expected indentation of 6 spaces but found 8              
+                           indent
+  1630:1    error    Expected indentation of 8 spaces but found 10             
+                           indent
+  1631:1    error    Expected indentation of 6 spaces but found 8              
+                           indent
+  1632:1    error    Expected indentation of 8 spaces but found 10             
+                           indent
+  1633:1    error    Expected indentation of 6 spaces but found 8              
+                           indent
+  1634:1    error    Expected indentation of 8 spaces but found 10             
+                           indent
+  1635:1    error    Expected indentation of 6 spaces but found 8              
+                           indent
+  1636:1    error    Expected indentation of 8 spaces but found 10             
+                           indent
+  1637:1    error    Expected indentation of 6 spaces but found 8              
+                           indent
+  1638:1    error    Expected indentation of 6 spaces but found 8              
+                           indent
+  1639:1    error    Expected indentation of 8 spaces but found 10             
+                           indent
+  1689:5    warning  Unexpected console statement                              
+                           no-console
+  1694:1    error    Expected indentation of 0 spaces but found 2              
+                           indent
+  1695:1    error    Expected indentation of 0 spaces but found 2              
+                           indent
+  1740:1    error    Expected indentation of 10 spaces but found 12            
+                           indent
+  1741:1    error    Expected indentation of 10 spaces but found 12            
+                           indent
+  1742:1    error    Expected indentation of 12 spaces but found 14            
+                           indent
+  1743:1    error    Expected indentation of 10 spaces but found 12            
+                           indent
+  1744:1    error    Expected indentation of 12 spaces but found 14            
+                           indent
+  1745:1    error    Expected indentation of 10 spaces but found 12            
+                           indent
+  1746:1    error    Expected indentation of 12 spaces but found 14            
+                           indent
+  1747:1    error    Expected indentation of 10 spaces but found 12            
+                           indent
+  1748:1    error    Expected indentation of 10 spaces but found 12            
+                           indent
+  1749:1    error    Expected indentation of 12 spaces but found 14            
+                           indent
+  1770:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  1775:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  1780:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  1785:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  1789:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  1851:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  1875:5    warning  Unexpected console statement                              
+                           no-console
+  2007:7    warning  Unexpected console statement                              
+                           no-console
+  2016:5    warning  Unexpected console statement                              
+                           no-console
+  2133:16   warning  'e' is defined but never used                             
+                           no-unused-vars
+  2189:5    warning  Unexpected console statement                              
+                           no-console
+  2288:7    warning  'relatedTaskTitle' is assigned a value but never used     
+                           no-unused-vars
+  2329:16   warning  'e' is defined but never used                             
+                           no-unused-vars
+  2373:5    warning  Unexpected console statement                              
+                           no-console
+
+

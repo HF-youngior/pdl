@@ -37,6 +37,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   DateTime? _deadline;
   DateTime? _startTime;
   DateTime? _endTime;
+  DateTime? _previousStartTime;
+  DateTime? _previousEndTime;
   bool _isAllDay = false;
   bool _isLoading = false;
   double _progressPercentage = 0.0;
@@ -176,6 +178,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   // 保存任务
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (_startTime != null &&
+        _endTime != null &&
+        _endTime!.isBefore(_startTime!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('结束时间不能早于开始时间'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
@@ -634,6 +648,15 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                     initialDate: _endTime,
                     title: '选择结束时间',
                     onDateSelected: (dateTime) {
+                      if (_startTime != null && dateTime.isBefore(_startTime!)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('结束时间不能早于开始时间'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        return;
+                      }
                       setState(() {
                         _endTime = dateTime;
                       });
@@ -648,6 +671,47 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   onChanged: (value) {
                     setState(() {
                       _isAllDay = value;
+                      if (value) {
+                        // 记录切换前的时间，便于取消全天时恢复
+                        _previousStartTime = _startTime;
+                        _previousEndTime = _endTime;
+
+                        // 将时间调整为当天 00:00 和 23:59，保留原日期
+                        final baseStart = _startTime ?? _endTime ?? DateTime.now();
+                        final startDate = DateTime(
+                          baseStart.year,
+                          baseStart.month,
+                          baseStart.day,
+                        );
+                        _startTime = DateTime(
+                          startDate.year,
+                          startDate.month,
+                          startDate.day,
+                          0,
+                          0,
+                        );
+
+                        final baseEnd = _endTime ?? _startTime ?? DateTime.now();
+                        final endDate = DateTime(
+                          baseEnd.year,
+                          baseEnd.month,
+                          baseEnd.day,
+                        );
+                        _endTime = DateTime(
+                          endDate.year,
+                          endDate.month,
+                          endDate.day,
+                          23,
+                          59,
+                        );
+                      } else {
+                        // 取消全天任务，恢复之前设定的时间
+                        _startTime = _previousStartTime ?? _startTime;
+                        _endTime = _previousEndTime ??
+                            (_startTime != null ? _startTime!.add(const Duration(hours: 1)) : null);
+                        _previousStartTime = null;
+                        _previousEndTime = null;
+                      }
                     });
                   },
                 ),
