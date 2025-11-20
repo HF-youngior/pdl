@@ -26,6 +26,8 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
   Set<String> _previousAssignedTaskIds = {}; // 用于跟踪之前的分配任务ID
   Map<String, String?> _previousRequestResponses = {}; // 用于跟踪之前的邀约回复状态
   DateTime? _lastLoadTime; // 上次加载时间
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -37,6 +39,7 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -364,8 +367,61 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
             ),
         ],
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          _buildSearchBar(),
+          Expanded(child: _buildBody()),
+        ],
+      ),
     );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchQuery = '';
+                    });
+                  },
+                )
+              : null,
+          hintText: '搜索任务标题、内容或负责人',
+          filled: true,
+          fillColor: Colors.grey.shade100,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide.none,
+          ),
+        ),
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value.trim();
+          });
+        },
+      ),
+    );
+  }
+
+  List<Task> _applySearch(List<Task> tasks) {
+    if (_searchQuery.isEmpty) return tasks;
+    final keyword = _searchQuery.toLowerCase();
+    return tasks.where((task) {
+      final title = task.title.toLowerCase();
+      final description = task.description.toLowerCase();
+      final assignee = task.assigneeName.toLowerCase();
+      return title.contains(keyword) ||
+          description.contains(keyword) ||
+          assignee.contains(keyword);
+    }).toList();
   }
 
   Widget _buildBody() {
@@ -416,7 +472,8 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
   }
 
   Widget _buildReceivedTasks() {
-    if (_receivedTasks.isEmpty) {
+    final tasks = _applySearch(_receivedTasks);
+    if (_receivedTasks.isEmpty && _searchQuery.isEmpty) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -438,14 +495,36 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
         ),
       );
     }
+    if (tasks.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off,
+              size: 64,
+              color: Colors.grey,
+            ),
+            SizedBox(height: 16),
+            Text(
+              '未找到相关任务',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return RefreshIndicator(
       onRefresh: _loadTasks,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: _receivedTasks.length,
+        itemCount: tasks.length,
         itemBuilder: (context, index) {
-          final task = _receivedTasks[index];
+          final task = tasks[index];
           return _buildTaskCard(task, isReceived: true);
         },
       ),
@@ -453,7 +532,8 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
   }
 
   Widget _buildAssignedTasks() {
-    if (_assignedTasks.isEmpty) {
+    final tasks = _applySearch(_assignedTasks);
+    if (_assignedTasks.isEmpty && _searchQuery.isEmpty) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -475,14 +555,36 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
         ),
       );
     }
+    if (tasks.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off,
+              size: 64,
+              color: Colors.grey,
+            ),
+            SizedBox(height: 16),
+            Text(
+              '未找到相关任务',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return RefreshIndicator(
       onRefresh: _loadTasks,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: _assignedTasks.length,
+        itemCount: tasks.length,
         itemBuilder: (context, index) {
-          final task = _assignedTasks[index];
+          final task = tasks[index];
           return _buildTaskCard(task, isReceived: false);
         },
       ),

@@ -8,6 +8,8 @@ import '../widgets/data_panel.dart';
 import '../services/mbti_test_service.dart';
 import '../models/mbti_test_result.dart';
 import '../models/personal_log.dart';
+import '../services/task_service.dart';
+import '../models/task.dart';
 
 class PersonalResumeScreen extends StatefulWidget {
   final User user;
@@ -25,6 +27,18 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
   String? _error;
   MbtiTestResult? _latestMbti;
   Map<String, dynamic> _personalProfile = {};
+  Map<String, int> _pendingTaskCounts = {
+    'important_urgent': 0,
+    'important_not_urgent': 0,
+    'not_important_urgent': 0,
+    'not_important_not_urgent': 0,
+  };
+  Map<String, List<Task>> _pendingTasksByQuadrant = {
+    'important_urgent': [],
+    'important_not_urgent': [],
+    'not_important_urgent': [],
+    'not_important_not_urgent': [],
+  };
 
   @override
   void initState() {
@@ -45,11 +59,45 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
       final autoTop = _extractTopPersonalInfoFromLogs(logs, widget.user.id);
       // 获取最新一次MBTI
       final mbti = await MbtiTestService.getUserLatestMbti();
+      final tasks = await TaskService.getTasks();
+      final myTasks = tasks.where((task) => task.assigneeId == widget.user.id || task.assigneeName == widget.user.name).toList();
+      final pendingTasks = myTasks.where((task) => task.status != 'completed' && task.status != 'cancelled').toList();
+      final Map<String, int> counts = {
+        'important_urgent': 0,
+        'important_not_urgent': 0,
+        'not_important_urgent': 0,
+        'not_important_not_urgent': 0,
+      };
+      final Map<String, List<Task>> quadrantTasks = {
+        'important_urgent': [],
+        'important_not_urgent': [],
+        'not_important_urgent': [],
+        'not_important_not_urgent': [],
+      };
+      for (final task in pendingTasks) {
+        final quadrant = _quadrantFromPriority(task.priority);
+        counts[quadrant] = (counts[quadrant] ?? 0) + 1;
+        quadrantTasks[quadrant]!.add(task);
+      }
+      for (final entry in quadrantTasks.entries) {
+        entry.value.sort((a, b) {
+          final aDeadline = a.deadline ?? a.endTime ?? a.startTime;
+          final bDeadline = b.deadline ?? b.endTime ?? b.startTime;
+          if (aDeadline != null && bDeadline != null) {
+            return aDeadline.compareTo(bDeadline);
+          }
+          if (aDeadline != null) return -1;
+          if (bDeadline != null) return 1;
+          return b.createdAt.compareTo(a.createdAt);
+        });
+      }
       setState(() {
         _personalInfo = info;
         _autoPersonalInfo = autoTop;
         _latestMbti = mbti;
         _personalProfile = Map<String, dynamic>.from(mbti?.personalInfo ?? {});
+        _pendingTaskCounts = counts;
+        _pendingTasksByQuadrant = quadrantTasks;
         _isLoading = false;
       });
     } catch (e) {
@@ -168,6 +216,21 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
         return Icons.check_circle_outline;
       default:
         return Icons.info;
+    }
+  }
+
+  String _quadrantFromPriority(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'p0':
+        return 'important_urgent';
+      case 'p1':
+        return 'important_not_urgent';
+      case 'p2':
+        return 'not_important_urgent';
+      case 'p3':
+        return 'not_important_not_urgent';
+      default:
+        return 'important_not_urgent';
     }
   }
 
@@ -464,6 +527,8 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
                 Colors.red,
                 Icons.priority_high,
                 quadrantGroups['important_urgent'] ?? [],
+                _pendingTaskCounts['important_urgent'] ?? 0,
+                _pendingTasksByQuadrant['important_urgent'] ?? [],
               ),
               _buildQuadrantCard(
                 'important_not_urgent',
@@ -471,6 +536,8 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
                 Colors.orange,
                 Icons.schedule,
                 quadrantGroups['important_not_urgent'] ?? [],
+                _pendingTaskCounts['important_not_urgent'] ?? 0,
+                _pendingTasksByQuadrant['important_not_urgent'] ?? [],
               ),
               _buildQuadrantCard(
                 'not_important_urgent',
@@ -478,6 +545,8 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
                 Colors.blue,
                 Icons.flash_on,
                 quadrantGroups['not_important_urgent'] ?? [],
+                _pendingTaskCounts['not_important_urgent'] ?? 0,
+                _pendingTasksByQuadrant['not_important_urgent'] ?? [],
               ),
               _buildQuadrantCard(
                 'not_important_not_urgent',
@@ -485,6 +554,8 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
                 Colors.green,
                 Icons.check_circle_outline,
                 quadrantGroups['not_important_not_urgent'] ?? [],
+                _pendingTaskCounts['not_important_not_urgent'] ?? 0,
+                _pendingTasksByQuadrant['not_important_not_urgent'] ?? [],
               ),
             ],
           ),
@@ -498,7 +569,9 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
     String title,
     Color color,
     IconData icon,
-    List<PersonalInfo> items,
+    List<PersonalInfo> fallbackItems,
+    int pendingCount,
+    List<Task> pendingTasks,
   ) {
     return Card(
       elevation: 4,
@@ -541,7 +614,7 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
               const SizedBox(height: 8),
               
               Text(
-                '${items.length} 项',
+                '待办 $pendingCount 项',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -550,17 +623,40 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
               ),
               const SizedBox(height: 4),
               
-              if (items.isNotEmpty) ...[
-                Text(
-                  items.first.title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+              Builder(
+                builder: (_) {
+                  if (pendingTasks.isNotEmpty) {
+                    final task = pendingTasks.first;
+                    final deadline = task.deadline ?? task.endTime ?? task.startTime;
+                    final deadlineText = deadline != null
+                        ? DateFormat('MM-dd').format(deadline.toLocal())
+                        : '未设置';
+                    return Text(
+                      '${task.title} · 截止 $deadlineText',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    );
+                  } else if (fallbackItems.isNotEmpty) {
+                    return Text(
+                      fallbackItems.first.title,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    );
+                  }
+                  return const Text(
+                    '暂无记录',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  );
+                },
+              ),
             ],
           ),
         ),

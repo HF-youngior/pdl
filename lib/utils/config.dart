@@ -1,5 +1,9 @@
+import '../services/api_service.dart';
+
 class Config {
-  static const String baseUrl = 'http://localhost:8080/api';
+  /// 获取API基础URL（动态配置）
+  /// 使用ApiService的baseUrl，支持模拟器和真机连接
+  static String get baseUrl => ApiService.baseUrl;
   
   // API端点配置
   static const String loginEndpoint = '/auth/login';

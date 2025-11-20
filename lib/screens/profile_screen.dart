@@ -114,18 +114,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 20),
 
-            // 小组件区域
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDataWidget(),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildMallWidget(),
-                ),
-              ],
-            ),
+            // 小组件区域（仅展示今日数据）
+            _buildDataWidget(),
             const SizedBox(height: 20),
 
             // 功能菜单
@@ -179,51 +169,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-
-  Widget _buildMallWidget() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: InkWell(
-        onTap: () {
-          _showMallPanel();
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              Icon(
-                Icons.store,
-                size: 40,
-                color: Colors.orange,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                '商城',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '商品购买和积分兑换',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   void _showDataPanel() {
     showDialog(
       context: context,
@@ -244,51 +189,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-
-  void _showMallPanel() {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.9,
-          height: MediaQuery.of(context).size.height * 0.8,
-          padding: const EdgeInsets.all(20),
-          child: const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.store,
-                  size: 80,
-                  color: Colors.orange,
-                ),
-                SizedBox(height: 20),
-                Text(
-                  '商城功能',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 12),
-                Text(
-                  '商城功能正在开发中...',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildMenuSection() {
     return Column(
       children: [
