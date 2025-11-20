@@ -64,6 +64,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _settings.addListener(_onSettingsChanged);
     _startDeadlineReminderMonitor();
     _startNotificationPolling();
+    // 初始化时加载未读通知数量
+    _loadUnreadNotificationCount();
+  }
+
+  /// 加载未读通知数量
+  Future<void> _loadUnreadNotificationCount() async {
+    if (_isGuestUser || ApiService.getToken() == null) return;
+    
+    try {
+      final notifications = await NotificationService.getNotifications();
+      if (mounted) {
+        setState(() {
+          _unreadNotificationCount = notifications.where((n) => !n.isRead).length;
+        });
+      }
+    } catch (e) {
+      debugPrint('加载未读通知数量失败: $e');
+    }
   }
 
   @override
@@ -140,6 +158,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final notifications = await NotificationService.getNotifications();
       if (!mounted) return;
+
+      // 更新未读通知数量（必须在筛选之前更新，确保数量准确）
+      final unreadCount = notifications.where((n) => !n.isRead).length;
+      if (mounted) {
+        setState(() {
+          _unreadNotificationCount = unreadCount;
+        });
+      }
 
       // 筛选出未读且未显示过的通知（只显示一次弹窗，但通知会保存在通知栏中）
       final newNotifications = notifications
@@ -851,8 +877,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         builder: (context) => NotificationCenterScreen(user: widget.user),
       ),
     ).then((_) {
-      // 返回时刷新通知计数
-      _loadBadgeCount();
+      // 返回时刷新未读通知数量
+      _loadUnreadNotificationCount();
     });
   }
 

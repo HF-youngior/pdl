@@ -71,17 +71,8 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
     // 按日期筛选（只查看某一天的通知，使用北京时间）
     if (_selectedDate != null) {
       filtered = filtered.where((n) {
-        // 后端返回的created_at已经是北京时间格式（+08:00），直接解析即可
-        // 如果createdAt是UTC时间，需要转换为北京时间
-        DateTime notificationDateTime;
-        if (n.createdAt.isUtc) {
-          // 如果是UTC时间，转换为北京时间（+8小时）
-          notificationDateTime = n.createdAt.add(const Duration(hours: 8));
-        } else {
-          // 如果已经是本地时间（后端已转换为北京时间），直接使用
-          notificationDateTime = n.createdAt;
-        }
-        final notificationDate = DateTime(notificationDateTime.year, notificationDateTime.month, notificationDateTime.day);
+        // createdAt已经是北京时间（在fromJson中已处理），直接提取日期部分
+        final notificationDate = DateTime(n.createdAt.year, n.createdAt.month, n.createdAt.day);
         final selectedDateOnly = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day);
         return notificationDate.isAtSameMomentAs(selectedDateOnly);
       }).toList();
