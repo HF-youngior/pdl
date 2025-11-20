@@ -5,7 +5,6 @@ import '../models/user.dart';
 import '../services/task_service.dart';
 import '../services/api_service.dart';
 import '../utils/time_utils.dart';
-import '../widgets/time_zone_notice.dart';
 import 'task_edit_screen.dart';
 import 'request_screen.dart';
 
@@ -435,11 +434,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TimeZoneNotice(
-                description: '任务开始/截止/完成等时间均按当前设备本地时区显示，'
-                    '可直接与 Web 管理端核对。',
-              ),
-              const SizedBox(height: 12),
               // 邀约任务信息（邀约任务专用）
               if (task.isRequest)
                 Card(

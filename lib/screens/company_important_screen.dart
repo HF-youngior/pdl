@@ -3,7 +3,6 @@ import '../models/important_item.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
 import '../utils/time_utils.dart';
-import '../widgets/time_zone_notice.dart';
 import 'company_important_edit_screen.dart';
 
 class CompanyImportantScreen extends StatefulWidget {
@@ -172,15 +171,9 @@ class _CompanyImportantScreenState extends State<CompanyImportantScreen> {
       );
     }
 
-    final notice = TimeZoneNotice(
-      description: '十大重要事项的创建及截止时间均以当前设备本地时区显示，'
-          '请与 Web 管理端对照核验。',
-    );
-
     if (_importantItems.isEmpty) {
       return Column(
         children: [
-          notice,
           const Expanded(
             child: Center(
               child: Column(
@@ -209,7 +202,6 @@ class _CompanyImportantScreenState extends State<CompanyImportantScreen> {
 
     return Column(
       children: [
-        notice,
         Expanded(
           child: RefreshIndicator(
             onRefresh: _loadImportantItems,

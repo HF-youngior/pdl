@@ -1811,6 +1811,11 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
     // 创建任务分配通知
     await createNotification(taskId, req.user.id, assignee_id, 'task_assigned', `您收到了新任务：${title}`);
 
+    // 创建任务时，如果截止时间在24小时内，立刻发送截止时间通知
+    if (cleanValue(deadline)) {
+      await checkAndSendDeadlineNotification(taskId, assignee_id, cleanValue(deadline));
+    }
+
     // 如果是子任务，需要更新父任务进度
     if (cleanValue(parent_task_id)) {
       await updateParentTaskProgress(parent_task_id);
@@ -1901,11 +1906,57 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
     if (task.parent_task_id) {
       await updateParentTaskProgress(task.parent_task_id);
 
-      // 创建进度更新通知
-      const [parentTaskRows] = await db.execute('SELECT created_by, title FROM tasks WHERE id = ?', [task.parent_task_id]);
-      if (parentTaskRows.length > 0) {
-        const parentTask = parentTaskRows[0];
-        await createNotification(id, req.user.id, parentTask.created_by, 'task_progress_update', `任务进度更新：${task.title}`);
+      // 当子任务完成时，通知对应的上司或任务总支
+      if (status === 'completed') {
+        // 获取父任务信息
+        const [parentTaskRows] = await db.execute('SELECT created_by, title, assignee_id FROM tasks WHERE id = ?', [task.parent_task_id]);
+        if (parentTaskRows.length > 0) {
+          const parentTask = parentTaskRows[0];
+          const notifiedUserIds = new Set(); // 用于避免重复通知
+          
+          // 1. 通知父任务的负责人（assignee_id）
+          if (parentTask.assignee_id && !notifiedUserIds.has(parentTask.assignee_id)) {
+            await createNotification(
+              id,
+              req.user.id,
+              parentTask.assignee_id,
+              'task_completed',
+              `子任务《${task.title}》已完成（父任务：${parentTask.title}）`
+            );
+            notifiedUserIds.add(parentTask.assignee_id);
+          }
+          
+          // 2. 通知父任务的创建者（任务总支），如果与负责人不同
+          if (parentTask.created_by && !notifiedUserIds.has(parentTask.created_by)) {
+            await createNotification(
+              id,
+              req.user.id,
+              parentTask.created_by,
+              'task_completed',
+              `子任务《${task.title}》已完成（父任务：${parentTask.title}）`
+            );
+            notifiedUserIds.add(parentTask.created_by);
+          }
+          
+          // 3. 通知子任务的创建者（直接上司），如果与父任务负责人和创建者不同
+          if (task.created_by && !notifiedUserIds.has(task.created_by)) {
+            await createNotification(
+              id,
+              req.user.id,
+              task.created_by,
+              'task_completed',
+              `子任务《${task.title}》已完成（父任务：${parentTask.title}）`
+            );
+            notifiedUserIds.add(task.created_by);
+          }
+        }
+      } else {
+        // 非完成状态，只发送进度更新通知（保持原有逻辑）
+        const [parentTaskRows] = await db.execute('SELECT created_by, title FROM tasks WHERE id = ?', [task.parent_task_id]);
+        if (parentTaskRows.length > 0) {
+          const parentTask = parentTaskRows[0];
+          await createNotification(id, req.user.id, parentTask.created_by, 'task_progress_update', `任务进度更新：${task.title}`);
+        }
       }
     }
 
@@ -2048,9 +2099,21 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       values.push(cleanValue(end_time));
     }
 
+    // 检查截止时间是否变动
+    let deadlineChanged = false;
+    let newDeadline = null;
     if (deadline !== undefined) {
+      const oldDeadline = task.deadline ? new Date(task.deadline).getTime() : null;
+      newDeadline = cleanValue(deadline);
+      const newDeadlineTime = newDeadline ? new Date(newDeadline).getTime() : null;
+      
+      // 判断截止时间是否真的变动了（考虑null的情况）
+      if (oldDeadline !== newDeadlineTime) {
+        deadlineChanged = true;
+      }
+      
       updates.push('deadline = ?');
-      values.push(cleanValue(deadline));
+      values.push(newDeadline);
     }
 
     if (location !== undefined) {
@@ -2085,6 +2148,28 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       `UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`,
       values
     );
+
+    // 如果截止时间变动了，清除之前的截止时间通知记录，重新检测
+    if (deadlineChanged) {
+      const assigneeId = task.assignee_id;
+      // 删除该任务之前的截止时间通知，重新检测
+      try {
+        await db.execute(
+          `DELETE FROM task_notifications 
+           WHERE task_id = ? 
+           AND to_user_id = ? 
+           AND notification_type = 'deadline_warning'`,
+          [id, assigneeId]
+        );
+      } catch (err) {
+        console.error('清除旧通知失败:', err);
+      }
+      
+      // 如果新的截止时间存在，重新检测是否在24小时内
+      if (newDeadline) {
+        await checkAndSendDeadlineNotification(id, assigneeId, newDeadline);
+      }
+    }
 
     // 如果更新了progress_percentage或status，且该任务有父任务，更新父任务进度
     if ((progress_percentage !== undefined || status !== undefined) && task.parent_task_id) {
@@ -2407,6 +2492,11 @@ app.post('/api/tasks/request', authenticateToken, async (req, res) => {
       : `您收到了邀约请求：${request_type}`;
     await createNotification(taskId, req.user.id, assignee_id, 'task_assigned', notificationMessage);
 
+    // 创建邀约请求时，如果截止时间在24小时内，立刻发送截止时间通知
+    if (formattedDeadline) {
+      await checkAndSendDeadlineNotification(taskId, assignee_id, formattedDeadline);
+    }
+
     res.status(201).json({
       message: '邀约请求创建成功',
       id: taskId,
@@ -2566,6 +2656,11 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
     // 生成任务标题
     const taskTitle = `邀约请求：${request_type}`;
 
+    // 检查截止时间是否变动
+    const oldDeadline = task.deadline ? new Date(task.deadline).getTime() : null;
+    const newDeadlineTime = formattedDeadline ? new Date(formattedDeadline).getTime() : null;
+    const deadlineChanged = oldDeadline !== newDeadlineTime;
+
     // 更新邀约任务
     await db.execute(
       `UPDATE tasks SET
@@ -2590,6 +2685,48 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
         id
       ]
     );
+
+    // 如果截止时间变动了，清除之前的截止时间通知记录，重新检测
+    if (deadlineChanged) {
+      // 删除该任务之前的截止时间通知，重新检测
+      try {
+        await db.execute(
+          `DELETE FROM task_notifications 
+           WHERE task_id = ? 
+           AND to_user_id = ? 
+           AND notification_type = 'deadline_warning'`,
+          [id, assignee_id]
+        );
+      } catch (err) {
+        console.error('清除旧通知失败:', err);
+      }
+      
+      // 如果新的截止时间存在，重新检测是否在24小时内
+      if (formattedDeadline) {
+        await checkAndSendDeadlineNotification(id, assignee_id, formattedDeadline);
+      }
+    }
+
+    // 如果截止时间变动了，清除之前的截止时间通知记录，重新检测
+    if (deadlineChanged) {
+      // 删除该任务之前的截止时间通知，重新检测
+      try {
+        await db.execute(
+          `DELETE FROM task_notifications 
+           WHERE task_id = ? 
+           AND to_user_id = ? 
+           AND notification_type = 'deadline_warning'`,
+          [id, assignee_id]
+        );
+      } catch (err) {
+        console.error('清除旧通知失败:', err);
+      }
+      
+      // 如果新的截止时间存在，重新检测是否在24小时内
+      if (formattedDeadline) {
+        await checkAndSendDeadlineNotification(id, assignee_id, formattedDeadline);
+      }
+    }
 
     res.status(200).json({
       message: '邀约请求更新成功',
@@ -2770,6 +2907,34 @@ app.post('/api/notifications/deadline-reminders', authenticateToken, async (req,
     });
   } catch (error) {
     console.error('截止时间提醒检查失败:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 删除通知
+app.delete('/api/notifications/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // 验证通知是否属于当前用户
+    const [notificationRows] = await db.execute(
+      'SELECT to_user_id FROM task_notifications WHERE id = ?',
+      [id]
+    );
+    
+    if (notificationRows.length === 0) {
+      return res.status(404).json({ error: '通知不存在' });
+    }
+    
+    if (notificationRows[0].to_user_id !== req.user.id) {
+      return res.status(403).json({ error: '无权删除此通知' });
+    }
+    
+    await db.execute('DELETE FROM task_notifications WHERE id = ?', [id]);
+    
+    res.json({ message: '通知删除成功' });
+  } catch (error) {
+    console.error('删除通知错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
@@ -3226,6 +3391,61 @@ async function createNotification(taskId, fromUserId, toUserId, type, message) {
   } catch (error) {
     console.error('创建通知失败:', error);
     return null;
+  }
+}
+
+// 检查并发送截止时间通知（当截止时间在24小时内时）
+// oldDeadline: 旧的截止日期（用于比较是否变动），如果为null则从数据库获取
+async function checkAndSendDeadlineNotification(taskId, assigneeId, deadline, hoursBefore = 24, oldDeadline = null) {
+  if (!deadline) return;
+  
+  try {
+    const deadlineDate = new Date(deadline);
+    if (isNaN(deadlineDate.getTime())) return;
+    
+    const now = new Date();
+    const upcomingThreshold = new Date(now.getTime() + hoursBefore * 60 * 60 * 1000);
+    
+    // 检查截止时间是否在24小时内
+    if (deadlineDate > now && deadlineDate <= upcomingThreshold) {
+      // 检查是否已经发送过通知（避免重复通知）
+      const dedupeThreshold = new Date(now.getTime() - hoursBefore * 60 * 60 * 1000);
+      const [existing] = await db.execute(
+        `SELECT id, created_at FROM task_notifications
+         WHERE task_id = ?
+           AND to_user_id = ?
+           AND notification_type = 'deadline_warning'
+           AND created_at >= ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [taskId, assigneeId, formatDateTimeForMySQL(dedupeThreshold)]
+      );
+      
+      // 如果24小时内已发送过通知，则不重复发送
+      // 注意：编辑任务时，会在更新前清除旧通知，所以这里不会重复
+      if (existing.length > 0) {
+        return;
+      }
+      
+      // 获取任务标题，确保通知消息中包含正确的任务标题
+      const [taskRows] = await db.execute(
+        'SELECT title FROM tasks WHERE id = ?',
+        [taskId]
+      );
+      const taskTitle = taskRows.length > 0 ? taskRows[0].title : '任务';
+      
+      // 发送通知（24小时内未发送过，或截止日期已变动）
+      const message = `系统提醒：任务《${taskTitle}》截止时间已更新，将在${hoursBefore}小时内到期，请及时处理。`;
+      await createNotification(
+        taskId,
+        assigneeId,
+        assigneeId,
+        'deadline_warning',
+        message
+      );
+    }
+  } catch (error) {
+    console.error('检查截止时间通知失败:', error);
   }
 }
 

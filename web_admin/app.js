@@ -109,13 +109,6 @@ function formatDateInputValue(value) {
     return `${parts.year}-${parts.month}-${parts.day}T${parts.hours}:${parts.minutes}`;
 }
 
-function updateTimeZoneBanner() {
-    const label = formatDateTimeDisplay(new Date());
-    document.querySelectorAll('.time-zone-label').forEach(el => {
-        el.textContent = label;
-    });
-}
-
 // 统一清理模态框遗留的遮罩与滚动锁
 function resetModalState() {
     try {
@@ -135,8 +128,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // 检查是否已登录
     checkAuthStatus();
     initUserFormOptions();
-    updateTimeZoneBanner();
-    setInterval(updateTimeZoneBanner, 1000);
     createNotificationCenterLauncher();
     
     // 添加责任人选择事件监听器

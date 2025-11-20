@@ -4,9 +4,15 @@ echo 重新加载个人日志数据...
 echo.
 
 REM Set database connection parameters
+<<<<<<< Updated upstream
 set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
 set DB_USER=pdl
 set DB_PASSWORD=Pdl123456
+=======
+set DB_HOST=localhost
+set DB_USER=root
+set DB_PASSWORD=Zs462581379
+>>>>>>> Stashed changes
 set DB_NAME=enterprise_management
 set DB_PORT=3306
 

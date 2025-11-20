@@ -3,7 +3,6 @@ import '../models/personal_info.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
 import '../utils/time_utils.dart';
-import '../widgets/time_zone_notice.dart';
 
 class PersonalImportantScreen extends StatefulWidget {
   final User user;
@@ -154,15 +153,9 @@ class _PersonalImportantScreenState extends State<PersonalImportantScreen> {
       );
     }
 
-    final notice = TimeZoneNotice(
-      description: '个人重要信息的创建时间等字段均同步为当前设备本地时区，'
-          '可与 Web 管理端时间线对照。',
-    );
-
     if (_personalInfo.isEmpty) {
       return Column(
         children: [
-          notice,
           const Expanded(
             child: Center(
               child: Column(
@@ -199,7 +192,6 @@ class _PersonalImportantScreenState extends State<PersonalImportantScreen> {
 
     return Column(
       children: [
-        notice,
         Expanded(
           child: RefreshIndicator(
             onRefresh: _loadPersonalInfo,

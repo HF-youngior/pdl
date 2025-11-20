@@ -14,7 +14,11 @@ set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
 set DB_PORT=3306
 set DB_USER=pdl
 :: 从用户运行日志确认的密码（如需覆盖，可在运行前修改此变量）
+<<<<<<< Updated upstream
 set DB_PASSWORD=Pdl123456
+=======
+set DB_PASSWORD=Zs462581379
+>>>>>>> Stashed changes
 
 :: MySQL 客户端命令（如未在 PATH 中，请写绝对路径，例如："C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysql.exe"）
 set MYSQL_CMD=mysql

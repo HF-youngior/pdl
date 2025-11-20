@@ -4,7 +4,6 @@ import '../services/api_service.dart';
 import '../models/user.dart';
 import '../services/task_service.dart';
 import '../utils/time_utils.dart';
-import '../widgets/time_zone_notice.dart';
 import 'task_edit_screen.dart';
 import 'task_detail_screen.dart';
 import 'request_screen.dart';
@@ -372,10 +371,6 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
       body: Column(
         children: [
           _buildSearchBar(),
-          TimeZoneNotice(
-            description: '任务时间（开始/截止/创建）已按当前设备本地时区显示，'
-                '可直接与 Web 管理端对照。',
-          ),
           Expanded(child: _buildBody()),
         ],
       ),
