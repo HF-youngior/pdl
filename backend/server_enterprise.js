@@ -2819,7 +2819,7 @@ app.put('/api/tasks/:id/request-response', authenticateToken, async (req, res) =
 app.get('/api/notifications', authenticateToken, async (req, res) => {
   try {
     const [rows] = await db.execute(
-      `SELECT tn.*, t.title as task_title, u.name as from_user_name
+      `SELECT tn.*, t.title as task_title, t.deadline as task_deadline, u.name as from_user_name
        FROM task_notifications tn
        LEFT JOIN tasks t ON tn.task_id = t.id
        LEFT JOIN users u ON tn.from_user_id = u.id
@@ -2828,7 +2828,19 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    res.json(rows);
+    // 将时间字段转换为北京时间格式
+    const formattedRows = rows.map(row => {
+      const formatted = { ...row };
+      if (row.created_at) {
+        formatted.created_at = formatDateTimeForBeijing(row.created_at);
+      }
+      if (row.task_deadline) {
+        formatted.task_deadline = formatDateTimeForBeijing(row.task_deadline);
+      }
+      return formatted;
+    });
+
+    res.json(formattedRows);
   } catch (error) {
     console.error('获取通知错误:', error);
     res.status(500).json({ error: '服务器内部错误' });

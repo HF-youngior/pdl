@@ -37,6 +37,7 @@ let authToken = null;
 let tasksList = [];
 let importantItemsList = [];
 let pendingNotifications = [];
+let displayedNotificationIds = new Set(); // 跟踪已显示过的通知ID
 let notificationModalInstance = null;
 const notificationFilters = {
     keyword: '',
@@ -181,13 +182,16 @@ async function checkNotifications() {
         const unreadNotifications = notifications.filter(n => !n.is_read);
         let hasNew = false;
         unreadNotifications.forEach(notification => {
-            if (!pendingNotifications.some(item => item.id === notification.id)) {
+            // 如果通知不在pendingNotifications中，且未显示过，则添加
+            if (!pendingNotifications.some(item => item.id === notification.id) && 
+                !displayedNotificationIds.has(notification.id)) {
                 pendingNotifications.push(enhanceNotification(notification));
                 hasNew = true;
             }
         });
 
-        if (pendingNotifications.length > 0) {
+        // 只在新通知且弹窗未打开时打开弹窗
+        if (hasNew && !notificationModalInstance) {
             openNotificationCenterModal();
         }
 
@@ -203,7 +207,7 @@ function enhanceNotification(notification) {
     return {
         ...notification,
         created_at_label: notification.created_at ? formatDateTimeDisplay(notification.created_at) : formatDateTimeDisplay(new Date()),
-        deadline_label: notification.deadline ? formatDateTimeDisplay(notification.deadline) : '未设置',
+        deadline_label: notification.task_deadline ? formatDateTimeDisplay(notification.task_deadline) : '未设置',
         keyword_source: [
             notification.title || '',
             notification.task_title || '',
@@ -231,15 +235,37 @@ function createNotificationCenterLauncher() {
     document.body.appendChild(button);
 }
 
-function updateNotificationBadge() {
+async function updateNotificationBadge() {
     const badge = document.getElementById('notificationLauncherBadge');
     if (!badge) return;
-    const unreadCount = pendingNotifications.length;
-    if (unreadCount > 0) {
-        badge.style.display = 'inline-block';
-        badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
-    } else {
-        badge.style.display = 'none';
+    
+    try {
+        // 获取所有未读通知的数量
+        const response = await fetch(`${API_BASE_URL}/notifications`, {
+            headers: getAuthHeaders()
+        });
+        
+        if (response.ok) {
+            const notifications = await response.json();
+            const unreadCount = notifications.filter(n => !n.is_read).length;
+            
+            if (unreadCount > 0) {
+                badge.style.display = 'inline-block';
+                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    } catch (error) {
+        console.error('更新通知徽章失败:', error);
+        // 如果获取失败，使用pendingNotifications作为后备
+        const unreadCount = pendingNotifications.length;
+        if (unreadCount > 0) {
+            badge.style.display = 'inline-block';
+            badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+        } else {
+            badge.style.display = 'none';
+        }
     }
 }
 
@@ -255,8 +281,8 @@ function openNotificationCenterModal() {
         modal = document.createElement('div');
         modal.id = 'notificationCenterModal';
         modal.className = 'modal fade';
-        modal.setAttribute('data-bs-backdrop', 'static');
-        modal.setAttribute('data-bs-keyboard', 'false');
+        modal.setAttribute('data-bs-backdrop', 'true');
+        modal.setAttribute('data-bs-keyboard', 'true');
         document.body.appendChild(modal);
     }
 
@@ -281,7 +307,10 @@ function openNotificationCenterModal() {
                     ${renderNotificationCards()}
                 </div>
                 <div class="modal-footer d-flex justify-content-between">
-                    <button class="btn btn-outline-secondary btn-sm" id="notificationMarkAllRead">全部已读</button>
+                    <div>
+                        <button class="btn btn-outline-danger btn-sm" id="notificationDeleteAll">删除全部</button>
+                        <button class="btn btn-outline-secondary btn-sm" id="notificationMarkAllRead">全部已读</button>
+                    </div>
                     <button class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
                 </div>
             </div>
@@ -298,6 +327,12 @@ function openNotificationCenterModal() {
 
     notificationModalInstance = bootstrap.Modal.getInstance(modal) || new bootstrap.Modal(modal);
     notificationModalInstance.show();
+    
+    // 标记所有当前通知为已显示
+    pendingNotifications.forEach(n => {
+        displayedNotificationIds.add(n.id);
+    });
+    
     modal.addEventListener('hidden.bs.modal', () => {
         notificationModalInstance = null;
     });
@@ -334,6 +369,9 @@ function renderNotificationCards() {
                 </button>
                 <button class="btn btn-sm btn-success" data-notification-action="done" data-notification-id="${notification.id}">
                     已处理
+                </button>
+                <button class="btn btn-sm btn-outline-danger" data-notification-action="delete" data-notification-id="${notification.id}">
+                    删除
                 </button>
             </div>
         </div>
@@ -410,6 +448,55 @@ async function markNotificationAsRead(notificationId) {
     }
 }
 
+async function deleteNotification(notificationId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        return response.ok;
+    } catch (error) {
+        console.error('删除通知失败:', error);
+        return false;
+    }
+}
+
+async function deleteAllNotifications() {
+    if (pendingNotifications.length === 0) return;
+    
+    if (!confirm(`确定要删除所有 ${pendingNotifications.length} 条通知吗？此操作不可恢复。`)) {
+        return;
+    }
+    
+    try {
+        let successCount = 0;
+        let failCount = 0;
+        
+        for (const notification of pendingNotifications) {
+            const success = await deleteNotification(notification.id);
+            if (success) {
+                successCount++;
+                displayedNotificationIds.delete(notification.id);
+            } else {
+                failCount++;
+            }
+        }
+        
+        pendingNotifications = [];
+        updateNotificationBadge();
+        refreshNotificationModalContent();
+        
+        if (failCount > 0) {
+            alert(`已删除 ${successCount} 条通知，${failCount} 条删除失败`);
+        } else {
+            alert(`已删除 ${successCount} 条通知`);
+        }
+    } catch (error) {
+        console.error('批量删除通知失败:', error);
+        alert('删除通知时出错');
+    }
+}
+
 async function markAllNotificationsAsRead() {
     try {
         const response = await fetch(`${API_BASE_URL}/notifications/mark-all-read`, {
@@ -420,7 +507,8 @@ async function markAllNotificationsAsRead() {
             })
         });
         if (response.ok) {
-            pendingNotifications = [];
+            // 标记为已读后，通知仍在通知栏中，只是状态变为已读
+            pendingNotifications.forEach(n => n.is_read = true);
             updateNotificationBadge();
             refreshNotificationModalContent();
         }
@@ -448,9 +536,15 @@ async function handleNotificationModalAction(event) {
             removeNotificationFromQueue(notificationId);
         }
     } else if (action === 'later') {
+        // 稍后处理：只关闭弹窗，不标记已读，通知仍在通知栏中
         const modalInstance = bootstrap.Modal.getInstance(document.getElementById('notificationCenterModal'));
         if (modalInstance) modalInstance.hide();
         return;
+    } else if (action === 'delete') {
+        if (await deleteNotification(notificationId)) {
+            removeNotificationFromQueue(notificationId);
+            displayedNotificationIds.delete(notificationId);
+        }
     }
 
     refreshNotificationModalContent();

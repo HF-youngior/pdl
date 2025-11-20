@@ -23,6 +23,7 @@ import '../models/mbti_test_result.dart';
 import '../models/deadline_reminder.dart';
 import '../models/notification.dart' show TaskNotification;
 import '../utils/time_utils.dart';
+import 'notification_center_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final User user;
@@ -36,6 +37,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final AppSettings _settings = AppSettings.instance;
   int _highPriorityPendingCount = 0;
+  int _unreadNotificationCount = 0;
   
   // 预览数据
   List<String> _companyImportantItems = [];
@@ -225,6 +227,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('关闭'),
                   ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      // 打开通知中心查看详情
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => NotificationCenterScreen(user: widget.user),
+                        ),
+                      );
+                    },
+                    child: const Text('查看详情'),
+                  ),
                   if (notification.taskId.isNotEmpty)
                     TextButton(
                       onPressed: () async {
@@ -344,6 +359,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 actions: [
                   TextButton(
                     onPressed: () {
+                      Navigator.of(context).pop();
+                      // 打开通知中心查看详情
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => NotificationCenterScreen(user: widget.user),
+                        ),
+                      );
+                    },
+                    child: const Text('查看详情'),
+                  ),
+                  TextButton(
+                    onPressed: () {
                       for (final notification in notifications) {
                         if (!(readStatus[notification.id] ?? false)) {
                           readStatus[notification.id] = true;
@@ -429,7 +457,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               TextButton(
                 onPressed: () {
                   Navigator.of(context).pop();
-                  _openNotificationsPanel();
+                  _openTasksPanel();
                 },
                 child: const Text('查看任务'),
               ),
@@ -619,7 +647,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   icon: const Icon(Icons.notifications),
                   onPressed: _openNotificationsPanel,
                 ),
-                if (_settings.notificationsEnabled && _highPriorityPendingCount > 0)
+                if (_settings.notificationsEnabled && _unreadNotificationCount > 0)
                   Positioned(
                     right: 10,
                     top: 12,
@@ -631,7 +659,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       constraints: const BoxConstraints(minWidth: 18),
                       child: Text(
-                        _highPriorityPendingCount > 99 ? '99+' : _highPriorityPendingCount.toString(),
+                        _unreadNotificationCount > 99 ? '99+' : _unreadNotificationCount.toString(),
                         style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center,
                       ),
@@ -816,6 +844,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _openNotificationsPanel() async {
+    // 打开通知中心页面
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NotificationCenterScreen(user: widget.user),
+      ),
+    ).then((_) {
+      // 返回时刷新通知计数
+      _loadBadgeCount();
+    });
+  }
+
+  Future<void> _openTasksPanel() async {
     if (_myAssignedTasks.isEmpty) {
       await _loadBadgeCount();
     }
@@ -876,7 +917,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               await _loadBadgeCount();
                               if (!mounted) return;
                               Navigator.of(context).pop();
-                              _openNotificationsPanel();
+                              _openTasksPanel();
                             },
                           ),
                         ],
