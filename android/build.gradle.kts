@@ -5,18 +5,16 @@ allprojects {
     }
 }
 
-// 注释掉自定义构建目录配置，避免与 Flutter 插件路径冲突
-// 当构建目录和插件路径在不同驱动器时（如 D:\ 和 C:\），会导致路径计算错误
-// val newBuildDir: Directory =
-//     rootProject.layout.buildDirectory
-//         .dir("../../build")
-//         .get()
-// rootProject.layout.buildDirectory.value(newBuildDir)
-//
-// subprojects {
-//     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
-//     project.layout.buildDirectory.value(newSubprojectBuildDir)
-// }
+// 与 Flutter 默认目录保持一致，方便 flutter 工具在根目录 build/ 下查找产物
+val flutterRootBuildDir = rootDir.resolve("../build").canonicalFile
+
+buildDir = flutterRootBuildDir
+
+subprojects {
+    val subprojectDir = flutterRootBuildDir.resolve(name)
+    buildDir = subprojectDir
+}
+
 subprojects {
     project.evaluationDependsOn(":app")
 }
