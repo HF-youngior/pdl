@@ -5,6 +5,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const axios = require('axios');
+const multer = require('multer');
+const fs = require('fs');
 require('dotenv').config();
 // const { useDefault, Segment } = require('segmentit');
 // const segmenter = useDefault(new Segment());
@@ -24,10 +26,52 @@ app.use(express.json());
 app.use('/web_admin', express.static('../web_admin'));
 
 // 静态文件服务 - 提供公共资源
-app.use('/public', express.static(path.join(__dirname, 'public')));
+const publicDir = path.join(__dirname, 'public');
+app.use('/public', express.static(publicDir));
 
 // 静态文件服务 - 根路径访问public目录
-app.use('/', express.static(path.join(__dirname, 'public')));
+app.use('/', express.static(publicDir));
+
+// 确保uploads目录存在
+const uploadsDir = path.join(publicDir, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// 直接暴露上传目录，方便通过 http://host:port/uploads/xxx 访问
+app.use('/uploads', express.static(uploadsDir));
+
+// 配置multer用于图片上传
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    // 生成唯一文件名：时间戳 + 随机数 + 原始扩展名
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, 'img-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 限制文件大小为10MB
+  },
+  fileFilter: function (req, file, cb) {
+    // 只允许图片文件
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('只允许上传图片文件 (jpeg, jpg, png, gif, webp)'));
+    }
+  }
+});
 
 // 数据库连接 - 云数据库配置
 const dbConfig = {
@@ -2686,6 +2730,53 @@ app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
   }
 });
 
+// 图片上传API
+app.post('/api/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: '没有上传文件' });
+    }
+
+    // 返回图片URL（相对于public目录）
+    const imageUrl = `/uploads/${req.file.filename}`;
+    
+    // 如果需要完整URL，可以这样构建：
+    // const baseUrl = req.protocol + '://' + req.get('host');
+    // const fullUrl = baseUrl + imageUrl;
+    
+    res.json({
+      success: true,
+      url: imageUrl,
+      filename: req.file.filename
+    });
+  } catch (error) {
+    console.error('图片上传错误:', error);
+    res.status(500).json({ error: '图片上传失败', details: error.message });
+  }
+});
+
+// 批量图片上传API
+app.post('/api/upload-images', authenticateToken, upload.array('images', 10), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: '没有上传文件' });
+    }
+
+    const imageUrls = req.files.map(file => ({
+      url: `/uploads/${file.filename}`,
+      filename: file.filename
+    }));
+    
+    res.json({
+      success: true,
+      images: imageUrls
+    });
+  } catch (error) {
+    console.error('批量图片上传错误:', error);
+    res.status(500).json({ error: '图片上传失败', details: error.message });
+  }
+});
+
 // 创建个人日志
 app.post('/api/personal-logs', authenticateToken, async (req, res) => {
   // 兼容旧形态：{ log, linkages }；也支持直接平铺字段
@@ -3113,6 +3204,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         t.deadline,
         t.is_all_day,
         t.assignee_name,
+        t.attachments,
         DATE_FORMAT(COALESCE(t.start_time, t.deadline), '%Y-%m-%d') as task_date
       FROM tasks t
       WHERE t.assignee_id = ?
@@ -3148,6 +3240,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         pl.quadrant,
         pl.is_completed,
         pl.created_at,
+        pl.images,
         DATE_FORMAT(CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00'), '%Y-%m-%d') as log_date
       FROM personal_logs pl
       WHERE pl.user_id = ?
@@ -3208,7 +3301,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
                 end_time: formatDateTimeForBeijing(task.end_time),
                 deadline: formatDateTimeForBeijing(task.deadline),
                 is_all_day: task.is_all_day,
-                assignee_name: task.assignee_name
+                assignee_name: task.assignee_name,
+                attachments: safeParseJSON(task.attachments) || []
               });
               calendar[key].hasData = true;
             }
@@ -3237,7 +3331,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
               end_time: formatDateTimeForBeijing(task.end_time),
               deadline: formatDateTimeForBeijing(task.deadline),
               is_all_day: task.is_all_day,
-              assignee_name: task.assignee_name
+              assignee_name: task.assignee_name,
+              attachments: safeParseJSON(task.attachments) || []
             });
             calendar[key].hasData = true;
           }
@@ -3260,7 +3355,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
               end_time: formatDateTimeForBeijing(task.end_time),
               deadline: formatDateTimeForBeijing(task.deadline),
               is_all_day: task.is_all_day,
-              assignee_name: task.assignee_name
+              assignee_name: task.assignee_name,
+              attachments: safeParseJSON(task.attachments) || []
             });
             calendar[key].hasData = true;
           }
@@ -3281,7 +3377,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
             category: log.category,
             quadrant: log.quadrant,
             is_completed: log.is_completed,
-            created_at: formatDateTimeForBeijing(log.created_at)
+            created_at: formatDateTimeForBeijing(log.created_at),
+            images: safeParseJSON(log.images) || []
           });
           calendar[dateKey].hasData = true;
         }
@@ -3336,6 +3433,7 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         t.deadline,
         t.is_all_day,
         t.assignee_name,
+        t.attachments,
         DATE_FORMAT(COALESCE(t.start_time, t.deadline), '%Y-%m-%d') as task_date
       FROM tasks t
       WHERE t.assignee_id = ?
@@ -3368,6 +3466,7 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         pl.quadrant,
         pl.is_completed,
         pl.created_at,
+        pl.images,
         DATE_FORMAT(CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00'), '%Y-%m-%d') as log_date
       FROM personal_logs pl
       WHERE pl.user_id = ?
@@ -3402,7 +3501,8 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         quadrant: log.quadrant,
         isCompleted: log.is_completed === 1,
         date: log.log_date,
-        createdAt: log.created_at
+        createdAt: log.created_at,
+        images: safeParseJSON(log.images) || []
       })),
       tasks: tasks.map(task => ({
         id: task.id,
@@ -3416,7 +3516,8 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         deadline: task.deadline,
         isAllDay: task.is_all_day === 1,
         assigneeName: task.assignee_name,
-        date: task.task_date
+        date: task.task_date,
+        attachments: safeParseJSON(task.attachments) || []
       })),
       statistics: {
         totalTasks: tasks.length,
@@ -3504,7 +3605,8 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         is_all_day: t.is_all_day,
         assignee_name: t.assignee_name,
         department_name: t.department_name,
-        creator_name: t.creator_name
+        creator_name: t.creator_name,
+        attachments: safeParseJSON(t.attachments) || []
       })),
       logs: logs.map(l => {
         const images = safeParseJSON(l.images) || [];

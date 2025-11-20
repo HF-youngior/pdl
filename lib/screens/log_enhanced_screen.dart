@@ -792,6 +792,7 @@ class _AddLogDialogState extends State<_AddLogDialog> {
   double? _latitude;
   double? _longitude;
   bool _isLoadingLocation = false;
+  bool _isSaving = false;
   
   // 旧版字段（分类/四象限/单任务关联）已废弃，不再在 UI 中展示
   // 如需兼容后端旧接口，内部将使用合理默认值
@@ -818,10 +819,20 @@ class _AddLogDialogState extends State<_AddLogDialog> {
   }
 
   Future<void> _saveLog() async {
+    if (_isSaving) return;
     // 1) 校验必填：标题与正文
     if (!_formKey.currentState!.validate()) return;
 
+    setState(() {
+      _isSaving = true;
+    });
+
     try {
+      List<String> uploadedImageUrls = [];
+      if (_selectedImages.isNotEmpty) {
+        uploadedImageUrls = await ApiService.uploadImages(_selectedImages);
+      }
+
       final logPayload = {
         'log_date': DateFormat('yyyy-MM-dd').format(_selectedDate),
         'title': _actionController.text.trim().isEmpty
@@ -833,7 +844,7 @@ class _AddLogDialogState extends State<_AddLogDialog> {
             : _categoryInputController.text.trim(),
         'weather': _selectedWeather,
         'keywords': _keywords,
-        'images': _selectedImages.map((file) => file.path).toList(),
+        'images': uploadedImageUrls,
       };
 
       if (_locationName != null) {
@@ -891,6 +902,14 @@ class _AddLogDialogState extends State<_AddLogDialog> {
             backgroundColor: Colors.red,
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      } else {
+        _isSaving = false;
       }
     }
   }
@@ -1124,8 +1143,8 @@ class _AddLogDialogState extends State<_AddLogDialog> {
                   ),
                   const SizedBox(width: 16),
                   ElevatedButton(
-                    onPressed: _saveLog,
-                    child: const Text('保存'),
+                    onPressed: _isSaving ? null : _saveLog,
+                    child: Text(_isSaving ? '保存中...' : '保存'),
                   ),
                 ],
               ),

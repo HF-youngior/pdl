@@ -184,6 +184,26 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     });
 
     try {
+      // 先上传新选择的图片
+      List<String> uploadedImageUrls = [];
+      if (_selectedImages.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('正在上传图片...'), duration: Duration(seconds: 1)),
+        );
+        
+        final urls = await ApiService.uploadImages(_selectedImages);
+        if (urls.length != _selectedImages.length) {
+          throw Exception('部分图片上传失败，请重试');
+        }
+        uploadedImageUrls = urls;
+      }
+
+      // 合并已存在的图片URL和新上传的图片URL
+      final allAttachmentUrls = [
+        ..._persistedAttachments, // 这些已经是URL了
+        ...uploadedImageUrls, // 新上传的URL
+      ];
+
       final now = DateTime.now();
       
       // 确定责任人
@@ -211,11 +231,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // 如果是邀约任务，只更新描述，其他字段保持不变
       final isRequest = widget.task?.isRequest ?? false;
       
-      final attachmentPaths = [
-        ..._persistedAttachments,
-        ..._selectedImages.map((img) => img.path),
-      ];
-      
       final task = Task(
         id: widget.task?.id ?? const Uuid().v4(),
         title: isRequest ? (widget.task?.title ?? _titleController.text.trim()) : _titleController.text.trim(),
@@ -237,7 +252,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         requestType: widget.task?.requestType,
         requestResponse: widget.task?.requestResponse,
         specialNotes: widget.task?.specialNotes,
-        attachments: attachmentPaths,
+        attachments: allAttachmentUrls,
       );
 
       // 调用服务保存任务

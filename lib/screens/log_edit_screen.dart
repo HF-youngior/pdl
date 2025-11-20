@@ -39,6 +39,7 @@ class _LogEditScreenState extends State<LogEditScreen> {
   
   List<Task> _tasks = [];
   bool _isLoadingTasks = true;
+  bool _isSaving = false;
   
   // 图片相关
   final List<File> _selectedImages = [];
@@ -82,6 +83,7 @@ class _LogEditScreenState extends State<LogEditScreen> {
   }
 
   Future<void> _saveLog() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -100,7 +102,17 @@ class _LogEditScreenState extends State<LogEditScreen> {
       return;
     }
 
+    setState(() {
+      _isSaving = true;
+    });
+
     try {
+      // 上传图片并获取可访问的URL
+      List<String> uploadedImageUrls = [];
+      if (_selectedImages.isNotEmpty) {
+        uploadedImageUrls = await ApiService.uploadImages(_selectedImages);
+      }
+
       final associatedTasks = _selectedTaskEdits.entries.map((entry) {
         return {
           'task_id': entry.key,
@@ -115,7 +127,7 @@ class _LogEditScreenState extends State<LogEditScreen> {
         'weather': _selectedWeather,
         'keywords': _keywords.join(','),
         'associated_tasks': associatedTasks,
-        'images': _selectedImages.map((img) => img.path).toList(), // 图片路径列表
+        'images': uploadedImageUrls,
         'location': _locationName != null ? {
           'name': _locationName,
           'latitude': _latitude,
@@ -159,6 +171,14 @@ class _LogEditScreenState extends State<LogEditScreen> {
             backgroundColor: Colors.red,
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      } else {
+        _isSaving = false;
       }
     }
   }
@@ -326,10 +346,10 @@ class _LogEditScreenState extends State<LogEditScreen> {
         foregroundColor: Colors.white,
         actions: [
           TextButton(
-            onPressed: _saveLog,
-            child: const Text(
-              '保存',
-              style: TextStyle(
+            onPressed: _isSaving ? null : _saveLog,
+            child: Text(
+              _isSaving ? '保存中...' : '保存',
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
