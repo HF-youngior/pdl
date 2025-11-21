@@ -1448,6 +1448,42 @@ app.delete('/api/users/:id', authenticateToken, checkPermission(['admin', 'found
   }
 });
 
+// 用户自己修改密码（需要验证旧密码）
+app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ error: '请提供旧密码和新密码' });
+    }
+
+    if (newPassword.trim().length < 6) {
+      return res.status(400).json({ error: '新密码长度至少为6位' });
+    }
+
+    // 获取当前用户信息
+    const [users] = await db.execute('SELECT id, password FROM users WHERE id = ? AND is_active = TRUE', [req.user.id]);
+    if (users.length === 0) {
+      return res.status(404).json({ error: '用户不存在或已被删除' });
+    }
+
+    const user = users[0];
+
+    // 验证旧密码
+    if (user.password !== oldPassword.trim()) {
+      return res.status(401).json({ error: '旧密码不正确' });
+    }
+
+    // 更新密码
+    await db.execute('UPDATE users SET password = ? WHERE id = ?', [newPassword.trim(), req.user.id]);
+
+    res.json({ message: '密码修改成功' });
+  } catch (error) {
+    console.error('修改密码错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 仪表盘统计数据
 app.get('/api/admin/dashboard-stats', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
   try {

@@ -10,6 +10,7 @@ import 'package:testflutterproject/models/log_task_update.dart';
 import 'package:testflutterproject/models/task.dart';
 import 'package:testflutterproject/services/api_service.dart';
 import 'package:testflutterproject/services/task_service.dart'; // 您的仓库中已存在
+import 'package:testflutterproject/services/geocoding_service.dart';
 
 class PersonalLogEditScreen extends StatefulWidget {
   final String userId;
@@ -309,13 +310,38 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
+      // 先设置坐标
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
         _locationName =
             '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
-        _isLoadingLocation = false;
       });
+
+      // 尝试将坐标转换为地址
+      try {
+        final address = await GeocodingService.reverseGeocodeCached(
+          position.latitude,
+          position.longitude,
+        );
+        if (address != null && mounted) {
+          setState(() {
+            _locationName = address;
+            _isLoadingLocation = false;
+          });
+        } else {
+          setState(() {
+            _isLoadingLocation = false;
+          });
+        }
+      } catch (e) {
+        // 如果逆地理编码失败，保持使用坐标
+        if (mounted) {
+          setState(() {
+            _isLoadingLocation = false;
+          });
+        }
+      }
     } catch (e) {
       setState(() => _isLoadingLocation = false);
       ScaffoldMessenger.of(context).showSnackBar(

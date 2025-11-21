@@ -112,6 +112,30 @@ class ApiService {
     }
   }
 
+  // 修改密码
+  static Future<Map<String, dynamic>> changePassword(String oldPassword, String newPassword) async {
+    try {
+      final response = await httpClient.put(
+        Uri.parse('$baseUrl/auth/change-password'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'oldPassword': oldPassword,
+          'newPassword': newPassword,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? '密码修改成功'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? '密码修改失败'};
+      }
+    } catch (e) {
+      print('修改密码错误: $e');
+      return {'success': false, 'message': '网络错误，请稍后重试'};
+    }
+  }
+
   // 获取公司重要事项（已选择的）
   static Future<List<ImportantItem>> getImportantItems() async {
     try {

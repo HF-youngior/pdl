@@ -11,6 +11,7 @@ import '../models/task.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../services/task_service.dart';
+import '../services/geocoding_service.dart';
 import 'package:testflutterproject/models/log_task_update.dart';
 
 class LogEnhancedScreen extends StatefulWidget {
@@ -1365,12 +1366,37 @@ class _AddLogDialogState extends State<_AddLogDialog> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
+      // 先设置坐标
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
         _locationName = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
-        _isLoadingLocation = false;
       });
+
+      // 尝试将坐标转换为地址
+      try {
+        final address = await GeocodingService.reverseGeocodeCached(
+          position.latitude,
+          position.longitude,
+        );
+        if (address != null && mounted) {
+          setState(() {
+            _locationName = address;
+            _isLoadingLocation = false;
+          });
+        } else {
+          setState(() {
+            _isLoadingLocation = false;
+          });
+        }
+      } catch (e) {
+        // 如果逆地理编码失败，保持使用坐标
+        if (mounted) {
+          setState(() {
+            _isLoadingLocation = false;
+          });
+        }
+      }
     } catch (e) {
       setState(() => _isLoadingLocation = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2295,12 +2321,37 @@ class _EditLogDialogState extends State<_EditLogDialog> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
+      // 先设置坐标
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
         _locationName = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
-        _isLoadingLocation = false;
       });
+
+      // 尝试将坐标转换为地址
+      try {
+        final address = await GeocodingService.reverseGeocodeCached(
+          position.latitude,
+          position.longitude,
+        );
+        if (address != null && mounted) {
+          setState(() {
+            _locationName = address;
+            _isLoadingLocation = false;
+          });
+        } else {
+          setState(() {
+            _isLoadingLocation = false;
+          });
+        }
+      } catch (e) {
+        // 如果逆地理编码失败，保持使用坐标
+        if (mounted) {
+          setState(() {
+            _isLoadingLocation = false;
+          });
+        }
+      }
     } catch (e) {
       setState(() => _isLoadingLocation = false);
       ScaffoldMessenger.of(context).showSnackBar(

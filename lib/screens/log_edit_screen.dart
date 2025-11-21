@@ -7,6 +7,7 @@ import '../models/user.dart';
 import '../models/task.dart';
 import '../models/log.dart';
 import '../services/api_service.dart';
+import '../services/geocoding_service.dart';
 
 class LogEditScreen extends StatefulWidget {
   final User user;
@@ -259,14 +260,37 @@ class _LogEditScreenState extends State<LogEditScreen> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // 保存位置信息（暂时使用坐标，后续可以添加逆地理编码）
+      // 先设置坐标
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
-        // 使用坐标作为位置名称，格式：纬度, 经度
         _locationName = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
-        _isLoadingLocation = false;
       });
+
+      // 尝试将坐标转换为地址
+      try {
+        final address = await GeocodingService.reverseGeocodeCached(
+          position.latitude,
+          position.longitude,
+        );
+        if (address != null && mounted) {
+          setState(() {
+            _locationName = address;
+            _isLoadingLocation = false;
+          });
+        } else {
+          setState(() {
+            _isLoadingLocation = false;
+          });
+        }
+      } catch (e) {
+        // 如果逆地理编码失败，保持使用坐标
+        if (mounted) {
+          setState(() {
+            _isLoadingLocation = false;
+          });
+        }
+      }
     } catch (e) {
       setState(() {
         _isLoadingLocation = false;

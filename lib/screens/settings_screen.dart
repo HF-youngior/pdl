@@ -42,6 +42,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSectionTitle('服务器配置'),
           _buildServerConfig(),
           const SizedBox(height: 16),
+          _buildSectionTitle('账户安全'),
+          _buildNav(
+            icon: Icons.lock,
+            title: '修改密码',
+            subtitle: '更改登录密码',
+            onTap: () => _showChangePasswordDialog(),
+          ),
+          const SizedBox(height: 16),
           _buildSectionTitle('数据与隐私'),
           _buildNav(
             icon: Icons.security,
@@ -285,6 +293,161 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               );
             },
+          );
+        },
+      ),
+    );
+  }
+
+  void _showChangePasswordDialog() {
+    final oldPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool isLoading = false;
+    bool obscureOldPassword = true;
+    bool obscureNewPassword = true;
+    bool obscureConfirmPassword = true;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('修改密码'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: oldPasswordController,
+                    decoration: InputDecoration(
+                      labelText: '旧密码',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureOldPassword ? Icons.visibility : Icons.visibility_off),
+                        onPressed: () {
+                          setDialogState(() => obscureOldPassword = !obscureOldPassword);
+                        },
+                      ),
+                    ),
+                    obscureText: obscureOldPassword,
+                    enabled: !isLoading,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: newPasswordController,
+                    decoration: InputDecoration(
+                      labelText: '新密码',
+                      hintText: '至少6位字符',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureNewPassword ? Icons.visibility : Icons.visibility_off),
+                        onPressed: () {
+                          setDialogState(() => obscureNewPassword = !obscureNewPassword);
+                        },
+                      ),
+                    ),
+                    obscureText: obscureNewPassword,
+                    enabled: !isLoading,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: confirmPasswordController,
+                    decoration: InputDecoration(
+                      labelText: '确认新密码',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureConfirmPassword ? Icons.visibility : Icons.visibility_off),
+                        onPressed: () {
+                          setDialogState(() => obscureConfirmPassword = !obscureConfirmPassword);
+                        },
+                      ),
+                    ),
+                    obscureText: obscureConfirmPassword,
+                    enabled: !isLoading,
+                  ),
+                  if (isLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 16),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading
+                    ? null
+                    : () {
+                        Navigator.pop(context);
+                      },
+                child: const Text('取消'),
+              ),
+              ElevatedButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        final oldPassword = oldPasswordController.text.trim();
+                        final newPassword = newPasswordController.text.trim();
+                        final confirmPassword = confirmPasswordController.text.trim();
+
+                        if (oldPassword.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('请输入旧密码')),
+                          );
+                          return;
+                        }
+
+                        if (newPassword.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('请输入新密码')),
+                          );
+                          return;
+                        }
+
+                        if (newPassword.length < 6) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('新密码长度至少为6位')),
+                          );
+                          return;
+                        }
+
+                        if (newPassword != confirmPassword) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('两次输入的新密码不一致')),
+                          );
+                          return;
+                        }
+
+                        setDialogState(() => isLoading = true);
+
+                        final result = await ApiService.changePassword(oldPassword, newPassword);
+
+                        setDialogState(() => isLoading = false);
+
+                        if (context.mounted) {
+                          if (result['success'] == true) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(result['message'] ?? '密码修改成功'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(result['message'] ?? '密码修改失败'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                child: const Text('确认修改'),
+              ),
+            ],
           );
         },
       ),
