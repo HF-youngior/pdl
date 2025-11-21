@@ -1192,6 +1192,7 @@ class _AddLogDialogState extends State<_AddLogDialog> {
   double? _latitude;
   double? _longitude;
   bool _isLoadingLocation = false;
+  bool _isSaving = false;
 
   // 旧版字段（分类/四象限/单任务关联）已废弃，不再在 UI 中展示
   // 如需兼容后端旧接口，内部将使用合理默认值
