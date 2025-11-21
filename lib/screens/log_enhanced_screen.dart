@@ -214,8 +214,8 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
     final hint = _searchType == 'date'
         ? '按日期搜索，如 2025-10-31'
         : _searchType == 'keyword'
-            ? '按关键词搜索'
-            : '按内容搜索';
+        ? '按关键词搜索'
+        : '按内容搜索';
 
     return Container(
       decoration: BoxDecoration(
@@ -252,8 +252,8 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
                     _searchType == 'date'
                         ? Icons.calendar_today
                         : _searchType == 'keyword'
-                            ? Icons.tag
-                            : Icons.notes,
+                        ? Icons.tag
+                        : Icons.notes,
                     size: 16,
                     color: Colors.blue[700],
                   ),
@@ -286,24 +286,24 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
                 ),
                 suffixIcon: _searchType == 'date'
                     ? IconButton(
-                        tooltip: '选择日期',
-                        icon: const Icon(Icons.event, size: 18),
-                        onPressed: () async {
-                          final now = DateTime.now();
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: now,
-                            firstDate: DateTime(now.year - 5),
-                            lastDate: DateTime(now.year + 5),
-                          );
-                          if (picked != null) {
-                            final s = DateFormat('yyyy-MM-dd').format(picked);
-                            setState(() {
-                              _searchController.text = s;
-                            });
-                          }
-                        },
-                      )
+                  tooltip: '选择日期',
+                  icon: const Icon(Icons.event, size: 18),
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: now,
+                      firstDate: DateTime(now.year - 5),
+                      lastDate: DateTime(now.year + 5),
+                    );
+                    if (picked != null) {
+                      final s = DateFormat('yyyy-MM-dd').format(picked);
+                      setState(() {
+                        _searchController.text = s;
+                      });
+                    }
+                  },
+                )
                     : const Icon(Icons.search, size: 18),
               ),
               onChanged: (_) => setState(() {}),
@@ -409,218 +409,220 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
 
   Widget _buildLogCard(PersonalLog log) {
     return GestureDetector(
-      onTap: () => _showEditLogDialog(log),
-      child: Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 标题和分类
-            Row(
+        onTap: () => _showLogDetailDialog(log),
+        child: Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  _getCategoryIcon(log.category??''),
-                  color: _getCategoryColor(log.category??''),
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    log.logTitle ?? '无标题',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _getCategoryColor(log.category??'').withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _getCategoryText(log.category??''),
-                    style: TextStyle(
-                      color: _getCategoryColor(log.category??''),
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            
-            // 描述
-            if (log.content != null && log.content!.isNotEmpty)
-              Text(
-                log.content ?? '',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
-              ),
-            if (log.images.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 80,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: log.images.length,
-                  itemBuilder: (context, index) {
-                    final path = log.images[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: _buildImagePreview(path),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-            if (log.locationName != null && log.locationName!.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      log.locationName!,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            // 天气和关键词信息
-            Row(
-              children: [
-                // 天气emoji
-                Text(
-                  _getWeatherEmoji(log.weather ?? 'sunny'),
-                  style: const TextStyle(fontSize: 20),
-                ),
-                const SizedBox(width: 8),
-                
-                // 关键词
-                if (log.keywords.isNotEmpty) ...[
-                  Expanded(
-                    child: Wrap(
-                      spacing: 4,
-                      children: log.keywords.take(3).map((keyword) => Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          keyword,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.orange[700],
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      )).toList(),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Spacer(),
-                Text(
-                  '${widget.user.name} • '
-                  // 检查 logDate 是否为 null。如果不为 null，则格式化日期。
-                      '${log.logDate != null ? DateFormat('yyyy-MM-dd').format(log.logDate!) : '-'}',
-                  style: const TextStyle(fontSize: 15, color: Colors.blue, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            
-            // 关联任务
-            if (log.linkages.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              ...log.linkages.map((linkage) => Container(
-                margin: const EdgeInsets.only(bottom: 4),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
+                // 标题和分类
+                Row(
                   children: [
                     Icon(
-                      Icons.assignment,
-                      size: 16,
-                      color: Colors.blue[700],
+                      _getCategoryIcon(log.category??''),
+                      color: _getCategoryColor(log.category??''),
+                      size: 20,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '关联任务: ${linkage.taskName ?? _getTaskTitle(linkage.taskId)}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.blue[700],
-                          fontWeight: FontWeight.w500,
+                        log.logTitle ?? '无标题',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                    Text(
-                      '${linkage.progressPercentage}%',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.blue[700],
-                        fontWeight: FontWeight.bold,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _getCategoryColor(log.category??'').withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _getCategoryText(log.category??''),
+                        style: TextStyle(
+                          color: _getCategoryColor(log.category??''),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              )).toList(),
-            ],
+                const SizedBox(height: 8),
 
-            // 右下角操作区：删除
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton.icon(
-                  onPressed: () => _confirmDeleteLog(log),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    foregroundColor: Colors.red[600],
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    minimumSize: const Size(0, 0),
+                // 描述
+                if (log.content != null && log.content!.isNotEmpty)
+                  Text(
+                    log.content ?? '',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
                   ),
-                  icon: Icon(Icons.delete_outline, size: 16, color: Colors.red[600]),
-                  label: Text('删除', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.red[600])),
+                if (log.images.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 80,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: log.images.length,
+                      itemBuilder: (context, index) {
+                        final path = log.images[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: _buildImagePreview(path),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+                if (log.locationName != null && log.locationName!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          log.locationName!,
+                          style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                // 天气和关键词信息
+                Row(
+                  children: [
+                    // 天气emoji
+                    Text(
+                      _getWeatherEmoji(log.weather ?? 'sunny'),
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                    const SizedBox(width: 8),
+
+                    // 关键词
+                    if (log.keywords.isNotEmpty) ...[
+                      Expanded(
+                        child: Wrap(
+                          spacing: 4,
+                          children: log.keywords.take(3).map((keyword) => Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              keyword,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.orange[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          )).toList(),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Spacer(),
+                    Text(
+                      '${widget.user.name} • '
+                      // 检查 logDate 是否为 null。如果不为 null，则格式化日期。
+                          '${log.logDate != null ? DateFormat('yyyy-MM-dd').format(log.logDate!) : '-'}',
+                      style: const TextStyle(fontSize: 15, color: Colors.blue, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+
+                // 关联任务
+                if (log.linkages.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  ...log.linkages.map((linkage) => Container(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.assignment,
+                          size: 16,
+                          color: Colors.blue[700],
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '关联任务: ${linkage.taskName ?? _getTaskTitle(linkage.taskId)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${linkage.progressPercentage}%',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue[700],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )).toList(),
+                ],
+
+                // 右下角操作区：编辑 & 删除
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    _buildActionIcon(
+                      icon: Icons.edit_rounded,
+                      color: Colors.blueAccent,
+                      tooltip: '编辑',
+                      onTap: () => _showEditLogDialog(log),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildActionIcon(
+                      icon: Icons.delete_outline,
+                      color: Colors.redAccent,
+                      tooltip: '删除',
+                      onTap: () => _confirmDeleteLog(log),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
-      ),
-    ));
+          ),
+        ));
   }
 
   String _getTaskTitle(String taskId) {
     final task = _tasks.firstWhere(
-      (t) => t.id == taskId,
+          (t) => t.id == taskId,
       orElse: () => Task(
         id: taskId,
         title: '未知任务',
@@ -639,9 +641,17 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
     return task.title;
   }
 
+  Task? _getTaskById(String taskId) {
+    try {
+      return _tasks.firstWhere((t) => t.id == taskId);
+    } catch (_) {
+      return null;
+    }
+  }
+
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
-           '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+        '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
   // 天气emoji映射方法
@@ -694,6 +704,396 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
       height: 80,
       color: Colors.grey.shade200,
       child: const Icon(Icons.broken_image, color: Colors.grey),
+    );
+  }
+
+  Widget _buildActionIcon({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
+      ),
+    );
+  }
+
+  void _showLogDetailDialog(PersonalLog log) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final date = log.logDate ?? log.createdAtDate;
+        final dateText = date != null ? DateFormat('yyyy-MM-dd').format(date) : '日期待补充';
+        final timeText = date != null ? DateFormat('HH:mm').format(date) : '--:--';
+        final weatherEmoji = _getWeatherEmoji(log.weather ?? 'sunny');
+        final categoryColor = _getCategoryColor(log.category ?? '');
+        final categoryLabel = _getCategoryText(log.category ?? '');
+        final categoryIcon = _getCategoryIcon(log.category ?? '');
+        final size = MediaQuery.of(ctx).size;
+
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: SizedBox(
+            width: size.width * 0.9,
+            height: size.height * 0.8,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, right: 8, top: 8),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(weatherEmoji, style: const TextStyle(fontSize: 20)),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(dateText, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                Text(timeText, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: '关闭',
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        radius: 28,
+                        backgroundColor: categoryColor.withOpacity(0.15),
+                        child: Icon(categoryIcon, color: categoryColor, size: 26),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              (log.logTitle.isNotEmpty ? log.logTitle : (log.title ?? '无标题')),
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: [
+                                _buildInfoTag(categoryLabel, categoryColor, icon: Icons.category),
+                                _buildInfoTag(widget.user.name, Colors.teal, icon: Icons.person),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildDetailSectionTitle(Icons.tag, '关键词'),
+                        const SizedBox(height: 8),
+                        if (log.keywords.isEmpty)
+                          _buildEmptyHint('还没有添加关键词，快来补充三个小词语吧～')
+                        else
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: log.keywords
+                                .map((keyword) => Chip(
+                                      backgroundColor: Colors.orange.withOpacity(0.12),
+                                      labelStyle: TextStyle(
+                                        color: Colors.orange[800],
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      label: Text(keyword),
+                                    ))
+                                .toList(),
+                          ),
+                        const SizedBox(height: 18),
+                        _buildDetailSectionTitle(Icons.notes, '详细描述'),
+                        const SizedBox(height: 8),
+                        _buildCuteCard(
+                          Text(
+                            (log.content?.trim().isNotEmpty ?? false)
+                                ? log.content!.trim()
+                                : '这篇日志还没有详细描述，留白也别有趣味～',
+                            style: const TextStyle(fontSize: 14, height: 1.5),
+                          ),
+                        ),
+                        if (log.images.isNotEmpty) ...[
+                          const SizedBox(height: 18),
+                          _buildDetailSectionTitle(Icons.photo, '图文并茂'),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 100,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: log.images.length,
+                              itemBuilder: (context, index) {
+                                final path = log.images[index];
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 10),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: _buildImagePreview(path),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 18),
+                        _buildDetailSectionTitle(Icons.location_on, '记录位置'),
+                        const SizedBox(height: 8),
+                        if ((log.locationName ?? '').isEmpty)
+                          _buildEmptyHint('未记录具体位置～')
+                        else
+                          _buildCuteCard(
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.place, size: 18, color: Colors.redAccent),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        log.locationName!,
+                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (log.latitude != null && log.longitude != null) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '(${log.latitude!.toStringAsFixed(4)}, ${log.longitude!.toStringAsFixed(4)})',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                  ),
+                                ]
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 18),
+                        _buildDetailSectionTitle(Icons.assignment, '关联任务'),
+                        const SizedBox(height: 8),
+                        if (log.linkages.isEmpty)
+                          _buildEmptyHint('暂未关联任务')
+                        else
+                          Column(
+                            children: log.linkages.map(_buildDetailTaskCard).toList(),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text('关闭'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          _showEditLogDialog(log);
+                        },
+                        icon: const Icon(Icons.edit_rounded, size: 18),
+                        label: const Text('去编辑'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailSectionTitle(IconData icon, String title) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 16, color: Colors.blue[700]),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCuteCard(Widget child) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.blueGrey.withOpacity(0.08)),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildEmptyHint(String text) {
+    return _buildCuteCard(
+      Row(
+        children: [
+          const Icon(Icons.info_outline, size: 18, color: Colors.blueGrey),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 13, color: Colors.blueGrey),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoTag(String text, Color color, {IconData? icon}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailTaskCard(LogTaskLinkage linkage) {
+    final task = _getTaskById(linkage.taskId);
+    final taskName = (linkage.taskName?.trim().isNotEmpty ?? false)
+        ? linkage.taskName!.trim()
+        : (task?.title ?? _getTaskTitle(linkage.taskId));
+    final priorityLabel = task?.getPriorityLabel() ?? task?.priority.toUpperCase() ?? 'P?';
+    final priorityColor = task?.getPriorityColor() ?? Colors.deepPurple;
+    final statusText = task?.getStatusText() ?? (linkage.taskStatus ?? '未标记');
+    final statusColor = task?.getStatusColor() ?? Colors.blueGrey;
+    final deadlineText = task?.deadline != null
+        ? DateFormat('yyyy-MM-dd').format(task!.deadline!)
+        : '未设置';
+    final progressValue = linkage.progressPercentage.clamp(0, 100);
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.blue.withOpacity(0.035),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.blue.withOpacity(0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  taskName,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              _buildInfoTag('优先级 $priorityLabel', priorityColor),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(Icons.schedule, size: 15, color: Colors.grey),
+              const SizedBox(width: 4),
+              Text('截止: $deadlineText', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 8,
+              value: progressValue / 100,
+              backgroundColor: Colors.white,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('进度 $progressValue%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              _buildInfoTag(statusText, statusColor),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -792,7 +1192,7 @@ class _AddLogDialogState extends State<_AddLogDialog> {
   double? _latitude;
   double? _longitude;
   bool _isLoadingLocation = false;
-  
+
   // 旧版字段（分类/四象限/单任务关联）已废弃，不再在 UI 中展示
   // 如需兼容后端旧接口，内部将使用合理默认值
   String _selectedCategory = 'work';
@@ -848,10 +1248,10 @@ class _AddLogDialogState extends State<_AddLogDialog> {
         'log': logPayload,
         'linkages': _selectedTaskEdits.values
             .map((edit) => {
-                  'task_id': edit.taskId,
-                  'progress_percentage': edit.progress ?? 0,
-                  'task_status': edit.status,
-                })
+          'task_id': edit.taskId,
+          'progress_percentage': edit.progress ?? 0,
+          'task_status': edit.status,
+        })
             .toList(),
       };
 
@@ -1010,7 +1410,7 @@ class _AddLogDialogState extends State<_AddLogDialog> {
                 ],
               ),
               const SizedBox(height: 20),
-              
+
               // 表单内容：将旧版的分类/四象限/心情/完成情况全部替换为新设计
               Expanded(
                 child: SingleChildScrollView(
@@ -1077,9 +1477,9 @@ class _AddLogDialogState extends State<_AddLogDialog> {
                       // 关键词输入区
                       _buildKeywordsInputArea(),
                       const SizedBox(height: 16),
-                      
+
                       // 去除“活动标题”输入框：action 将在保存时使用默认“个人日志”或内联规则生成
-                      
+
                       // 正文输入：今日总结/复盘，包含富文本功能占位按钮
                       TextFormField(
                         controller: _descriptionController,
@@ -1112,7 +1512,7 @@ class _AddLogDialogState extends State<_AddLogDialog> {
                   ),
                 ),
               ),
-              
+
               // 按钮
               const SizedBox(height: 20),
               Row(
@@ -1296,13 +1696,13 @@ class _AddLogDialogState extends State<_AddLogDialog> {
           runSpacing: 4,
           children: _keywords
               .map((k) => Chip(
-                    label: Text(k),
-                    onDeleted: () {
-                      setState(() {
-                        _keywords.remove(k);
-                      });
-                    },
-                  ))
+            label: Text(k),
+            onDeleted: () {
+              setState(() {
+                _keywords.remove(k);
+              });
+            },
+          ))
               .toList(),
         ),
         // 文本框已显示提示语，这里不再单独提示
@@ -1444,10 +1844,10 @@ class _AddLogDialogState extends State<_AddLogDialog> {
             onPressed: _isLoadingLocation ? null : _getCurrentLocation,
             icon: _isLoadingLocation
                 ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            )
                 : const Icon(Icons.my_location),
             label: Text(_isLoadingLocation ? '定位中…' : '获取当前位置'),
           ),
@@ -1483,7 +1883,7 @@ class _AddLogDialogState extends State<_AddLogDialog> {
             setState(() {
               _selectedTaskEdits.putIfAbsent(
                 task.id,
-                () => _AssociatedTaskEdit(
+                    () => _AssociatedTaskEdit(
                   taskId: task.id,
                   title: task.title,
                   priority: task.priority,
@@ -2102,10 +2502,10 @@ class _EditLogDialogState extends State<_EditLogDialog> {
                                   onPressed: _isLoadingLocation ? null : _getCurrentLocation,
                                   icon: _isLoadingLocation
                                       ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(strokeWidth: 2),
-                                        )
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
                                       : const Icon(Icons.my_location),
                                   label: Text(_isLoadingLocation ? '定位中...' : '获取当前位置'),
                                 ),
@@ -2114,18 +2514,18 @@ class _EditLogDialogState extends State<_EditLogDialog> {
                         ),
                       ),
                       const SizedBox(height: 16),
-              // 关联任务区域：新增添加按钮 + 已关联列表
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('关联任务', style: Theme.of(context).textTheme.titleMedium),
-                  TextButton.icon(
-                    onPressed: _showAddTaskToEdit,
-                    icon: const Icon(Icons.add_circle_outline),
-                    label: const Text('添加任务'),
-                  ),
-                ],
-              ),
+                      // 关联任务区域：新增添加按钮 + 已关联列表
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('关联任务', style: Theme.of(context).textTheme.titleMedium),
+                          TextButton.icon(
+                            onPressed: _showAddTaskToEdit,
+                            icon: const Icon(Icons.add_circle_outline),
+                            label: const Text('添加任务'),
+                          ),
+                        ],
+                      ),
                       _buildAssociatedTaskList(),
                     ],
                   ),
@@ -2168,7 +2568,7 @@ class _EditLogDialogState extends State<_EditLogDialog> {
             const Icon(Icons.calendar_today, size: 18, color: Colors.blue),
             const SizedBox(width: 8),
             Text('${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}',
-              style: const TextStyle(fontWeight: FontWeight.bold)),
+                style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -2264,12 +2664,12 @@ class _EditLogDialogState extends State<_EditLogDialog> {
     // 放宽筛选条件：当前用户相关(被指派或创建者为当前用户)，并排除已选择
     final candidates = widget.tasks
         .where((t) =>
-            !existing.contains(t.id) &&
-            (
-              t.assigneeId == widget.user.id ||
-              t.createdBy == widget.user.id ||
-              t.assigneeName == widget.user.name
-            ))
+    !existing.contains(t.id) &&
+        (
+            t.assigneeId == widget.user.id ||
+                t.createdBy == widget.user.id ||
+                t.assigneeName == widget.user.name
+        ))
         .toList();
     if (candidates.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
