@@ -33,9 +33,15 @@ if not exist node_modules (
 REM Set environment variables
 set NODE_ENV=development
 set PORT=8080
+<<<<<<< Updated upstream
 set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
 set DB_USER=pdl
 set DB_PASSWORD=Pdl123456
+=======
+set DB_HOST=localhost
+set DB_USER=root
+set DB_PASSWORD=Zs462581379
+>>>>>>> Stashed changes
 set DB_NAME=enterprise_management
 set DB_PORT=3306
 set JWT_SECRET=enterprise-management-secret-key-2024
@@ -44,7 +50,11 @@ echo Environment Configuration:.
 echo   Port: %PORT%
 echo   Database: %DB_NAME%
 echo   Environment: %NODE_ENV%
+<<<<<<< Updated upstream
 echo   MySQL Password: Pdl123456
+=======
+echo   MySQL Password:Zs462581379
+>>>>>>> Stashed changes
 echo.
 
 echo Starting server...

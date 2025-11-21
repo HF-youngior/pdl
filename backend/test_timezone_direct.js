@@ -44,9 +44,9 @@ async function testTimezone() {
     // 创建两个连接：一个不带时区，一个带时区
     console.log('1. 不带时区配置的连接\n');
     const connWithoutTZ = await mysql.createConnection({
-      host: 'localhost',
-      user: 'root',
-      password: '23301144',
+      host: 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
+      user: 'pdl',
+      password: 'Pdl123456',
       database: 'enterprise_management',
       charset: 'utf8mb4'
     });
@@ -75,9 +75,9 @@ async function testTimezone() {
     // 带时区的连接
     console.log('2. 带时区配置的连接 (timezone: +08:00)\n');
     const connWithTZ = await mysql.createConnection({
-      host: 'localhost',
-      user: 'root',
-      password: '23301144',
+      host: 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
+      user: 'pdl',
+      password: 'Pdl123456',
       database: 'enterprise_management',
       charset: 'utf8mb4',
       timezone: '+08:00'

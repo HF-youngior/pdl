@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/user.dart';
@@ -7,15 +9,21 @@ import 'company_tasks_enhanced_screen.dart';
 import 'personal_resume_screen.dart';
 import 'log_enhanced_screen.dart';
 import 'task_edit_screen.dart';
+import 'task_detail_screen.dart';
 import '../services/app_settings.dart';
 import '../services/task_service.dart';
 import '../services/api_service.dart';
 import '../services/mbti_test_service.dart';
+import '../services/notification_service.dart';
 import '../models/task.dart';
 import '../models/important_item.dart';
 import '../models/personal_info.dart';
 import '../models/personal_log.dart';
 import '../models/mbti_test_result.dart';
+import '../models/deadline_reminder.dart';
+import '../models/notification.dart' show TaskNotification;
+import '../utils/time_utils.dart';
+import 'notification_center_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final User user;
@@ -29,6 +37,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final AppSettings _settings = AppSettings.instance;
   int _highPriorityPendingCount = 0;
+  int _unreadNotificationCount = 0;
   
   // 预览数据
   List<String> _companyImportantItems = [];
@@ -39,6 +48,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   MbtiTestResult? _latestMbti;
   bool _isLoadingPreview = true;
   List<Task> _myAssignedTasks = [];
+  Timer? _deadlineReminderTimer;
+  bool _isCheckingDeadlineReminders = false;
+  Timer? _notificationPollingTimer;
+  Set<String> _displayedNotificationIds = {};
+  bool _isCheckingNotifications = false;
+
+  bool get _isGuestUser => widget.user.id == 'guest';
 
   @override
   void initState() {
@@ -46,16 +62,530 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadBadgeCount();
     _loadPreviewData();
     _settings.addListener(_onSettingsChanged);
+    _startDeadlineReminderMonitor();
+    _startNotificationPolling();
+    // 初始化时加载未读通知数量
+    _loadUnreadNotificationCount();
+  }
+
+  /// 加载未读通知数量
+  Future<void> _loadUnreadNotificationCount() async {
+    if (_isGuestUser || ApiService.getToken() == null) return;
+    
+    try {
+      final notifications = await NotificationService.getNotifications();
+      if (mounted) {
+        setState(() {
+          _unreadNotificationCount = notifications.where((n) => !n.isRead).length;
+        });
+      }
+    } catch (e) {
+      debugPrint('加载未读通知数量失败: $e');
+    }
   }
 
   @override
   void dispose() {
+    _deadlineReminderTimer?.cancel();
+    _notificationPollingTimer?.cancel();
     _settings.removeListener(_onSettingsChanged);
     super.dispose();
   }
 
   void _onSettingsChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _startDeadlineReminderMonitor() {
+    _deadlineReminderTimer?.cancel();
+    if (_isGuestUser) return;
+    _runDeadlineReminderCheck();
+    _deadlineReminderTimer = Timer(const Duration(minutes: 1), _scheduleNextDeadlineReminder);
+  }
+
+  void _scheduleNextDeadlineReminder() {
+    if (!mounted || _isGuestUser) return;
+    _runDeadlineReminderCheck();
+    _deadlineReminderTimer = Timer(const Duration(minutes: 1), _scheduleNextDeadlineReminder);
+  }
+
+  Future<void> _runDeadlineReminderCheck() async {
+    if (!mounted ||
+        _isGuestUser ||
+        !_settings.notificationsEnabled ||
+        _isCheckingDeadlineReminders ||
+        ApiService.getToken() == null) {
+      return;
+    }
+
+    _isCheckingDeadlineReminders = true;
+    try {
+      final reminders = await NotificationService.triggerDeadlineReminders(hoursBefore: 24);
+      if (!mounted || reminders.isEmpty) return;
+      // 将所有提醒合并到一个对话框中显示
+      await _showDeadlineReminderDialog(reminders);
+    } catch (e) {
+      debugPrint('Deadline reminder check failed: $e');
+    } finally {
+      _isCheckingDeadlineReminders = false;
+    }
+  }
+
+  void _startNotificationPolling() {
+    _notificationPollingTimer?.cancel();
+    if (_isGuestUser) return;
+    _checkNotifications();
+    // 每5秒检查一次新通知（与Web端保持一致）
+    _notificationPollingTimer = Timer(const Duration(seconds: 5), _scheduleNextNotificationCheck);
+  }
+
+  void _scheduleNextNotificationCheck() {
+    if (!mounted || _isGuestUser) return;
+    _checkNotifications();
+    _notificationPollingTimer = Timer(const Duration(seconds: 5), _scheduleNextNotificationCheck);
+  }
+
+  Future<void> _checkNotifications() async {
+    if (!mounted ||
+        _isGuestUser ||
+        !_settings.notificationsEnabled ||
+        _isCheckingNotifications ||
+        ApiService.getToken() == null) {
+      return;
+    }
+
+    _isCheckingNotifications = true;
+    try {
+      final notifications = await NotificationService.getNotifications();
+      if (!mounted) return;
+
+      // 更新未读通知数量（必须在筛选之前更新，确保数量准确）
+      final unreadCount = notifications.where((n) => !n.isRead).length;
+      if (mounted) {
+        setState(() {
+          _unreadNotificationCount = unreadCount;
+        });
+      }
+
+      // 筛选出未读且未显示过的通知（只显示一次弹窗，但通知会保存在通知栏中）
+      final newNotifications = notifications
+          .where((n) => !n.isRead && !_displayedNotificationIds.contains(n.id))
+          .toList();
+
+      if (newNotifications.isNotEmpty) {
+        // 记录已显示的通知ID（只记录一次，避免重复弹窗）
+        for (final notification in newNotifications) {
+          _displayedNotificationIds.add(notification.id);
+        }
+
+        // 显示通知弹窗（可以关闭，关闭后通知仍在通知栏中）
+        if (mounted) {
+          await _showNotificationDialog(newNotifications);
+        }
+      }
+    } catch (e) {
+      debugPrint('检查通知失败: $e');
+    } finally {
+      _isCheckingNotifications = false;
+    }
+  }
+
+  Future<void> _showNotificationDialog(List<TaskNotification> notifications) async {
+    if (!mounted || notifications.isEmpty) return;
+
+    // 如果只有一个通知，显示简化版本
+    if (notifications.length == 1) {
+      final notification = notifications.first;
+      bool isRead = notification.isRead;
+      
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: Text(_getNotificationTitle(notification.notificationType)),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 对于 deadline_warning 类型，消息中已包含任务标题，不重复显示
+                    if (notification.taskTitle != null && notification.notificationType != 'deadline_warning') ...[
+                      Text(
+                        notification.taskTitle!,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(
+                      notification.message,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    if (notification.fromUserName != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '来自：${notification.fromUserName}',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: isRead,
+                          onChanged: (value) {
+                            setState(() {
+                              isRead = value ?? false;
+                            });
+                            if (isRead) {
+                              NotificationService.markAsRead(notification.id);
+                            }
+                          },
+                        ),
+                        const Text('标记为已读'),
+                      ],
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('关闭'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      // 打开通知中心查看详情
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => NotificationCenterScreen(user: widget.user),
+                        ),
+                      );
+                    },
+                    child: const Text('查看详情'),
+                  ),
+                  if (notification.taskId.isNotEmpty)
+                    TextButton(
+                      onPressed: () async {
+                        Navigator.of(context).pop();
+                        try {
+                          final task = await TaskService.getTaskById(notification.taskId);
+                          if (mounted) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => TaskDetailScreen(
+                                  task: task,
+                                  currentUser: widget.user,
+                                ),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('获取任务失败: $e')),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('查看任务'),
+                    ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } else {
+      // 多个通知，显示列表
+      final Map<String, bool> readStatus = {};
+      for (final notification in notifications) {
+        readStatus[notification.id] = notification.isRead;
+      }
+      
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('新通知'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: notifications.length,
+                    itemBuilder: (context, index) {
+                      final notification = notifications[index];
+                      final isRead = readStatus[notification.id] ?? false;
+                      
+                      return ListTile(
+                        title: Text(
+                          notification.taskTitle ?? _getNotificationTitle(notification.notificationType),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            decoration: isRead ? TextDecoration.lineThrough : null,
+                          ),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(notification.message),
+                            if (notification.fromUserName != null)
+                              Text(
+                                '来自：${notification.fromUserName}',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                          ],
+                        ),
+                        leading: Checkbox(
+                          value: isRead,
+                          onChanged: (value) {
+                            setState(() {
+                              readStatus[notification.id] = value ?? false;
+                            });
+                            if (readStatus[notification.id] == true) {
+                              NotificationService.markAsRead(notification.id);
+                            }
+                          },
+                        ),
+                        onTap: () async {
+                          if (notification.taskId.isNotEmpty) {
+                            Navigator.of(context).pop();
+                            try {
+                              final task = await TaskService.getTaskById(notification.taskId);
+                              if (mounted) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => TaskDetailScreen(
+                                      task: task,
+                                      currentUser: widget.user,
+                                    ),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('获取任务失败: $e')),
+                                );
+                              }
+                            }
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      // 打开通知中心查看详情
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => NotificationCenterScreen(user: widget.user),
+                        ),
+                      );
+                    },
+                    child: const Text('查看详情'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      for (final notification in notifications) {
+                        if (!(readStatus[notification.id] ?? false)) {
+                          readStatus[notification.id] = true;
+                          NotificationService.markAsRead(notification.id);
+                        }
+                      }
+                      setState(() {});
+                    },
+                    child: const Text('全部已读'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('关闭'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    }
+  }
+
+  String _getNotificationTitle(String notificationType) {
+    switch (notificationType) {
+      case 'task_assigned':
+        return '新任务';
+      case 'deadline_warning':
+        return '截止时间提醒';
+      case 'task_progress_update':
+        return '任务进度更新';
+      case 'task_completed':
+        return '任务完成';
+      case 'task_cancelled':
+        return '任务取消';
+      case 'special_notes':
+        return '特殊备注';
+      default:
+        return '通知';
+    }
+  }
+
+  Future<void> _showDeadlineReminderDialog(List<DeadlineReminder> reminders) async {
+    if (!mounted || reminders.isEmpty) return;
+    
+    // 如果只有一个提醒，显示简化版本
+    if (reminders.length == 1) {
+      final reminder = reminders.first;
+      final deadlineText = reminder.deadline != null
+          ? TimeUtils.formatDateTimeWithZone(reminder.deadline!)
+          : '未设置';
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('任务即将到期'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  reminder.title,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text('截止时间：$deadlineText'),
+                Text('优先级：${_priorityLabel(reminder.priority)}'),
+                Text('当前状态：${_statusLabel(reminder.status)}'),
+                const SizedBox(height: 12),
+                Text(
+                  reminder.message,
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('稍后处理'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _openTasksPanel();
+                },
+                child: const Text('查看任务'),
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+    
+    // 多个提醒，合并显示
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.warning, color: Colors.redAccent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('${reminders.length} 个任务即将到期'),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '您有 ${reminders.length} 个任务即将在24小时内到期，请及时处理。',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '任务列表：',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  ...reminders.map((reminder) {
+                    final deadlineText = reminder.deadline != null
+                        ? TimeUtils.formatDateTimeWithZone(reminder.deadline!)
+                        : '未设置';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.red.withOpacity(0.2),
+                            width: 1,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              reminder.title,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '截止时间：$deadlineText',
+                              style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                            ),
+                            Text(
+                              '优先级：${_priorityLabel(reminder.priority)} | 状态：${_statusLabel(reminder.status)}',
+                              style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('稍后处理'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _openNotificationsPanel();
+              },
+              child: const Text('查看所有任务'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _loadBadgeCount() async {
@@ -143,7 +673,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   icon: const Icon(Icons.notifications),
                   onPressed: _openNotificationsPanel,
                 ),
-                if (_settings.notificationsEnabled && _highPriorityPendingCount > 0)
+                if (_settings.notificationsEnabled && _unreadNotificationCount > 0)
                   Positioned(
                     right: 10,
                     top: 12,
@@ -155,7 +685,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       constraints: const BoxConstraints(minWidth: 18),
                       child: Text(
-                        _highPriorityPendingCount > 99 ? '99+' : _highPriorityPendingCount.toString(),
+                        _unreadNotificationCount > 99 ? '99+' : _unreadNotificationCount.toString(),
                         style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center,
                       ),
@@ -340,6 +870,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _openNotificationsPanel() async {
+    // 打开通知中心页面
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NotificationCenterScreen(user: widget.user),
+      ),
+    ).then((_) {
+      // 返回时刷新未读通知数量
+      _loadUnreadNotificationCount();
+    });
+  }
+
+  Future<void> _openTasksPanel() async {
     if (_myAssignedTasks.isEmpty) {
       await _loadBadgeCount();
     }
@@ -347,17 +890,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final pendingTasks = _myAssignedTasks
         .where((task) => task.status != 'completed')
-        .toList()
-      ..sort((a, b) {
-        DateTime? aDeadline = a.deadline ?? a.endTime ?? a.startTime;
-        DateTime? bDeadline = b.deadline ?? b.endTime ?? b.startTime;
-        if (aDeadline != null && bDeadline != null) {
-          return aDeadline.compareTo(bDeadline);
-        }
-        if (aDeadline != null) return -1;
-        if (bDeadline != null) return 1;
-        return b.createdAt.compareTo(a.createdAt);
-      });
+        .toList();
+    String keyword = '';
 
     showModalBottomSheet(
       context: context,
@@ -366,90 +900,139 @@ class _DashboardScreenState extends State<DashboardScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.95,
-          expand: false,
-          builder: (context, controller) {
-            return Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final filteredTasks = pendingTasks
+                .where((task) {
+                  if (keyword.isEmpty) return true;
+                  final haystack = [
+                    task.title,
+                    task.description,
+                    task.assigneeName,
+                    task.status,
+                    task.department,
+                  ].join(' ').toLowerCase();
+                  return haystack.contains(keyword);
+                })
+                .toList()
+              ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.7,
+              minChildSize: 0.45,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (context, controller) {
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.notifications_active, color: Colors.orange),
-                      const SizedBox(width: 8),
-                      Text(
-                        '任务提醒（${pendingTasks.length}）',
-                        style: Theme.of(context).textTheme.titleMedium,
+                      Row(
+                        children: [
+                          const Icon(Icons.notifications_active, color: Colors.orange),
+                          const SizedBox(width: 8),
+                          Text(
+                            '任务提醒（${filteredTasks.length}/${pendingTasks.length}）',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.refresh),
+                            onPressed: () async {
+                              await _loadBadgeCount();
+                              if (!mounted) return;
+                              Navigator.of(context).pop();
+                              _openTasksPanel();
+                            },
+                          ),
+                        ],
                       ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.refresh),
-                        onPressed: () async {
-                          await _loadBadgeCount();
-                          if (!mounted) return;
-                          Navigator.of(context).pop();
-                          _openNotificationsPanel();
+                      const SizedBox(height: 12),
+                      TextField(
+                        decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.search),
+                          hintText: '搜索标题 / 描述 / 状态',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) {
+                          setModalState(() {
+                            keyword = value.trim().toLowerCase();
+                          });
                         },
                       ),
+                      const SizedBox(height: 12),
+                      if (filteredTasks.isEmpty)
+                        const Expanded(
+                          child: Center(
+                            child: Text(
+                              '当前没有满足条件的通知',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                        )
+                      else
+                        Expanded(
+                          child: ListView.builder(
+                            controller: controller,
+                            itemCount: filteredTasks.length,
+                            itemBuilder: (context, index) {
+                              final task = filteredTasks[index];
+                              final deadline = task.deadline ?? task.endTime ?? task.startTime;
+                              final deadlineText = deadline != null
+                                  ? DateFormat('MM-dd HH:mm').format(deadline.toLocal())
+                                  : '未设置';
+                              final createdLabel =
+                                  DateFormat('MM-dd HH:mm').format(task.createdAt.toLocal());
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: _priorityColor(task.priority).withOpacity(0.15),
+                                    child: Icon(
+                                      Icons.assignment,
+                                      color: _priorityColor(task.priority),
+                                    ),
+                                  ),
+                                  title: Text(task.title),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('通知时间：$createdLabel'),
+                                      Text('截止：$deadlineText'),
+                                      Text('状态：${_statusLabel(task.status)}'),
+                                    ],
+                                  ),
+                                  trailing: Text(
+                                    _priorityLabel(task.priority),
+                                    style: TextStyle(
+                                      color: _priorityColor(task.priority),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  onTap: () async {
+                                    Navigator.of(context).pop();
+                                    await Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) => TaskDetailScreen(
+                                          task: task,
+                                          currentUser: widget.user,
+                                        ),
+                                      ),
+                                    );
+                                    if (mounted) {
+                                      await _loadBadgeCount();
+                                    }
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                        ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  if (pendingTasks.isEmpty)
-                    const Expanded(
-                      child: Center(
-                        child: Text(
-                          '当前没有需要处理的任务',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ),
-                    )
-                  else
-                    Expanded(
-                      child: ListView.builder(
-                        controller: controller,
-                        itemCount: pendingTasks.length,
-                        itemBuilder: (context, index) {
-                          final task = pendingTasks[index];
-                          final deadline = task.deadline ?? task.endTime ?? task.startTime;
-                          final deadlineText = deadline != null
-                              ? DateFormat('MM-dd HH:mm').format(deadline.toLocal())
-                              : '未设置';
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: _priorityColor(task.priority).withOpacity(0.15),
-                                child: Icon(
-                                  Icons.assignment,
-                                  color: _priorityColor(task.priority),
-                                ),
-                              ),
-                              title: Text(task.title),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('截止：$deadlineText'),
-                                  Text('状态：${_statusLabel(task.status)}'),
-                                ],
-                              ),
-                              trailing: Text(
-                                _priorityLabel(task.priority),
-                                style: TextStyle(
-                                  color: _priorityColor(task.priority),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                ],
-              ),
+                );
+              },
             );
           },
         );

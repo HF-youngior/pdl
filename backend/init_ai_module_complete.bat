@@ -10,9 +10,9 @@ echo 3. 验证数据完整性
 echo.
 
 REM 设置数据库连接参数
-set DB_HOST=localhost
-set DB_USER=root
-set DB_PASSWORD=23301144
+set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
+set DB_USER=pdl
+set DB_PASSWORD=Pdl123456
 set DB_NAME=enterprise_management
 
 echo 连接数据库: %DB_NAME%
