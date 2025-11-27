@@ -27,6 +27,7 @@ CREATE TABLE users (
     department_id VARCHAR(36) NOT NULL,
     role ENUM('admin', 'founder', 'department_head', 'team_leader', 'employee') NOT NULL,
     parent_id VARCHAR(36) NULL,
+    points INT DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login_at TIMESTAMP NULL,
@@ -256,8 +257,23 @@ INSERT INTO system_logs (id, user_id, user_name, action, description, category) 
 
 -- Create indexes to improve query performance
 CREATE INDEX idx_users_department ON users(department_id);
+-- Checkin records table
+CREATE TABLE checkin_records (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    checkin_date DATE NOT NULL,
+    points_earned INT DEFAULT 5,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY user_checkin_date (user_id, checkin_date),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_checkin_date (checkin_date),
+    INDEX idx_user_date (user_id, checkin_date)
+);
+
 CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_parent ON users(parent_id);
+CREATE INDEX idx_users_points ON users(points);
 CREATE INDEX idx_tasks_assignee ON tasks(assignee_id);
 CREATE INDEX idx_tasks_parent ON tasks(parent_task_id);
 CREATE INDEX idx_tasks_department ON tasks(department_id);

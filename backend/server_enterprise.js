@@ -209,6 +209,7 @@ async function createTables() {
       department_id VARCHAR(36) NOT NULL,
       role ENUM('admin', 'founder', 'department_head', 'team_leader', 'employee') NOT NULL,
       parent_id VARCHAR(36) NULL,
+      points INT DEFAULT 0,
       is_active BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       last_login_at TIMESTAMP NULL,
@@ -391,7 +392,21 @@ async function createTables() {
       UNIQUE KEY log_task_unique (log_id, task_id),
       FOREIGN KEY (log_id) REFERENCES personal_logs(id) ON DELETE CASCADE,
       FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
+    // 签到记录表
+    `CREATE TABLE IF NOT EXISTS checkin_records (
+      id VARCHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      checkin_date DATE NOT NULL,
+      points_earned INT DEFAULT 5,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY user_checkin_date (user_id, checkin_date),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_user_id (user_id),
+      INDEX idx_checkin_date (checkin_date),
+      INDEX idx_user_date (user_id, checkin_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='签到记录表';`
   ];
 
   for (const table of tables) {
@@ -438,6 +453,9 @@ async function ensureSchemaCompatibility() {
     try { await db.execute("ALTER TABLE tasks ADD COLUMN request_type VARCHAR(50) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN request_response VARCHAR(20) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN related_task_id VARCHAR(36) NULL"); } catch(e){}
+    
+    // users表积分字段
+    try { await db.execute("ALTER TABLE users ADD COLUMN points INT DEFAULT 0"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN attachments JSON NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE mbti_records ADD COLUMN personal_info JSON NULL"); } catch(e){}
     // 索引、关联关系等原有包裹不变
@@ -3072,6 +3090,281 @@ app.put('/api/notifications/mark-all-read', authenticateToken, async (req, res) 
   } catch (error) {
     console.error('批量标记通知已读错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// ==================== 签到相关API ====================
+
+// 获取用户积分
+app.get('/api/checkin/points', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    
+    // 验证权限：只能查询自己的积分，或者管理员/创始人可以查询其他人的
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权查询该用户的积分' });
+    }
+
+    const [rows] = await db.execute(
+      'SELECT points FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    res.json({ points: rows[0].points || 0 });
+  } catch (error) {
+    console.error('获取积分错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取签到记录（按月查询）
+app.get('/api/checkin/records', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
+    
+    // 验证权限
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权查询该用户的签到记录' });
+    }
+
+    // 查询该月的签到记录
+    const [rows] = await db.execute(
+      `SELECT checkin_date, points_earned, created_at
+       FROM checkin_records
+       WHERE user_id = ? 
+         AND YEAR(checkin_date) = ?
+         AND MONTH(checkin_date) = ?
+       ORDER BY checkin_date ASC`,
+      [userId, year, month]
+    );
+
+    // 格式化日期为 YYYY-MM-DD 格式
+    const records = rows.map(row => ({
+      checkin_date: formatDateOnlyForBeijing(row.checkin_date),
+      points_earned: row.points_earned,
+      created_at: formatDateTimeForBeijing(row.created_at)
+    }));
+
+    res.json({ records });
+  } catch (error) {
+    console.error('获取签到记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取连续签到天数
+app.get('/api/checkin/consecutive', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    
+    // 验证权限
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权查询该用户的连续签到天数' });
+    }
+
+    // 获取所有签到日期，按日期降序排列
+    const [rows] = await db.execute(
+      `SELECT checkin_date
+       FROM checkin_records
+       WHERE user_id = ?
+       ORDER BY checkin_date DESC`,
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.json({ consecutiveDays: 0 });
+    }
+
+    // 计算连续签到天数
+    let consecutiveDays = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // 将日期格式化为 YYYY-MM-DD 并转换为Date对象进行比较
+    const checkinDates = rows.map(row => {
+      const date = new Date(row.checkin_date);
+      date.setHours(0, 0, 0, 0);
+      return date;
+    });
+
+    // 检查今天是否签到
+    let expectedDate = new Date(today);
+    let checkIndex = 0;
+    
+    // 如果今天已签到，从今天开始计算；否则从昨天开始
+    if (checkinDates.length > 0 && checkinDates[0].getTime() === expectedDate.getTime()) {
+      consecutiveDays = 1;
+      checkIndex = 1;
+      expectedDate = new Date(today);
+      expectedDate.setDate(expectedDate.getDate() - 1);
+    } else {
+      // 从昨天开始检查
+      expectedDate = new Date(today);
+      expectedDate.setDate(expectedDate.getDate() - 1);
+    }
+
+    // 检查连续签到
+    while (checkIndex < checkinDates.length) {
+      const expectedTime = expectedDate.getTime();
+      const checkinTime = checkinDates[checkIndex].getTime();
+      
+      if (checkinTime === expectedTime) {
+        consecutiveDays++;
+        expectedDate.setDate(expectedDate.getDate() - 1);
+        checkIndex++;
+      } else if (checkinTime < expectedTime) {
+        // 日期不连续，停止计算
+        break;
+      } else {
+        // 跳过更早的签到记录（理论上不应该出现）
+        checkIndex++;
+      }
+    }
+
+    res.json({ consecutiveDays });
+  } catch (error) {
+    console.error('获取连续签到天数错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 每日签到
+app.post('/api/checkin', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.body.userId || req.user.id;
+    
+    // 验证权限：只能为自己签到，或者管理员/创始人可以为其他人签到
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权为该用户签到' });
+    }
+
+    // 获取今天的日期（北京时间）
+    const today = new Date();
+    const beijingDate = shiftToBeijing(today);
+    const todayStr = formatDateOnlyForBeijing(beijingDate);
+
+    // 检查今天是否已经签到
+    const [existing] = await db.execute(
+      'SELECT id FROM checkin_records WHERE user_id = ? AND checkin_date = ?',
+      [userId, todayStr]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({ error: '今天已经签到过了' });
+    }
+
+    // 计算连续签到天数（用于可能的奖励）
+    // 先检查昨天是否签到
+    const yesterday = new Date(beijingDate);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = formatDateOnlyForBeijing(yesterday);
+    
+    const [lastCheckin] = await db.execute(
+      `SELECT checkin_date
+       FROM checkin_records
+       WHERE user_id = ?
+       ORDER BY checkin_date DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    let consecutiveDays = 1; // 今天签到至少是1天
+    
+    if (lastCheckin.length > 0 && lastCheckin[0].checkin_date === yesterdayStr) {
+      // 昨天签到了，需要计算之前的连续天数
+      const [allCheckins] = await db.execute(
+        `SELECT checkin_date
+         FROM checkin_records
+         WHERE user_id = ?
+         ORDER BY checkin_date DESC`,
+        [userId]
+      );
+
+      // 从昨天开始往前计算连续天数
+      let expectedDate = new Date(yesterday);
+      let count = 1; // 包括昨天
+      
+      for (let i = 0; i < allCheckins.length; i++) {
+        const checkinDate = new Date(allCheckins[i].checkin_date);
+        checkinDate.setHours(0, 0, 0, 0);
+        expectedDate.setHours(0, 0, 0, 0);
+        
+        if (checkinDate.getTime() === expectedDate.getTime()) {
+          count++;
+          expectedDate.setDate(expectedDate.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+      
+      consecutiveDays = count; // 加上今天
+    } else if (lastCheckin.length === 0) {
+      // 第一次签到
+      consecutiveDays = 1;
+    }
+    // 如果昨天没签到，但之前有签到记录，则连续天数重置为1（已经设置）
+
+    // 基础积分
+    let pointsEarned = 5;
+    
+    // 连续签到奖励（可选）
+    if (consecutiveDays >= 30) {
+      pointsEarned = 20; // 连续30天额外奖励
+    } else if (consecutiveDays >= 7) {
+      pointsEarned = 10; // 连续7天额外奖励
+    }
+
+    // 开始事务
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      // 生成签到记录ID
+      const checkinId = `checkin-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // 插入签到记录
+      await connection.execute(
+        `INSERT INTO checkin_records (id, user_id, checkin_date, points_earned, created_at)
+         VALUES (?, ?, ?, ?, NOW())`,
+        [checkinId, userId, todayStr, pointsEarned]
+      );
+
+      // 更新用户积分
+      await connection.execute(
+        'UPDATE users SET points = COALESCE(points, 0) + ? WHERE id = ?',
+        [pointsEarned, userId]
+      );
+
+      // 获取更新后的积分
+      const [userRows] = await connection.execute(
+        'SELECT points FROM users WHERE id = ?',
+        [userId]
+      );
+
+      await connection.commit();
+      connection.release();
+
+      res.json({
+        message: '签到成功',
+        pointsEarned,
+        points: userRows[0].points || 0,
+        consecutiveDays,
+        checkinDate: todayStr
+      });
+    } catch (error) {
+      await connection.rollback();
+      connection.release();
+      throw error;
+    }
+  } catch (error) {
+    console.error('签到错误:', error);
+    res.status(500).json({ error: error.message || '服务器内部错误' });
   }
 });
 
