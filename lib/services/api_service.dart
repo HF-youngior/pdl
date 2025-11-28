@@ -516,6 +516,141 @@ class ApiService {
     }
   }
 
+  // ==================== 管理员总览 API ====================
+  
+  // 搜索员工（支持按名字、部门、职位搜索）
+  static Future<List<User>> searchUsers(String keyword) async {
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$baseUrl/admin/search-users?keyword=${Uri.encodeComponent(keyword)}'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((json) => User.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('搜索员工错误: $e');
+      return [];
+    }
+  }
+  
+  // 获取员工统计数据
+  static Future<Map<String, dynamic>?> getUserStatistics(String userId, String period) async {
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$baseUrl/admin/user-statistics?userId=$userId&period=$period'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print('获取员工统计数据错误: $e');
+      return null;
+    }
+  }
+  
+  // 获取员工日志
+  static Future<List<PersonalLog>> getUserLogs(String userId, {String? date}) async {
+    try {
+      String url = '$baseUrl/admin/user-logs?userId=$userId';
+      if (date != null) {
+        url += '&date=$date';
+      }
+      final response = await httpClient.get(
+        Uri.parse(url),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((json) => PersonalLog.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('获取员工日志错误: $e');
+      return [];
+    }
+  }
+  
+  // 获取员工MBTI测试历史
+  static Future<List<Map<String, dynamic>>> getUserMbtiHistory(String userId) async {
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$baseUrl/admin/user-mbti-history?userId=$userId'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      print('获取员工MBTI历史错误: $e');
+      return [];
+    }
+  }
+  
+  // 获取公司所有任务
+  static Future<List<Task>> getAllCompanyTasks({String? date}) async {
+    try {
+      String url = '$baseUrl/admin/all-tasks';
+      if (date != null) {
+        url += '?date=$date';
+      }
+      final response = await httpClient.get(
+        Uri.parse(url),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((json) => Task.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('获取公司所有任务错误: $e');
+      return [];
+    }
+  }
+  
+  // 获取任务树
+  static Future<Map<String, dynamic>?> getTaskTree(String taskId) async {
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$baseUrl/admin/task-tree?taskId=$taskId'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print('获取任务树错误: $e');
+      return null;
+    }
+  }
+  
+  // 数据埋点
+  static Future<bool> trackAction(String action, {String? category, Map<String, dynamic>? metadata}) async {
+    try {
+      final response = await httpClient.post(
+        Uri.parse('$baseUrl/admin/tracking'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'action': action,
+          'category': category ?? 'admin_action',
+          'metadata': metadata,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('数据埋点错误: $e');
+      return false;
+    }
+  }
+
   // 上传单张图片
   static Future<String?> uploadImage(File imageFile) async {
     try {
