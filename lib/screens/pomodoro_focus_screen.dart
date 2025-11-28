@@ -21,6 +21,12 @@ class PomodoroFocusScreen extends StatefulWidget {
 
 class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
   static const String _customFocusPrefix = 'custom::';
+  static const Map<String, String> _immersionBackgrounds = {
+    '等我下班': 'assets/images/focus/linyi.jpg',
+    '陪我上班': 'assets/images/focus/txt.jpg',
+    '度假欧洲': 'assets/images/focus/grass.jpg',
+    '飞离工位': 'assets/images/focus/paraglider.jpg',
+  };
   final List<Task> _tasks = [];
   String? _selectedTaskId;
   String _focusTitle = '选择专注计划';
@@ -32,7 +38,7 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
   bool _isSyncingFocusDuration = false;
   bool _hasActiveSession = false;
   final List<String> _customFocusOptions = [];
-  final List<String> _immersionOptions = ['等我下班', '陪我上班', '度假欧洲', '飞过山丘'];
+  final List<String> _immersionOptions = _immersionBackgrounds.keys.toList();
   bool _isFunImmersionActive = false;
   double _funExitProgress = 0;
   Timer? _funExitTimer;
@@ -921,7 +927,7 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
   }
 
   void _handleImmersionSelection(String option) {
-    if (option == '等我下班') {
+    if (_immersionBackgrounds.containsKey(option)) {
       setState(() {
         _selectedImmersionOption = option;
         _isFunImmersionActive = true;
@@ -947,6 +953,10 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
   }
 
   Widget _buildFunImmersionLayer() {
+    final option = _selectedImmersionOption ?? '等我下班';
+    final backgroundPath =
+        _immersionBackgrounds[option] ?? _immersionBackgrounds['等我下班']!;
+
     return Positioned.fill(
       child: Material(
         type: MaterialType.transparency,
@@ -958,10 +968,23 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
             fit: StackFit.expand,
             children: [
               Image.asset(
-                'assets/images/focus/林一.jpg',
+                backgroundPath, // 与 pubspec.yaml 中的英文名称保持一致
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) {
-                  return Container(color: Colors.black);
+                  debugPrint("❌ 图片加载失败($backgroundPath): $error");
+                  return Container(
+                    color: Colors.red,
+                    child: Center(
+                      child: Text(
+                        "找不到图片\n$error",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
                 },
               ),
               Container(
@@ -970,9 +993,9 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text(
-                    '沉浸专注中 · 等我下班',
-                    style: TextStyle(
+                  Text(
+                    '沉浸专注中 · $option',
+                    style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 16,
                       letterSpacing: 1.2,
