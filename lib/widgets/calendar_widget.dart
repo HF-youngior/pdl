@@ -2678,9 +2678,15 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                     itemCount: filteredTasks.length,
                     itemBuilder: (context, index) {
                       final item = filteredTasks[index];
-                      final task = item['task'] as CalendarTask;
-                      final date = item['date'] as String;
-                      final day = item['day'] as DateTime;
+                      final dynamic taskRaw = item['task'];
+                      if (taskRaw is! CalendarTask) {
+                        return const SizedBox.shrink();
+                      }
+                      final CalendarTask task = taskRaw;
+                      final String date = item['date']?.toString() ?? '';
+                      final DateTime day = item['day'] is DateTime
+                          ? item['day'] as DateTime
+                          : DateTime.now();
 
                       return _buildTaskListItem(task, date, day);
                     },

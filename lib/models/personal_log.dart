@@ -73,9 +73,7 @@ class PersonalLog {
       taskUpdates: (json['taskUpdates'] as List<dynamic>? ?? [])
           .map((item) => LogTaskUpdate.fromJson(item as Map<String, dynamic>))
           .toList(),
-      logDate: (json['log_date'] != null) // <<< 确保在构造函数调用中传递 logDate
-          ? DateTime.parse(json['log_date'] as String)
-          : null,
+      logDate: _tryParseDateTime(json['log_date']?.toString()),
       images: _parseStringList(json['images']),
       locationName: json['location_name'] ?? json['locationName'],
       latitude: _toDouble(json['location_latitude'] ?? json['locationLatitude']),
