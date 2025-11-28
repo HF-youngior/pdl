@@ -149,6 +149,7 @@ async function createTables() {
       is_active BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       last_login_at TIMESTAMP NULL,
+      focus_duration INT DEFAULT 0 COMMENT '累计专注时长（秒）',
       FOREIGN KEY (department_id) REFERENCES departments(id),
       FOREIGN KEY (parent_id) REFERENCES users(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
@@ -348,6 +349,7 @@ async function ensureSchemaCompatibility() {
     
     // tasks表 updated_at 字段检查
     try { await db.execute("ALTER TABLE tasks ADD COLUMN updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP"); } catch(e){}
+    try { await db.execute("ALTER TABLE users ADD COLUMN focus_duration INT DEFAULT 0"); } catch(e){}
 
     // 所有 ALTER TABLE 语句外包裹 try...catch，兼容老MySQL
     // 注意：MySQL 8.0+ 支持 IF NOT EXISTS，老版本会抛出错误但被catch
@@ -1166,6 +1168,36 @@ app.get('/api/user/profile', authenticateToken, async (req, res) => {
     res.json(user);
   } catch (error) {
     console.error('获取用户信息错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 累加用户番茄钟专注时长
+app.post('/api/user/focus-duration', authenticateToken, async (req, res) => {
+  try {
+    const duration = Number(req.body?.duration ?? 0);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return res.status(400).json({ error: 'duration 必须为大于0的数字' });
+    }
+
+    await db.execute(
+      'UPDATE users SET focus_duration = IFNULL(focus_duration, 0) + ? WHERE id = ?',
+      [duration, req.user.id]
+    );
+
+    const [rows] = await db.execute(
+      'SELECT focus_duration FROM users WHERE id = ?',
+      [req.user.id]
+    );
+    const totalFocusDuration = Number(rows?.[0]?.focus_duration ?? 0);
+
+    res.json({
+      message: '专注时长已更新',
+      durationAdded: duration,
+      totalFocusDuration,
+    });
+  } catch (error) {
+    console.error('更新专注时长错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
