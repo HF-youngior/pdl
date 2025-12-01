@@ -166,6 +166,23 @@ function safeParseJSON(value) {
   return value;
 }
 
+// 将数据库中的关键词字段统一转换为字符串数组
+function normalizeKeywordList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map(item => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 // 初始化数据库连接
 async function initDatabase() {
   try {
@@ -406,7 +423,21 @@ async function createTables() {
       INDEX idx_user_id (user_id),
       INDEX idx_checkin_date (checkin_date),
       INDEX idx_user_date (user_id, checkin_date)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='签到记录表';`
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='签到记录表';`,
+
+    // 积分流水表（包含获取与消耗）
+    `CREATE TABLE IF NOT EXISTS points_transactions (
+      id VARCHAR(64) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      type VARCHAR(20) NOT NULL, -- earn / spend
+      amount INT NOT NULL,
+      description VARCHAR(255),
+      related_id VARCHAR(64),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_points_user_created (user_id, created_at),
+      INDEX idx_points_type (type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='积分流水表（获取/消耗记录）';`
   ];
 
   for (const table of tables) {
@@ -3095,8 +3126,8 @@ app.put('/api/notifications/mark-all-read', authenticateToken, async (req, res) 
 
 // ==================== 签到相关API ====================
 
-// 获取用户积分
-app.get('/api/checkin/points', authenticateToken, async (req, res) => {
+// 获取用户积分（兼容是否带 /api 前缀的两种路由）
+app.get(['/api/checkin/points', '/checkin/points'], authenticateToken, async (req, res) => {
   try {
     const userId = req.query.userId || req.user.id;
     
@@ -3121,8 +3152,8 @@ app.get('/api/checkin/points', authenticateToken, async (req, res) => {
   }
 });
 
-// 获取签到记录（按月查询）
-app.get('/api/checkin/records', authenticateToken, async (req, res) => {
+// 获取签到记录（按月查询，兼容是否带 /api 前缀）
+app.get(['/api/checkin/records', '/checkin/records'], authenticateToken, async (req, res) => {
   try {
     const userId = req.query.userId || req.user.id;
     const year = parseInt(req.query.year) || new Date().getFullYear();
@@ -3154,6 +3185,61 @@ app.get('/api/checkin/records', authenticateToken, async (req, res) => {
     res.json({ records });
   } catch (error) {
     console.error('获取签到记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取积分获取/消耗记录
+// type=earn 使用 checkin_records；type=spend 使用 points_transactions
+// 兼容是否带 /api 前缀
+app.get(['/api/checkin/points-history', '/checkin/points-history'], authenticateToken, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    const type = req.query.type || 'earn'; // earn | spend
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
+
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权查询该用户的积分记录' });
+    }
+
+    let rows;
+
+    if (type === 'spend') {
+      // 消耗记录：来自积分流水表
+      [rows] = await db.execute(
+        `SELECT DATE(created_at) AS date, amount, description, created_at
+         FROM points_transactions
+         WHERE user_id = ?
+           AND type = 'spend'
+           AND YEAR(created_at) = ?
+           AND MONTH(created_at) = ?
+         ORDER BY created_at DESC`,
+        [userId, year, month]
+      );
+    } else {
+      // 获取记录：来自签到记录表
+      [rows] = await db.execute(
+        `SELECT checkin_date AS date, points_earned AS amount, '每日签到' AS description, created_at
+         FROM checkin_records
+         WHERE user_id = ?
+           AND YEAR(checkin_date) = ?
+           AND MONTH(checkin_date) = ?
+         ORDER BY checkin_date DESC`,
+        [userId, year, month]
+      );
+    }
+
+    const records = rows.map(row => ({
+      date: formatDateOnlyForBeijing(row.date),
+      amount: row.amount,
+      description: row.description,
+      created_at: formatDateTimeForBeijing(row.created_at)
+    }));
+
+    res.json({ records });
+  } catch (error) {
+    console.error('获取积分记录错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
@@ -3335,6 +3421,14 @@ app.post('/api/checkin', authenticateToken, async (req, res) => {
         [checkinId, userId, todayStr, pointsEarned]
       );
 
+      // 写入积分流水（获取）
+      const txnId = `ptx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      await connection.execute(
+        `INSERT INTO points_transactions (id, user_id, type, amount, description, related_id, created_at)
+         VALUES (?, ?, 'earn', ?, '每日签到', ?, NOW())`,
+        [txnId, userId, pointsEarned, checkinId]
+      );
+
       // 更新用户积分
       await connection.execute(
         'UPDATE users SET points = COALESCE(points, 0) + ? WHERE id = ?',
@@ -3365,6 +3459,78 @@ app.post('/api/checkin', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('签到错误:', error);
     res.status(500).json({ error: error.message || '服务器内部错误' });
+  }
+});
+
+// 使用积分兑换奖励（例如 Loopy 装扮），兼容是否带 /api 前缀
+app.post(['/api/checkin/redeem', '/checkin/redeem'], authenticateToken, async (req, res) => {
+  try {
+    const userId = req.body.userId || req.user.id;
+    const cost = parseInt(req.body.cost, 10);
+    const itemName = (req.body.itemName || '').toString().trim();
+
+    if (!Number.isFinite(cost) || cost <= 0) {
+      return res.status(400).json({ error: '无效的兑换积分消耗值' });
+    }
+
+    // 只能为自己兑换，或者管理员/创始人可以为其他人兑换
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权为该用户进行积分兑换' });
+    }
+
+    // 查询当前积分
+    const [rows] = await db.execute(
+      'SELECT points FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    const currentPoints = rows[0].points || 0;
+    if (currentPoints < cost) {
+      return res.status(400).json({ error: '积分不足，无法兑换该奖励' });
+    }
+
+    const newPoints = currentPoints - cost;
+
+    // 开启简单事务，确保扣减积分与流水记录一致
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      await connection.execute(
+        'UPDATE users SET points = ? WHERE id = ?',
+        [newPoints, userId]
+      );
+
+      const txnId = `ptx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const desc = itemName
+        ? `兑换：${itemName}`
+        : '兑换积分商城奖励';
+
+      await connection.execute(
+        `INSERT INTO points_transactions (id, user_id, type, amount, description, related_id, created_at)
+         VALUES (?, ?, 'spend', ?, ?, NULL, NOW())`,
+        [txnId, userId, cost, desc]
+      );
+
+      await connection.commit();
+      connection.release();
+
+      res.json({
+        message: '兑换成功',
+        points: newPoints
+      });
+    } catch (innerErr) {
+      await connection.rollback();
+      connection.release();
+      throw innerErr;
+    }
+  } catch (error) {
+    console.error('积分兑换错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
   }
 });
 
@@ -3655,7 +3821,6 @@ app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
       content: payload.content ?? null,
       category: payload.category,
       is_completed: payload.is_completed ?? false,
-      log_date: payload.log_date ? formatDateOnly(payload.log_date) : null,
       weather: payload.weather ?? null,
       keywords: dbKeywords,
       log_title: payload.log_title ?? null,
@@ -3664,6 +3829,12 @@ app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
       is_archived: payload.is_archived ? 1 : 0,
       related_task_id: payload.related_task_id ?? null
     };
+
+    // 只有在前端明确传入 log_date 字段时才更新数据库中的 log_date，
+    // 避免用户仅修改天气等其它字段时把原来的日期覆盖为 NULL。
+    if (Object.prototype.hasOwnProperty.call(payload, 'log_date')) {
+      fields.log_date = payload.log_date ? formatDateOnly(payload.log_date) : null;
+    }
     if (payload.images !== undefined) {
       const updatedImages = Array.isArray(payload.images)
         ? payload.images.filter(item => typeof item === 'string' && item.trim().length > 0)
@@ -3948,7 +4119,18 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         pl.is_completed,
         pl.created_at,
         pl.images,
-        DATE_FORMAT(CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00'), '%Y-%m-%d') as log_date
+        pl.weather,
+        pl.keywords,
+        pl.location_name,
+        pl.location_latitude,
+        pl.location_longitude,
+        DATE_FORMAT(
+          CASE 
+            WHEN pl.log_date IS NOT NULL THEN pl.log_date
+            ELSE CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00')
+          END,
+          '%Y-%m-%d'
+        ) as log_date
       FROM personal_logs pl
       WHERE pl.user_id = ?
       AND pl.created_at >= ?
@@ -4077,6 +4259,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         const dateKey = log.log_date;
         console.log(`  日志 "${log.title}" 的日期: ${dateKey}, 日历中是否存在: ${!!calendar[dateKey]}`);
         if (calendar[dateKey]) {
+          const images = safeParseJSON(log.images) || [];
+          const keywords = normalizeKeywordList(log.keywords);
           calendar[dateKey].logs.push({
             id: log.id,
             title: log.title,
@@ -4085,7 +4269,13 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
             quadrant: log.quadrant,
             is_completed: log.is_completed,
             created_at: formatDateTimeForBeijing(log.created_at),
-            images: safeParseJSON(log.images) || []
+            log_date: log.log_date,
+            weather: log.weather,
+            keywords,
+            images,
+            location_name: log.location_name,
+            location_latitude: log.location_latitude,
+            location_longitude: log.location_longitude
           });
           calendar[dateKey].hasData = true;
         }
@@ -4174,7 +4364,18 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         pl.is_completed,
         pl.created_at,
         pl.images,
-        DATE_FORMAT(CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00'), '%Y-%m-%d') as log_date
+        pl.weather,
+        pl.keywords,
+        pl.location_name,
+        pl.location_latitude,
+        pl.location_longitude,
+        DATE_FORMAT(
+          CASE 
+            WHEN pl.log_date IS NOT NULL THEN pl.log_date
+            ELSE CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00')
+          END,
+          '%Y-%m-%d'
+        ) as log_date
       FROM personal_logs pl
       WHERE pl.user_id = ?
       AND pl.created_at >= ?
@@ -4209,7 +4410,12 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         isCompleted: log.is_completed === 1,
         date: log.log_date,
         createdAt: log.created_at,
-        images: safeParseJSON(log.images) || []
+        weather: log.weather,
+        keywords: normalizeKeywordList(log.keywords),
+        images: safeParseJSON(log.images) || [],
+        location_name: log.location_name,
+        location_latitude: log.location_latitude,
+        location_longitude: log.location_longitude
       })),
       tasks: tasks.map(task => ({
         id: task.id,
@@ -4286,7 +4492,12 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
       FROM personal_logs pl
       LEFT JOIN tasks t ON pl.related_task_id = t.id
       WHERE pl.user_id = ?
-      AND DATE(pl.created_at) = ?
+      AND DATE(
+        COALESCE(
+          pl.log_date,
+          CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00')
+        )
+      ) = ?
       ORDER BY pl.created_at DESC
     `;
     
@@ -4317,14 +4528,20 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
       })),
       logs: logs.map(l => {
         const images = safeParseJSON(l.images) || [];
+        const keywords = normalizeKeywordList(l.keywords);
         return {
-        id: l.id,
-        title: l.title,
-        content: l.content,
-        category: l.category,
-        quadrant: l.quadrant,
-        is_completed: l.is_completed,
+          id: l.id,
+          title: l.title,
+          content: l.content,
+          category: l.category,
+          quadrant: l.quadrant,
+          is_completed: l.is_completed,
           created_at: formatDateTimeForBeijing(l.created_at),
+          log_date: l.log_date
+            ? formatDateOnlyForBeijing(l.log_date)
+            : formatDateOnlyForBeijing(l.created_at),
+          weather: l.weather,
+          keywords,
           images,
           location_name: l.location_name,
           location_latitude: l.location_latitude,

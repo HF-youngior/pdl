@@ -39,6 +39,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final AppSettings _settings = AppSettings.instance;
   int _highPriorityPendingCount = 0;
   int _unreadNotificationCount = 0;
+  static const List<_ThemeColorOption> _themeColorOptions = [
+    // 稍微加深的马卡龙蓝，保证文字对比度
+    _ThemeColorOption(label: '马卡龙蓝', color: Color(0xFF4A90E2)),
+    _ThemeColorOption(label: '马卡龙粉', color: Color(0xFFFFB3C1)),
+    _ThemeColorOption(label: '清新桃', color: Color(0xFFFFD6A5)),
+    // 将柠檬奶油改成更深的黄色系，避免过亮导致看不清
+    _ThemeColorOption(label: '柠檬奶油', color: Color(0xFFF6C94C)),
+    _ThemeColorOption(label: '薄荷绿', color: Color(0xFFA8E6CF)),
+    _ThemeColorOption(label: '奶油紫', color: Color(0xFFCDB4DB)),
+    _ThemeColorOption(label: '薰衣草', color: Color(0xFFD7C0FF)),
+    _ThemeColorOption(label: '珊瑚橘', color: Color(0xFFFFC9B9)),
+    // 天空蓝改成稍深的蓝绿色，保证和白色/黑色文字对比更好
+    _ThemeColorOption(label: '天空蓝', color: Color(0xFF2196F3)),
+  ];
 
   // 预览数据
   List<String> _companyImportantItems = [];
@@ -665,6 +679,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          IconButton(
+            tooltip: '改变主题颜色',
+            icon: const Icon(Icons.checkroom_outlined),
+            onPressed: _openThemeColorPicker,
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Stack(
@@ -715,7 +734,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    // 用户信息卡片
+                    // 用户信息卡片 + Loopy 装扮展示
                     Card(
                       elevation: 4,
                       shape: RoundedRectangleBorder(
@@ -724,6 +743,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             CircleAvatar(
                               radius: 30,
@@ -767,6 +787,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 ],
                               ),
                             ),
+                            if (_settings.equippedLoopyAssetPath != null)
+                              Container(
+                                width: 80,
+                                height: 80,
+                                margin: const EdgeInsets.only(left: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.pinkAccent.withOpacity(0.25),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: Image.asset(
+                                  _settings.equippedLoopyAssetPath!,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -915,6 +957,91 @@ class _DashboardScreenState extends State<DashboardScreen> {
       items.add('姓名: ${widget.user.name}');
     }
     return items.take(3).toList();
+  }
+
+  void _openThemeColorPicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final currentColor = _settings.themeColor;
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '选择主题颜色',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: _themeColorOptions.map((option) {
+                  final bool isSelected = currentColor == option.color;
+                  return GestureDetector(
+                    onTap: () {
+                      _settings.setThemeColor(option.color);
+                      Navigator.of(context).pop();
+                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: option.color,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: isSelected ? Colors.black54 : Colors.white,
+                                  width: 3,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: option.color.withOpacity(0.35),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (isSelected)
+                              const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          option.label,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '提示：选择后将同步刷新页眉、底部导航和关键标识颜色。',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _openNotificationsPanel() async {
@@ -1140,4 +1267,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return status;
     }
   }
+}
+
+class _ThemeColorOption {
+  final String label;
+  final Color color;
+  const _ThemeColorOption({required this.label, required this.color});
 }

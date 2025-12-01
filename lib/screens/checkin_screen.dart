@@ -154,9 +154,8 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PointsMallScreen(
-          availablePoints: _points,
-          consumedPoints: 0,
-          remainingPoints: _points,
+          user: widget.user,
+          totalPoints: _points,
         ),
       ),
     );
@@ -192,7 +191,8 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
   Widget build(BuildContext context) {
     final today = DateTime.now();
     final todayStr = DateFormat('yyyy-MM-dd').format(today);
-    final canCheckin = !(_checkinRecords[todayStr] == true);
+    final isCurrentMonth = _currentMonth.year == today.year && _currentMonth.month == today.month;
+    final canCheckin = isCurrentMonth && !(_checkinRecords[todayStr] == true);
 
     return Scaffold(
       appBar: AppBar(
@@ -200,6 +200,13 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: '刷新',
+            onPressed: _isLoading ? null : _loadData,
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -220,7 +227,7 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _buildCheckinButton(canCheckin),
+                      _buildCheckinButton(canCheckin, isCurrentMonth),
                       const SizedBox(height: 24),
                       _buildPointsCard(),
                       const SizedBox(height: 24),
@@ -343,7 +350,7 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildCheckinButton(bool canCheckin) {
+  Widget _buildCheckinButton(bool canCheckin, bool isCurrentMonth) {
     final gradient = canCheckin
         ? [const Color(0xFFFFAA85), const Color(0xFFFD4C77)]
         : [Colors.grey[400]!, Colors.grey[500]!];
@@ -442,7 +449,11 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        canCheckin ? '今日还未签到，点击领取奖励' : '今天的签到已完成，明天继续哦',
+                      canCheckin
+                          ? '今日还未签到，点击领取奖励'
+                          : (isCurrentMonth
+                              ? '今天的签到已完成，明天继续哦'
+                              : '请切换到本月进行签到'),
                         style: TextStyle(
                           color: Colors.grey[700],
                           fontSize: 13,
