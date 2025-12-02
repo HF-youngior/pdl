@@ -7,6 +7,8 @@ const path = require('path');
 const axios = require('axios');
 const multer = require('multer');
 const fs = require('fs');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./swagger.json');
 require('dotenv').config();
 // const { useDefault, Segment } = require('segmentit');
 // const segmenter = useDefault(new Segment());
@@ -31,6 +33,10 @@ app.use('/public', express.static(publicDir));
 
 // 静态文件服务 - 根路径访问public目录
 app.use('/', express.static(publicDir));
+
+// Swagger UI 文档（基于 OpenAPI）
+// 访问地址示例：http://localhost:8080/swagger
+app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 // 确保uploads目录存在
 const uploadsDir = path.join(publicDir, 'uploads');
@@ -5186,6 +5192,7 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`企业管理系统服务器运行在端口 ${PORT}`);
     console.log(`API地址: http://localhost:${PORT}/api`);
+    console.log(`Swagger UI: http://localhost:${PORT}/swagger`);
     console.log(`Web管理端: http://localhost:${PORT}/web_admin`);
     console.log(`\n📱 手机访问地址（同一WiFi网络）:`);
     console.log(`   请使用电脑的IP地址: http://[电脑IP]:${PORT}/api`);
@@ -5199,6 +5206,7 @@ async function startServer() {
     console.log(`   员工: hr_emp1 / hremp123, finance_emp1 / financeemp123, marketing_emp1 / marketingemp123`);
     console.log(`\n🌐 访问地址:`);
     console.log(`   API接口: http://localhost:${PORT}/api`);
+    console.log(`   Swagger UI: http://localhost:${PORT}/swagger`);
     console.log(`   Web管理: http://localhost:${PORT}/web_admin`);
   });
 }
