@@ -639,6 +639,15 @@
       "get": {
         "summary": "获取用户当前积分",
         "tags": ["签到与积分"],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "要查询的用户ID；为空时默认使用当前登录用户"
+          }
+        ],
         "responses": {
           "200": { "description": "成功" }
         }
@@ -648,6 +657,29 @@
       "get": {
         "summary": "获取用户签到记录（按月）",
         "tags": ["签到与积分"],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "要查询的用户ID；为空时默认当前登录用户"
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "年份，例如 2025；不传则使用当前年份"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "月份，1-12；不传则使用当前月份"
+          }
+        ],
         "responses": {
           "200": { "description": "成功" }
         }
@@ -657,6 +689,40 @@
       "get": {
         "summary": "获取积分获取/消耗记录",
         "tags": ["签到与积分"],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "要查询的用户ID；为空时默认当前登录用户"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["earn", "spend"],
+              "default": "earn"
+            },
+            "description": "记录类型：earn=获取积分，spend=消耗积分；默认 earn"
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "年份，例如 2025；不传则使用当前年份"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "月份，1-12；不传则使用当前月份"
+          }
+        ],
         "responses": {
           "200": { "description": "成功" }
         }
@@ -770,6 +836,22 @@
       "get": {
         "summary": "获取月视图任务数据",
         "tags": ["日历视图"],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "年份，例如 2025"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "月份，1-12"
+          }
+        ],
         "responses": {
           "200": { "description": "成功" }
         }
@@ -792,6 +874,18 @@
       "get": {
         "summary": "获取某天任务详情",
         "tags": ["日历视图"],
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "日期，格式 YYYY-MM-DD，例如 2025-12-02"
+          }
+        ],
         "responses": {
           "200": { "description": "成功" }
         }
