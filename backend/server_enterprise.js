@@ -4139,11 +4139,23 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
     if (!year || !month) {
       return res.status(400).json({ error: '请提供年份(year)和月份(month)参数' });
     }
+
+    // 年份必须是四位整数，例如 2025
+    const yearNum = parseInt(year, 10);
+    if (!/^\d{4}$/.test(String(year)) || !Number.isInteger(yearNum)) {
+      return res.status(400).json({ error: '年份(year)必须是四位整数，例如2025' });
+    }
+
+    // 月份必须是 1-12 的整数
+    const monthNum = parseInt(month, 10);
+    if (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
+      return res.status(400).json({ error: '月份(month)必须是1-12之间的整数' });
+    }
     
     // 计算月份的开始和结束日期
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
-    const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay} 23:59:59`;
+    const startDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-01 00:00:00`;
+    const lastDay = new Date(yearNum, monthNum, 0).getDate();
+    const endDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-${lastDay} 23:59:59`;
     
     // 获取任务（包含跨月跨度任务：与当月有任意重叠即纳入）
     let taskQuery = `
@@ -4173,8 +4185,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
       ORDER BY t.start_time, t.priority
     `;
     
-    const startDateOnly = `${year}-${String(month).padStart(2, '0')}-01`;
-    const endDateOnly = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+    const startDateOnly = `${yearNum}-${String(monthNum).padStart(2, '0')}-01`;
+    const endDateOnly = `${yearNum}-${String(monthNum).padStart(2, '0')}-${lastDay}`;
     
     const [tasks] = await db.execute(taskQuery, [
       req.user.id,
@@ -4387,11 +4399,23 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
     if (!userId || !year || !month) {
       return res.status(400).json({ error: '请提供userId、year和month参数' });
     }
+
+    // 年份必须是四位整数，例如 2025
+    const yearNum = parseInt(year, 10);
+    if (!/^\d{4}$/.test(String(year)) || !Number.isInteger(yearNum)) {
+      return res.status(400).json({ error: '年份(year)必须是四位整数，例如2025' });
+    }
+
+    // 月份必须是 1-12 的整数
+    const monthNum = parseInt(month, 10);
+    if (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
+      return res.status(400).json({ error: '月份(month)必须是1-12之间的整数' });
+    }
     
     // 计算月份的开始和结束日期
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
-    const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay} 23:59:59`;
+    const startDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-01 00:00:00`;
+    const lastDay = new Date(yearNum, monthNum, 0).getDate();
+    const endDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-${lastDay} 23:59:59`;
     
     // 获取任务
     let taskQuery = `
@@ -4419,8 +4443,8 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
       ORDER BY t.start_time, t.priority
     `;
     
-    const startDateOnly = `${year}-${String(month).padStart(2, '0')}-01`;
-    const endDateOnly = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+    const startDateOnly = `${yearNum}-${String(monthNum).padStart(2, '0')}-01`;
+    const endDateOnly = `${yearNum}-${String(monthNum).padStart(2, '0')}-${lastDay}`;
     
     const [tasks] = await db.execute(taskQuery, [
       userId, 
@@ -4532,6 +4556,39 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
     
     if (!date) {
       return res.status(400).json({ error: '请提供日期(date)参数，格式: YYYY-MM-DD' });
+    }
+
+    // 校验日期格式与取值范围（年份四位，月份 1-12，日期根据月份和闰年规则）
+    const dateMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(date));
+    if (!dateMatch) {
+      return res.status(400).json({ error: '日期(date)格式必须为YYYY-MM-DD，例如2025-01-15' });
+    }
+
+    const yearNum = parseInt(dateMatch[1], 10);
+    const monthNum = parseInt(dateMatch[2], 10);
+    const dayNum = parseInt(dateMatch[3], 10);
+
+    if (!Number.isInteger(yearNum)) {
+      return res.status(400).json({ error: '年份必须是四位整数，例如2025' });
+    }
+
+    if (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
+      return res.status(400).json({ error: '月份必须是1-12之间的整数' });
+    }
+
+    // 根据月份和闰年规则检查日期
+    const isLeapYear = (yearNum % 4 === 0 && yearNum % 100 !== 0) || (yearNum % 400 === 0);
+    let maxDay;
+    if ([1, 3, 5, 7, 8, 10, 12].includes(monthNum)) {
+      maxDay = 31;
+    } else if (monthNum === 2) {
+      maxDay = isLeapYear ? 29 : 28;
+    } else {
+      maxDay = 30;
+    }
+
+    if (!Number.isInteger(dayNum) || dayNum < 1 || dayNum > maxDay) {
+      return res.status(400).json({ error: `日期(day)不合法：${yearNum}年${monthNum}月应在1-${maxDay}号之间` });
     }
     
     // 获取该日期的所有任务（包括跨日任务，确保覆盖当天）
