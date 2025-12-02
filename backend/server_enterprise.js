@@ -1632,14 +1632,50 @@ app.put('/api/company-important-items/:id/select', authenticateToken, checkPermi
 });
 
 // 创建重要事项
+// 兼容两种用法：
+// 1）旧版：直接传入 title/description/priority/deadline 创建一条新记录
+// 2）新版（文档示例）：传入 item_id，从重要事项库中选择并标记为公司重要事项
 app.post('/api/company-important-items', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
   try {
-    const { title, description, priority, deadline } = req.body;
+    const { item_id, title, description, priority, deadline } = req.body;
+
+    // 新版用法：从重要事项库中选择
+    if (item_id) {
+      try {
+        // 检查记录是否存在
+        const [rows] = await db.execute(
+          'SELECT id FROM company_important_items WHERE id = ?',
+          [item_id]
+        );
+
+        if (!rows || rows.length === 0) {
+          return res.status(404).json({ error: '指定的重要事项不存在' });
+        }
+
+        // 标记为已选择
+        await db.execute(
+          'UPDATE company_important_items SET is_selected = TRUE, updated_by = ? WHERE id = ?',
+          [req.user.id, item_id]
+        );
+
+        return res.status(200).json({ message: '重要事项添加成功', id: item_id });
+      } catch (innerError) {
+        console.error('根据 item_id 创建公司重要事项错误:', innerError);
+        return res.status(500).json({ error: '服务器内部错误' });
+      }
+    }
+
+    // 旧版用法：直接创建新记录，做一下基本参数校验，避免插入 NULL 导致 500
+    if (!title || !description) {
+      return res.status(400).json({ error: 'title 和 description 为必填字段' });
+    }
+
+    const safePriority = priority || 'p1';
     const id = require('crypto').randomUUID();
 
     await db.execute(
       'INSERT INTO company_important_items (id, title, description, priority, deadline, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, title, description, priority, deadline, req.user.id]
+      [id, title, description, safePriority, deadline || null, req.user.id]
     );
 
     res.status(201).json({ message: '创建成功', id });
@@ -1697,15 +1733,50 @@ app.put('/api/company-important-items/batch-select', authenticateToken, checkPer
 });
 
 // 更新重要事项（编辑内容）
+// 支持部分字段更新，避免未传字段被写成 NULL 导致 500
 app.put('/api/company-important-items/:id', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, priority, status, deadline } = req.body;
 
-    await db.execute(
-      'UPDATE company_important_items SET title = ?, description = ?, priority = ?, status = ?, deadline = ?, updated_by = ? WHERE id = ?',
-      [title, description, priority, status, deadline, req.user.id, id]
-    );
+    const fields = [];
+    const params = [];
+
+    if (title !== undefined) {
+      fields.push('title = ?');
+      params.push(title);
+    }
+    if (description !== undefined) {
+      fields.push('description = ?');
+      params.push(description);
+    }
+    if (priority !== undefined) {
+      fields.push('priority = ?');
+      params.push(priority);
+    }
+    if (status !== undefined) {
+      fields.push('status = ?');
+      params.push(status);
+    }
+    if (deadline !== undefined) {
+      fields.push('deadline = ?');
+      params.push(deadline);
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: '没有提供需要更新的字段' });
+    }
+
+    fields.push('updated_by = ?');
+    params.push(req.user.id);
+    params.push(id);
+
+    const sql = `UPDATE company_important_items SET ${fields.join(', ')} WHERE id = ?`;
+    const [result] = await db.execute(sql, params);
+
+    if (!result || result.affectedRows === 0) {
+      return res.status(404).json({ error: '公司重要事项不存在' });
+    }
 
     res.json({ message: '更新成功' });
   } catch (error) {

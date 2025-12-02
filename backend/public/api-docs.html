@@ -1104,8 +1104,12 @@
 
           <div class="test-area">
             <div class="subsection-title">接口测试</div>
+            <div class="path-param-box">
+              <label for="updateCompanyImportantItemId">路径参数 ID：</label>
+              <input id="updateCompanyImportantItemId" type="text" placeholder="请输入公司重要事项ID（可从 /api/company-important-items/all 获取）">
+            </div>
             <textarea class="test-input">{"title":"更新后的标题","description":"更新后的描述"}</textarea>
-            <button class="test-btn" onclick="testApi('/api/company-important-items/item-id-here', 'PUT', this, true)">发送请求</button>
+            <button class="test-btn" onclick="testUpdateCompanyImportantItem(this)">发送请求</button>
             <div class="result" style="display:none;"></div>
           </div>
         </div>
@@ -1124,7 +1128,11 @@
 
           <div class="test-area">
             <div class="subsection-title">接口测试</div>
-            <button class="test-btn" onclick="testApi('/api/company-important-items/item-id-here', 'DELETE', this, true)">发送请求</button>
+            <div class="path-param-box">
+              <label for="deleteCompanyImportantItemId">路径参数 ID：</label>
+              <input id="deleteCompanyImportantItemId" type="text" placeholder="请输入要删除的公司重要事项ID">
+            </div>
+            <button class="test-btn" onclick="testDeleteCompanyImportantItem(this)">发送请求</button>
             <div class="result" style="display:none;"></div>
           </div>
         </div>
@@ -2934,6 +2942,30 @@
     function toggleEndpoint(header) {
       const endpoint = header.parentElement;
       endpoint.classList.toggle('expanded');
+    }
+
+    // 公司重要事项：更新接口测试（带路径参数）
+    async function testUpdateCompanyImportantItem(button) {
+      const idInput = document.getElementById('updateCompanyImportantItemId');
+      const id = idInput ? idInput.value.trim() : '';
+      if (!id) {
+        alert('请先输入要更新的公司重要事项 ID（可从 /api/company-important-items/all 接口获取）。');
+        return;
+      }
+      const url = `/api/company-important-items/${encodeURIComponent(id)}`;
+      await testApi(url, 'PUT', button, true);
+    }
+
+    // 公司重要事项：删除接口测试（带路径参数）
+    async function testDeleteCompanyImportantItem(button) {
+      const idInput = document.getElementById('deleteCompanyImportantItemId');
+      const id = idInput ? idInput.value.trim() : '';
+      if (!id) {
+        alert('请先输入要删除的公司重要事项 ID。');
+        return;
+      }
+      const url = `/api/company-important-items/${encodeURIComponent(id)}`;
+      await testApi(url, 'DELETE', button, true);
     }
 
     // 测试 API
