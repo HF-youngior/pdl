@@ -506,10 +506,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               ),
             )
           else ...[
-            final canDelete = widget.task!=null &&
-                widget.task?.isRequest!=true &&
-                widget.task?.createdBy==widget.currentUser.id;
-            if (canDelete)
+            if (widget.task != null &&
+                widget.task?.isRequest != true &&
+                widget.task?.createdBy == widget.currentUser.id)
               IconButton(
                 icon: const Icon(Icons.delete_outline),
                 tooltip: '删除任务',
