@@ -48,6 +48,16 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
   void initState() {
     super.initState();
     _loadTasks();
+    _validateImagePaths();
+  }
+
+  /// 验证图片路径配置
+  void _validateImagePaths() {
+    debugPrint("🔍 验证沉浸模式图片路径配置:");
+    _immersionBackgrounds.forEach((key, path) {
+      debugPrint("   $key -> $path");
+    });
+    debugPrint("✅ 路径验证完成");
   }
 
   @override
@@ -313,9 +323,9 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                     Expanded(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                             _buildHeaderCard(context),
                             const SizedBox(height: 20),
                             _buildTopButtons(),
@@ -361,18 +371,18 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
         ],
       ),
       child: Row(
-        children: [
-          Expanded(
+                  children: [
+                    Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '番茄专注',
+                        '番茄专注',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                ),
                 const SizedBox(height: 6),
                 Text(
                   '你好，${widget.user.name}，今天也要好好专注哦～',
@@ -401,9 +411,9 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                         ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
                 ),
               ],
             ),
@@ -459,9 +469,9 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
           child: InkWell(
             onTap: label == '趣味沉浸' ? _showImmersionPicker : null,
             borderRadius: BorderRadius.circular(22),
-            child: Container(
-              height: 92,
-              margin: EdgeInsets.only(right: index == items.length - 1 ? 0 : 12),
+          child: Container(
+              height: 110,
+            margin: EdgeInsets.only(right: index == items.length - 1 ? 0 : 12),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: itemColor.withOpacity(0.12),
@@ -473,12 +483,12 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                   Container(
                     width: 34,
                     height: 34,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
+            decoration: BoxDecoration(
+              color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
                           blurRadius: 6,
                           offset: const Offset(0, 3),
                         ),
@@ -498,7 +508,7 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
+                Text(
                     desc,
                     style: TextStyle(
                       fontSize: 11,
@@ -532,7 +542,7 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: [
+        children: [
               const Text(
                 '选择专注任务',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
@@ -564,9 +574,9 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 )
-              : DropdownButtonFormField<String>(
+                : DropdownButtonFormField<String>(
                   value: _isSelectionAvailable(_selectedTaskId) ? _selectedTaskId : null,
-                  isExpanded: true,
+              isExpanded: true,
                   decoration: InputDecoration(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     filled: true,
@@ -578,13 +588,13 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                   ),
                   items: [
                     ..._tasks.map(
-                      (task) => DropdownMenuItem<String>(
-                        value: task.id,
-                        child: Text(
-                          task.title,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+                    (task) => DropdownMenuItem<String>(
+                  value: task.id,
+                  child: Text(
+                    task.title,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
                     ),
                     ..._customFocusOptions.map(
                       (label) => DropdownMenuItem<String>(
@@ -605,9 +615,9 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                       ),
                     ),
                   ],
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedTaskId = value;
+              onChanged: (value) {
+                setState(() {
+                  _selectedTaskId = value;
                       if (value == null) return;
                       if (_isCustomValue(value)) {
                         _focusTitle = _labelFromCustomValue(value);
@@ -616,10 +626,10 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                         if (task != null) {
                           _focusTitle = task.title;
                         }
-                      }
-                    });
-                  },
-                ),
+                  }
+                });
+              },
+            ),
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerRight,
@@ -662,31 +672,31 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
         ],
       ),
       child: Column(
-        children: [
-          GestureDetector(
-            onTap: _pickDuration,
-            child: Container(
-              width: circleSize,
-              height: circleSize,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
+      children: [
+        GestureDetector(
+          onTap: _pickDuration,
+          child: Container(
+            width: circleSize,
+            height: circleSize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
                 gradient: const RadialGradient(
                   colors: [Color(0xFFFFF4F4), Color(0xFFFFD6D6)],
                   center: Alignment(0, -0.15),
                   radius: 0.95,
                 ),
-                boxShadow: [
-                  BoxShadow(
+              boxShadow: [
+                BoxShadow(
                     color: const Color(0xFFFF8A94).withOpacity(0.25),
                     blurRadius: 25,
                     offset: const Offset(0, 15),
                   ),
                 ],
                 border: Border.all(color: const Color(0xFFFF9A8B).withOpacity(0.5), width: 2),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
@@ -694,7 +704,7 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      _focusTitle,
+                  _focusTitle,
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -704,15 +714,15 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  Text(
-                    _formatDuration(_remaining),
-                    style: const TextStyle(
+                Text(
+                  _formatDuration(_remaining),
+                  style: const TextStyle(
                       fontSize: 52,
-                      fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                       color: Color(0xFF333333),
-                      letterSpacing: 2,
-                    ),
+                    letterSpacing: 2,
                   ),
+                ),
                   const SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -732,18 +742,18 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Text(
-                    _state == _PomodoroState.running
-                        ? '正在专注...'
-                        : _state == _PomodoroState.paused
+                Text(
+                  _state == _PomodoroState.running
+                      ? '正在专注...'
+                      : _state == _PomodoroState.paused
                             ? '短暂休息，继续加油'
-                            : '轻触设置时长',
+                      : '轻触设置时长',
                     style: TextStyle(color: Colors.grey[700]),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
+        ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -927,7 +937,13 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
   }
 
   void _handleImmersionSelection(String option) {
+    debugPrint("🎯 选择沉浸模式: $option");
+    debugPrint("📋 可用选项: ${_immersionBackgrounds.keys.toList()}");
+    
     if (_immersionBackgrounds.containsKey(option)) {
+      final path = _immersionBackgrounds[option];
+      debugPrint("✅ 找到对应路径: $path");
+      
       setState(() {
         _selectedImmersionOption = option;
         _isFunImmersionActive = true;
@@ -941,12 +957,13 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
         }
       });
     } else {
+      debugPrint("❌ 未找到选项: $option");
       setState(() {
         _selectedImmersionOption = option;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('“$option” 主题即将上线，敬请期待～')),
+          SnackBar(content: Text('"$option" 主题即将上线，敬请期待～')),
         );
       }
     }
@@ -954,8 +971,18 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
 
   Widget _buildFunImmersionLayer() {
     final option = _selectedImmersionOption ?? '等我下班';
-    final backgroundPath =
-        _immersionBackgrounds[option] ?? _immersionBackgrounds['等我下班']!;
+    // 安全获取路径，确保不会为 null
+    String? backgroundPath = _immersionBackgrounds[option];
+    if (backgroundPath == null) {
+      backgroundPath = _immersionBackgrounds['等我下班'];
+    }
+    // 如果还是没有，使用默认值
+    backgroundPath ??= 'assets/images/focus/linyi.jpg';
+    
+    // 打印调试信息
+    debugPrint("🎨 沉浸模式 - 选项: $option, 路径: $backgroundPath");
+    debugPrint("📋 可用选项: ${_immersionBackgrounds.keys.toList()}");
+    debugPrint("📋 可用路径: ${_immersionBackgrounds.values.toList()}");
 
     return Positioned.fill(
       child: Material(
@@ -970,18 +997,56 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
               Image.asset(
                 backgroundPath, // 与 pubspec.yaml 中的英文名称保持一致
                 fit: BoxFit.cover,
+                // 添加 package 参数（如果需要，但通常主包不需要）
+                // package: null, // 主包不需要 package 参数
                 errorBuilder: (context, error, stackTrace) {
-                  debugPrint("❌ 图片加载失败($backgroundPath): $error");
+                  // 详细的错误信息
+                  debugPrint("❌ 图片加载失败!");
+                  debugPrint("   路径: $backgroundPath");
+                  debugPrint("   选项: $option");
+                  debugPrint("   错误: $error");
+                  debugPrint("   堆栈: $stackTrace");
+                  debugPrint("   可用路径列表:");
+                  _immersionBackgrounds.forEach((key, value) {
+                    debugPrint("     - $key: $value");
+                  });
+                  
                   return Container(
                     color: Colors.red,
                     child: Center(
-                      child: Text(
-                        "找不到图片\n$error",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.white, size: 48),
+                          const SizedBox(height: 16),
+                          Text(
+                            "图片加载失败",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            "路径: $backgroundPath",
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            "错误: ${error.toString()}",
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
                     ),
                   );
