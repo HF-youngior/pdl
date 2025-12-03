@@ -859,7 +859,7 @@ class _LogEnhancedScreenState extends State<LogEnhancedScreen> {
                         ),
                         if (log.images.isNotEmpty) ...[
                           const SizedBox(height: 18),
-                          _buildDetailSectionTitle(Icons.photo, '图文并茂'),
+                          _buildDetailSectionTitle(Icons.photo, '图片'),
                           const SizedBox(height: 8),
                           SizedBox(
                             height: 100,

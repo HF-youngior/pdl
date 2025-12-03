@@ -1677,7 +1677,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       // 最小高度限制，避免过小
       final minHeight = 30.0;
       final actualHeight = heightInPixels < minHeight ? minHeight : heightInPixels;
-      
+
       // 根据高度动态调整padding和内容
       final isShortTask = heightInPixels < 50;
       final horizontalPadding = isShortTask ? 6.0 : 8.0;
@@ -1685,7 +1685,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       final iconSize = isShortTask ? 12.0 : 14.0;
       final titleFontSize = isShortTask ? 12.0 : 14.0;
       final timeFontSize = isShortTask ? 10.0 : 12.0;
-      
+
       // 使用 Align 和 FractionallySizedBox 来处理相对宽度和位置
       return Positioned(
         top: startHour * 60.0, // 精确到分钟和秒

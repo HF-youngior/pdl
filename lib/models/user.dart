@@ -10,6 +10,7 @@ class User {
   final String? parentId; // 上级ID，用于判断层级关系
   final DateTime createdAt;
   final DateTime? lastLoginAt;
+  final int focusDuration; // 番茄钟累计专注秒数
 
   User({
     required this.id,
@@ -23,9 +24,19 @@ class User {
     this.parentId,
     required this.createdAt,
     this.lastLoginAt,
+    this.focusDuration = 0,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
+    int parseFocusDuration(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is String) {
+        return int.tryParse(value) ?? 0;
+      }
+      return 0;
+    }
+
     return User(
       id: json['id'] ?? '',
       username: json['username'] ?? '',
@@ -36,12 +47,13 @@ class User {
       departmentId: json['department_id'],
       role: json['role'] ?? 'employee',
       parentId: json['parent_id'],
-      createdAt: json['created_at'] != null 
-          ? DateTime.parse(json['created_at']) 
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
           : DateTime.now(),
-      lastLoginAt: json['last_login_at'] != null 
-          ? DateTime.parse(json['last_login_at']) 
+      lastLoginAt: json['last_login_at'] != null
+          ? DateTime.parse(json['last_login_at'])
           : null,
+      focusDuration: parseFocusDuration(json['focus_duration']),
     );
   }
 
@@ -56,6 +68,7 @@ class User {
       'role': role,
       'createdAt': createdAt.toIso8601String(),
       'lastLoginAt': lastLoginAt?.toIso8601String(),
+      'focus_duration': focusDuration,
     };
   }
 }

@@ -18,9 +18,9 @@ class LogTaskUpdate {
   factory LogTaskUpdate.fromJson(Map<String, dynamic> json) {
     return LogTaskUpdate(
       taskId: json['taskId'].toString(), // 确保是 String
-      taskName: json['taskName'] as String?,
+      taskName: json['taskName']?.toString(),
       progress_percentage: json['progress_percentage'] as int?,
-      task_status: json['task_status'] as String?,
+      task_status: json['task_status']?.toString(),
     );
   }
 
