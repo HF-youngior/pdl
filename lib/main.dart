@@ -9,6 +9,7 @@ void main() async {
   
   // 初始化API服务（加载服务器配置）
   await ApiService.initialize();
+  await AppSettings.instance.initialize();
   
   runApp(const MyApp());
 }
@@ -22,6 +23,39 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final AppSettings _settings = AppSettings.instance;
+
+  ThemeData _buildTheme(Brightness brightness) {
+    final Color baseColor = _settings.themeColor;
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: baseColor,
+      brightness: brightness,
+    );
+
+    return ThemeData(
+      brightness: brightness,
+      colorScheme: colorScheme,
+      primaryColor: baseColor,
+      useMaterial3: true,
+      appBarTheme: AppBarTheme(
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: baseColor,
+        foregroundColor: Colors.white,
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        selectedItemColor: baseColor,
+        unselectedItemColor: brightness == Brightness.dark ? Colors.white70 : Colors.grey[600],
+        showSelectedLabels: true,
+        showUnselectedLabels: true,
+      ),
+      cardTheme: CardThemeData(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -41,37 +75,8 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData lightTheme = ThemeData(
-      brightness: Brightness.light,
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-      useMaterial3: true,
-      appBarTheme: const AppBarThemeData(
-        centerTitle: true,
-        elevation: 0,
-      ),
-      cardTheme: CardThemeData(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-    );
-
-    final ThemeData darkTheme = ThemeData(
-      brightness: Brightness.dark,
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
-      useMaterial3: true,
-      appBarTheme: const AppBarThemeData(
-        centerTitle: true,
-        elevation: 0,
-      ),
-      cardTheme: CardThemeData(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-    );
+    final ThemeData lightTheme = _buildTheme(Brightness.light);
+    final ThemeData darkTheme = _buildTheme(Brightness.dark);
 
     return MaterialApp(
       title: _settings.language == 'zh' ? '企业管理系统' : 'Enterprise Management',

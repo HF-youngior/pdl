@@ -120,6 +120,13 @@
       font-family: monospace;
     }
     
+    .api-name {
+      font-weight: 600;
+      font-size: 14px;
+      color: #333;
+      min-width: 140px;
+    }
+    
     .method.get { background: #61affe; color: #fff; }
     .method.post { background: #49cc90; color: #fff; }
     .method.put { background: #fca130; color: #fff; }
@@ -135,6 +142,12 @@
     .description {
       color: #666;
       font-size: 13px;
+    }
+    
+    .param-type {
+      font-size: 12px;
+      color: #666;
+      margin: 4px 0 8px;
     }
     
     .endpoint-body {
@@ -312,6 +325,70 @@
       <input type="text" id="searchBox" placeholder="搜索 API 端点...">
     </div>
 
+    <!-- API 入口 -->
+    <div class="section">
+      <h2 class="section-title">API 入口</h2>
+      
+      <div class="endpoint" data-tags="api root 文档 首页">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api</span>
+          <span class="description">返回当前 API 文档与测试页面</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="subsection">
+            <div class="subsection-title">说明</div>
+            <div class="info-box">
+              访问根路径会返回此 HTML 文档，用于集中查看与测试所有接口。
+            </div>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">响应示例（片段）</div>
+            <div class="code-block">&lt;!DOCTYPE html&gt;
+&lt;html lang="zh-CN"&gt;
+  ...
+&lt;/html&gt;</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api', 'GET', this, false)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="api old legacy 旧版 文档">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/old</span>
+          <span class="description">返回旧版的 API 文档页面（保留兼容）</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="subsection">
+            <div class="info-box">
+              不需要认证，可用于在旧前端或外部系统中查看历史文档版本。
+            </div>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">响应示例（片段）</div>
+            <div class="code-block">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  ...
+&lt;/html&gt;</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/old', 'GET', this, false)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 用户认证 -->
     <div class="section">
       <h2 class="section-title">用户认证</h2>
@@ -320,11 +397,12 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method post">POST</span>
           <span class="path">/api/auth/login</span>
-          <span class="description">用户登录</span>
+          <span class="description">用户登录认证，获取访问令牌</span>
         </div>
         <div class="endpoint-body">
           <div class="subsection">
             <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：用户登录；请求参数类型：JSON（application/json）</div>
             <table class="param-table">
               <thead>
                 <tr>
@@ -381,6 +459,63 @@
           </div>
         </div>
       </div>
+
+      <div class="endpoint" data-tags="change password 修改密码">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/auth/change-password</span>
+          <span class="description">修改当前登录用户的密码</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：修改密码；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>oldPassword</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>旧密码</td>
+                </tr>
+                <tr>
+                  <td><code>newPassword</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>新密码</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">请求示例</div>
+            <div class="code-block">{
+  "oldPassword": "admin123",
+  "newPassword": "newpassword123"
+}</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"oldPassword":"admin123","newPassword":"newpassword123"}</textarea>
+            <button class="test-btn" onclick="testApi('/api/auth/change-password', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 用户管理 -->
@@ -391,7 +526,7 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method get">GET</span>
           <span class="path">/api/user/profile</span>
-          <span class="description">获取当前用户信息</span>
+          <span class="description">获取当前登录用户的个人信息和资料</span>
         </div>
         <div class="endpoint-body">
           <div class="info-box">
@@ -422,7 +557,7 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method get">GET</span>
           <span class="path">/api/users</span>
-          <span class="description">获取用户列表（管理员）</span>
+          <span class="description">获取用户列表，根据权限返回可见的用户信息（管理员可查看所有用户）</span>
         </div>
         <div class="endpoint-body">
           <div class="info-box">
@@ -432,6 +567,177 @@
           <div class="test-area">
             <div class="subsection-title">接口测试</div>
             <button class="test-btn" onclick="testApi('/api/users', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="create user 创建用户">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method post">POST</span>
+          <span class="path">/api/users</span>
+          <span class="description">创建新用户账号，需要管理员或创始人权限</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要管理员或创始人权限
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：创建用户；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>username</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>用户名</td>
+                </tr>
+                <tr>
+                  <td><code>password</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>密码</td>
+                </tr>
+                <tr>
+                  <td><code>name</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>姓名</td>
+                </tr>
+                <tr>
+                  <td><code>position</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>职位</td>
+                </tr>
+                <tr>
+                  <td><code>department_id</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>部门ID</td>
+                </tr>
+                <tr>
+                  <td><code>role</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>角色：admin/founder/employee</td>
+                </tr>
+                <tr>
+                  <td><code>parent_id</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>上级用户ID</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"username":"newuser","password":"password123","name":"新用户","position":"员工","department_id":"dept-001","role":"employee"}</textarea>
+            <button class="test-btn" onclick="testApi('/api/users', 'POST', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="update user 更新用户">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/users/:id</span>
+          <span class="description">更新指定用户的信息，包括密码、姓名、职位、部门、角色等（管理员权限）</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要管理员或创始人权限
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：更新用户；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>password</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>新密码</td>
+                </tr>
+                <tr>
+                  <td><code>name</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>姓名</td>
+                </tr>
+                <tr>
+                  <td><code>position</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>职位</td>
+                </tr>
+                <tr>
+                  <td><code>department_id</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>部门ID</td>
+                </tr>
+                <tr>
+                  <td><code>role</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>角色</td>
+                </tr>
+                <tr>
+                  <td><code>parent_id</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>上级用户ID</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"name":"更新后的姓名","position":"更新后的职位"}</textarea>
+            <button class="test-btn" onclick="testApi('/api/users/user-id-here', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="delete user 删除用户">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method delete">DELETE</span>
+          <span class="path">/api/users/:id</span>
+          <span class="description">删除指定用户账号，不能删除当前登录的账号（管理员权限）</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要管理员或创始人权限。不能删除当前登录的账号。
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/users/user-id-here', 'DELETE', this, true)">发送请求</button>
             <div class="result" style="display:none;"></div>
           </div>
         </div>
@@ -446,7 +752,7 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method get">GET</span>
           <span class="path">/api/departments</span>
-          <span class="description">获取部门列表</span>
+          <span class="description">获取所有部门列表，包括部门层级关系</span>
         </div>
         <div class="endpoint-body">
           <div class="info-box">
@@ -474,6 +780,41 @@
       </div>
     </div>
 
+    <!-- 重要事项库 -->
+    <div class="section">
+      <h2 class="section-title">重要事项库</h2>
+      
+      <div class="endpoint" data-tags="important items library 重要事项库">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/important-items</span>
+          <span class="description">获取重要事项库列表，返回所有被选中的重要事项（无需认证）</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="subsection">
+            <div class="code-block-label">响应示例</div>
+            <div class="code-block">[
+  {
+    "id": 1,
+    "title": "重要事项标题",
+    "description": "事项描述",
+    "is_selected": true,
+    "created_by_name": "创建者姓名",
+    "updated_by_name": "更新者姓名",
+    "created_at": "2025-10-16T10:00:00.000Z"
+  }
+]</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/important-items', 'GET', this, false)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 公司重要事项 -->
     <div class="section">
       <h2 class="section-title">公司重要事项</h2>
@@ -482,11 +823,12 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method get">GET</span>
           <span class="path">/api/company-important-items</span>
-          <span class="description">获取重要事项（分页）</span>
+          <span class="description">获取公司重要事项列表，支持分页查询，返回被选中的十大重要事项</span>
         </div>
         <div class="endpoint-body">
           <div class="subsection">
             <div class="subsection-title">查询参数</div>
+            <div class="param-type">接口名称：公司重要事项列表；请求参数类型：查询参数（URL Query）</div>
             <table class="param-table">
               <thead>
                 <tr>
@@ -548,7 +890,7 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method get">GET</span>
           <span class="path">/api/company-important-items/all</span>
-          <span class="description">获取所有重要事项（不分页）</span>
+          <span class="description">获取所有重要事项列表（不分页），仅管理员和创始人可访问</span>
         </div>
         <div class="endpoint-body">
           <div class="test-area">
@@ -559,15 +901,64 @@
         </div>
       </div>
 
+      <div class="endpoint" data-tags="important items select 选中 状态">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/company-important-items/:id/select</span>
+          <span class="description">更新单个重要事项的选中状态，需要管理员或创始人权限</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证并且仅限管理员或创始人使用。
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：更新重要事项选中状态；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>is_selected</code></td>
+                  <td>boolean</td>
+                  <td><span class="required">必填</span></td>
+                  <td>是否标记为已选中（true/false）</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">请求示例</div>
+            <div class="code-block">{"is_selected": true}</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"is_selected": true}</textarea>
+            <button class="test-btn" onclick="testApi('/api/company-important-items/item-id-here/select', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="endpoint" data-tags="create 创建 添加事项">
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method post">POST</span>
           <span class="path">/api/company-important-items</span>
-          <span class="description">创建重要事项</span>
+          <span class="description">从重要事项库中选择并创建公司重要事项，需要管理员或创始人权限</span>
         </div>
         <div class="endpoint-body">
           <div class="subsection">
             <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：创建公司重要事项；请求参数类型：JSON（application/json）</div>
             <table class="param-table">
               <thead>
                 <tr>
@@ -609,6 +1000,143 @@
           </div>
         </div>
       </div>
+
+      <div class="endpoint" data-tags="batch select 批量选择">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/company-important-items/batch-select</span>
+          <span class="description">批量选择或取消选择重要事项，用于设置十大重要事项，需要管理员或创始人权限</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要管理员或创始人权限
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：批量选择公司重要事项；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>selectedIds</code></td>
+                  <td>array</td>
+                  <td><span class="required">必填</span></td>
+                  <td>要选择的事项ID数组</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"selectedIds":["id1","id2","id3"]}</textarea>
+            <button class="test-btn" onclick="testApi('/api/company-important-items/batch-select', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="update item 更新事项">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/company-important-items/:id</span>
+          <span class="description">更新指定重要事项的信息，需要管理员或创始人权限</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要管理员或创始人权限
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：更新公司重要事项；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>title</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>标题</td>
+                </tr>
+                <tr>
+                  <td><code>description</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>描述</td>
+                </tr>
+                <tr>
+                  <td><code>priority</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>优先级</td>
+                </tr>
+                <tr>
+                  <td><code>status</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>状态</td>
+                </tr>
+                <tr>
+                  <td><code>deadline</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>截止日期</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <div class="path-param-box">
+              <label for="updateCompanyImportantItemId">路径参数 ID：</label>
+              <input id="updateCompanyImportantItemId" type="text" placeholder="请输入公司重要事项ID">
+            </div>
+            <textarea class="test-input">{"title":"更新后的标题","description":"更新后的描述"}</textarea>
+            <button class="test-btn" onclick="testUpdateCompanyImportantItem(this)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="delete item 删除事项">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method delete">DELETE</span>
+          <span class="path">/api/company-important-items/:id</span>
+          <span class="description">删除指定重要事项，需要管理员或创始人权限</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要管理员或创始人权限
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <div class="path-param-box">
+              <label for="deleteCompanyImportantItemId">路径参数 ID：</label>
+              <input id="deleteCompanyImportantItemId" type="text" placeholder="请输入事项ID">
+            </div>
+            <button class="test-btn" onclick="testDeleteCompanyImportantItem(this)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 任务管理 -->
@@ -619,7 +1147,7 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method get">GET</span>
           <span class="path">/api/tasks</span>
-          <span class="description">获取任务列表</span>
+          <span class="description">获取任务列表，根据用户权限返回可见的任务（包括分配给自己的任务和下级任务）</span>
         </div>
         <div class="endpoint-body">
           <div class="subsection">
@@ -649,11 +1177,12 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method post">POST</span>
           <span class="path">/api/tasks</span>
-          <span class="description">创建任务</span>
+          <span class="description">创建新任务并分配给指定用户，支持设置优先级、截止日期、附件等</span>
         </div>
         <div class="endpoint-body">
           <div class="subsection">
             <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：创建任务；请求参数类型：JSON（application/json）</div>
             <table class="param-table">
               <thead>
                 <tr>
@@ -709,6 +1238,302 @@
           </div>
         </div>
       </div>
+
+      <div class="endpoint" data-tags="get task 获取任务详情">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/tasks/:id</span>
+          <span class="description">获取指定任务的详细信息，包括任务内容、状态、分配信息等</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/tasks/task-id-here', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="update task status 更新任务状态">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/tasks/:id/status</span>
+          <span class="description">更新任务的状态（待处理/进行中/已完成/已取消），只有任务分配者或接收者可以更新</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：更新任务状态；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>status</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>状态：pending/in_progress/completed/cancelled</td>
+                </tr>
+                <tr>
+                  <td><code>progress_percentage</code></td>
+                  <td>number</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>进度百分比 (0-100)</td>
+                </tr>
+                <tr>
+                  <td><code>special_notes</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>特殊备注</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"status":"in_progress","progress_percentage":50}</textarea>
+            <button class="test-btn" onclick="testApi('/api/tasks/task-id-here/status', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="update task 更新任务">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/tasks/:id</span>
+          <span class="description">更新任务的详细信息，包括标题、描述、优先级、截止日期等，只有任务创建者可以更新</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：更新任务；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>title</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>任务标题</td>
+                </tr>
+                <tr>
+                  <td><code>description</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>任务描述</td>
+                </tr>
+                <tr>
+                  <td><code>assignee_id</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>分配给用户ID</td>
+                </tr>
+                <tr>
+                  <td><code>deadline</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>截止日期</td>
+                </tr>
+                <tr>
+                  <td><code>priority</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>优先级：p0/p1/p2/p3</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"title":"更新后的任务标题","description":"更新后的描述"}</textarea>
+            <button class="test-btn" onclick="testApi('/api/tasks/task-id-here', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="delete task 删除任务">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method delete">DELETE</span>
+          <span class="path">/api/tasks/:id</span>
+          <span class="description">删除指定任务，只有任务创建者可以删除</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。只有任务创建者可以删除任务。
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/tasks/task-id-here', 'DELETE', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="task request 任务请求">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method post">POST</span>
+          <span class="path">/api/tasks/request</span>
+          <span class="description">创建向上级发送的任务相关请求，如修改任务、删除任务、重新安排任务、请假等</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。用于向上级发送任务相关请求。
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：创建任务请求；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>request_type</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>请求类型：修改任务/删除任务/重新安排任务/请假/请来办公室/其他</td>
+                </tr>
+                <tr>
+                  <td><code>assignee_id</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>接收人ID</td>
+                </tr>
+                <tr>
+                  <td><code>description</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>请求详情</td>
+                </tr>
+                <tr>
+                  <td><code>deadline</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>截止日期</td>
+                </tr>
+                <tr>
+                  <td><code>related_task_id</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>关联任务ID（修改任务/删除任务/重新安排任务时必填）</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"request_type":"修改任务","assignee_id":"user-id","description":"请求修改任务内容","related_task_id":"task-id"}</textarea>
+            <button class="test-btn" onclick="testApi('/api/tasks/request', 'POST', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="update task request 更新任务请求">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/tasks/:id/request</span>
+          <span class="description">更新已创建的任务请求信息</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"request_type":"修改任务","description":"更新后的请求内容"}</textarea>
+            <button class="test-btn" onclick="testApi('/api/tasks/task-id-here/request', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="request response 请求响应">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/tasks/:id/request-response</span>
+          <span class="description">响应任务请求，可以批准或拒绝请求，并添加备注说明</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：响应任务请求；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>action</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>操作：approve（批准）或 reject（拒绝）</td>
+                </tr>
+                <tr>
+                  <td><code>notes</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>备注</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"action":"approve","notes":"同意修改"}</textarea>
+            <button class="test-btn" onclick="testApi('/api/tasks/task-id-here/request-response', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 个人日志 -->
@@ -719,7 +1544,7 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method get">GET</span>
           <span class="path">/api/personal-logs</span>
-          <span class="description">获取个人日志列表</span>
+          <span class="description">获取当前用户的个人日志列表，支持按日期筛选</span>
         </div>
         <div class="endpoint-body">
           <div class="subsection">
@@ -747,11 +1572,12 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method post">POST</span>
           <span class="path">/api/personal-logs</span>
-          <span class="description">创建个人日志</span>
+          <span class="description">创建个人日志记录，支持四象限分类（重要紧急程度）和关联任务</span>
         </div>
         <div class="endpoint-body">
           <div class="subsection">
             <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：创建个人日志；请求参数类型：JSON（application/json）</div>
             <table class="param-table">
               <thead>
                 <tr>
@@ -794,6 +1620,86 @@
           </div>
         </div>
       </div>
+
+      <div class="endpoint" data-tags="update log 更新日志">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/personal-logs/:id</span>
+          <span class="description">更新个人日志内容、分类、完成状态等信息，只能更新自己的日志</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。只能更新自己的日志。
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：更新个人日志；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>content</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>日志内容</td>
+                </tr>
+                <tr>
+                  <td><code>log_date</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>日志日期</td>
+                </tr>
+                <tr>
+                  <td><code>category</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>分类</td>
+                </tr>
+                <tr>
+                  <td><code>is_completed</code></td>
+                  <td>boolean</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>是否完成</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"content":"更新后的日志内容","is_completed":true}</textarea>
+            <button class="test-btn" onclick="testApi('/api/personal-logs/log-id-here', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="delete log 删除日志">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method delete">DELETE</span>
+          <span class="path">/api/personal-logs/:id</span>
+          <span class="description">删除指定的个人日志，只能删除自己的日志</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。只能删除自己的日志。
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/personal-logs/log-id-here', 'DELETE', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 通知管理 -->
@@ -804,7 +1710,7 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method get">GET</span>
           <span class="path">/api/notifications</span>
-          <span class="description">获取通知列表</span>
+          <span class="description">获取当前用户的通知列表，包括任务分配通知、任务进度更新通知等</span>
         </div>
         <div class="endpoint-body">
           <div class="subsection">
@@ -828,6 +1734,128 @@
           </div>
         </div>
       </div>
+
+      <div class="endpoint" data-tags="deadline reminders 截止提醒">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method post">POST</span>
+          <span class="path">/api/notifications/deadline-reminders</span>
+          <span class="description">创建任务截止日期提醒通知，可以设置提前多少小时提醒</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>hoursBefore</code></td>
+                  <td>number</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>提前多少小时提醒，默认24小时，范围1-168</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"hoursBefore":24}</textarea>
+            <button class="test-btn" onclick="testApi('/api/notifications/deadline-reminders', 'POST', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="delete notification 删除通知">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method delete">DELETE</span>
+          <span class="path">/api/notifications/:id</span>
+          <span class="description">删除指定的通知，只能删除自己的通知</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。只能删除自己的通知。
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/notifications/notification-id-here', 'DELETE', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="mark notification read 标记已读">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/notifications/:id/read</span>
+          <span class="description">将指定通知标记为已读状态</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/notifications/notification-id-here/read', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="mark all read 全部标记已读">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/notifications/mark-all-read</span>
+          <span class="description">批量标记通知为已读，可以指定通知ID数组或标记所有通知</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>notification_ids</code></td>
+                  <td>array</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>要标记的通知ID数组，为空则标记所有</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"notification_ids":["id1","id2"]}</textarea>
+            <button class="test-btn" onclick="testApi('/api/notifications/mark-all-read', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 月视图日历 -->
@@ -838,7 +1866,7 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method get">GET</span>
           <span class="path">/api/calendar/month-view</span>
-          <span class="description">获取指定月份的任务和日志</span>
+          <span class="description">获取指定月份的任务和日志数据，用于月视图日历显示，返回整个月每天的任务和日志</span>
         </div>
         <div class="endpoint-body">
           <div class="info-box">
@@ -847,6 +1875,7 @@
 
           <div class="subsection">
             <div class="subsection-title">查询参数</div>
+            <div class="param-type">接口名称：日历月视图；请求参数类型：查询参数（URL Query）</div>
             <table class="param-table">
               <thead>
                 <tr>
@@ -931,7 +1960,7 @@
         <div class="endpoint-header" onclick="toggleEndpoint(this)">
           <span class="method get">GET</span>
           <span class="path">/api/calendar/day-detail</span>
-          <span class="description">获取指定日期的详细任务和日志</span>
+          <span class="description">获取指定日期的详细任务和日志信息，用于日历日视图显示</span>
         </div>
         <div class="endpoint-body">
           <div class="info-box">
@@ -940,6 +1969,7 @@
 
           <div class="subsection">
             <div class="subsection-title">查询参数</div>
+            <div class="param-type">接口名称：日历日期详情；请求参数类型：查询参数（URL Query）</div>
             <table class="param-table">
               <thead>
                 <tr>
@@ -1013,6 +2043,898 @@
         </div>
       </div>
     </div>
+
+    <!-- 签到管理 -->
+    <div class="section">
+      <h2 class="section-title">签到管理</h2>
+      
+      <div class="endpoint" data-tags="checkin points 积分">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/checkin/points</span>
+          <span class="description">获取用户当前积分</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。用于查询用户当前的积分余额。查询参数：userId（可选，管理员可查询其他用户）
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">查询参数</div>
+            <div class="param-type">接口名称：积分余额；请求参数类型：查询参数（URL Query）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>userId</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>用户ID，不填则查询当前登录用户</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">响应示例</div>
+            <div class="code-block">{
+  "points": 150
+}</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/checkin/points', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="checkin records 签到记录">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/checkin/records</span>
+          <span class="description">获取签到记录（按月查询）</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。用于查询指定月份的签到记录，包括签到日期和获得的积分。查询参数：userId（可选，管理员可查询其他用户）、year（年份）、month（月份）
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">查询参数</div>
+            <div class="param-type">接口名称：签到记录；请求参数类型：查询参数（URL Query）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>userId</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>用户ID，不填则查询当前登录用户</td>
+                </tr>
+                <tr>
+                  <td><code>year</code></td>
+                  <td>number</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>年份，默认当前年份</td>
+                </tr>
+                <tr>
+                  <td><code>month</code></td>
+                  <td>number</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>月份（1-12），默认当前月份</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">响应示例</div>
+            <div class="code-block">{
+  "records": [
+    {
+      "checkin_date": "2025-10-16",
+      "points_earned": 10,
+      "created_at": "2025-10-16 08:30:00"
+    }
+  ]
+}</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/checkin/records?year=2025&month=10', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="checkin points-history 积分历史">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/checkin/points-history</span>
+          <span class="description">获取积分获取/消耗记录</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。用于查询指定月份的积分获取或消耗记录。type参数：earn（获取记录，来自签到）、spend（消耗记录，来自兑换）。查询参数：userId（可选，管理员可查询其他用户）、type（类型）、year（年份）、month（月份）
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">查询参数</div>
+            <div class="param-type">接口名称：积分历史；请求参数类型：查询参数（URL Query）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>userId</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>用户ID，不填则查询当前登录用户</td>
+                </tr>
+                <tr>
+                  <td><code>type</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>类型：earn（获取）或 spend（消耗），默认earn</td>
+                </tr>
+                <tr>
+                  <td><code>year</code></td>
+                  <td>number</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>年份，默认当前年份</td>
+                </tr>
+                <tr>
+                  <td><code>month</code></td>
+                  <td>number</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>月份（1-12），默认当前月份</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">响应示例</div>
+            <div class="code-block">{
+  "records": [
+    {
+      "date": "2025-10-16",
+      "amount": 10,
+      "description": "每日签到",
+      "created_at": "2025-10-16 08:30:00"
+    }
+  ]
+}</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/checkin/points-history?type=earn&year=2025&month=10', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="checkin consecutive 连续签到">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/checkin/consecutive</span>
+          <span class="description">获取连续签到天数</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。用于查询用户的连续签到天数，用于计算签到奖励。查询参数：userId（可选，管理员可查询其他用户）
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">查询参数</div>
+            <div class="param-type">接口名称：连续签到天数；请求参数类型：查询参数（URL Query）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>userId</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>用户ID，不填则查询当前登录用户</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">响应示例</div>
+            <div class="code-block">{
+  "consecutiveDays": 7
+}</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/checkin/consecutive', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="checkin 签到">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method post">POST</span>
+          <span class="path">/api/checkin</span>
+          <span class="description">用户每日签到</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。用于用户每日签到，签到成功后会获得积分奖励。连续签到天数越多，奖励积分越高（连续7天10积分，连续30天20积分，否则5积分）。请求参数：userId（可选，管理员可为其他用户签到）
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：每日签到；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>userId</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>用户ID，不填则为当前登录用户</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">响应示例</div>
+            <div class="code-block">{
+  "message": "签到成功",
+  "pointsEarned": 10,
+  "points": 150,
+  "consecutiveDays": 7,
+  "checkinDate": "2025-10-16"
+}</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{}</textarea>
+            <button class="test-btn" onclick="testApi('/api/checkin', 'POST', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="checkin redeem 积分兑换">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method post">POST</span>
+          <span class="path">/api/checkin/redeem</span>
+          <span class="description">使用积分兑换奖励</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。用于使用积分兑换奖励（如Loopy装扮等），会扣除相应积分并记录积分消耗流水。请求参数：userId（可选，管理员可为其他用户兑换）、cost（消耗积分）、itemName（兑换物品名称）
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：积分兑换；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>userId</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>用户ID，不填则为当前登录用户</td>
+                </tr>
+                <tr>
+                  <td><code>cost</code></td>
+                  <td>number</td>
+                  <td><span class="required">必填</span></td>
+                  <td>消耗的积分数量（必须大于0）</td>
+                </tr>
+                <tr>
+                  <td><code>itemName</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>兑换物品名称</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">请求示例</div>
+            <div class="code-block">{
+  "cost": 50,
+  "itemName": "Loopy装扮-红色"
+}</div>
+          </div>
+
+          <div class="subsection">
+            <div class="code-block-label">响应示例</div>
+            <div class="code-block">{
+  "message": "兑换成功",
+  "points": 100
+}</div>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"cost":50,"itemName":"Loopy装扮-红色"}</textarea>
+            <button class="test-btn" onclick="testApi('/api/checkin/redeem', 'POST', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 文件上传 -->
+    <div class="section">
+      <h2 class="section-title">文件上传</h2>
+      
+      <div class="endpoint" data-tags="upload image 上传图片">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method post">POST</span>
+          <span class="path">/api/upload-image</span>
+          <span class="description">上传单张图片文件，支持jpeg、jpg、png、gif、webp格式，最大10MB</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。使用 multipart/form-data 格式，字段名：image
+          </div>
+
+          <div class="info-box" style="background: #fff3cd; border-left-color: #ffc107;">
+            ⚠️ 此接口需要使用表单上传，无法在网页中直接测试。请使用 Postman 或其他工具测试。
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="upload images 上传多张图片">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method post">POST</span>
+          <span class="path">/api/upload-images</span>
+          <span class="description">批量上传多张图片，最多10张，支持jpeg、jpg、png、gif、webp格式，每张最大10MB</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。使用 multipart/form-data 格式，字段名：images
+          </div>
+
+          <div class="info-box" style="background: #fff3cd; border-left-color: #ffc107;">
+            ⚠️ 此接口需要使用表单上传，无法在网页中直接测试。请使用 Postman 或其他工具测试。
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MBTI记录 -->
+    <div class="section">
+      <h2 class="section-title">MBTI记录</h2>
+      
+      <div class="endpoint" data-tags="mbti create 创建MBTI记录">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method post">POST</span>
+          <span class="path">/api/mbti-records</span>
+          <span class="description">创建MBTI性格测试记录，记录用户的MBTI类型和测试结果</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：创建MBTI记录；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>mbti_type</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>MBTI类型，如：ENFP</td>
+                </tr>
+                <tr>
+                  <td><code>test_scores</code></td>
+                  <td>object</td>
+                  <td><span class="required">必填</span></td>
+                  <td>测试分数，包含E/I/S/N/T/F/J/P等维度</td>
+                </tr>
+                <tr>
+                  <td><code>personality_traits</code></td>
+                  <td>object</td>
+                  <td><span class="required">必填</span></td>
+                  <td>性格特质描述</td>
+                </tr>
+                <tr>
+                  <td><code>personal_info</code></td>
+                  <td>object</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>个人信息</td>
+                </tr>
+                <tr>
+                  <td><code>test_version</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>测试版本，默认v1.0</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"mbti_type":"ENFP","test_scores":{"E":75,"I":25,"N":80,"S":20,"F":70,"T":30,"P":65,"J":35},"personality_traits":{"extroversion":"外向型"}}</textarea>
+            <button class="test-btn" onclick="testApi('/api/mbti-records', 'POST', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="mbti list 获取MBTI记录列表">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/mbti-records</span>
+          <span class="description">获取当前用户的MBTI记录列表，支持分页查询</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。查询参数：page（页码）、limit（每页数量）、mbti_type（过滤类型）
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/mbti-records?page=1&limit=10', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="mbti latest 最新MBTI记录">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/mbti-records/latest</span>
+          <span class="description">获取当前用户最新的MBTI测试记录</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/mbti-records/latest', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="mbti detail 获取MBTI记录详情">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/mbti-records/:id</span>
+          <span class="description">获取指定MBTI记录的详细信息</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/mbti-records/record-id-here', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="mbti update 更新MBTI记录">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method put">PUT</span>
+          <span class="path">/api/mbti-records/:id</span>
+          <span class="description">更新MBTI记录信息，只能更新自己的记录</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"personal_info":{"full_name":"更新后的姓名"}}</textarea>
+            <button class="test-btn" onclick="testApi('/api/mbti-records/record-id-here', 'PUT', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="mbti delete 删除MBTI记录">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method delete">DELETE</span>
+          <span class="path">/api/mbti-records/:id</span>
+          <span class="description">删除指定的MBTI记录，只能删除自己的记录</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/mbti-records/record-id-here', 'DELETE', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="mbti statistics MBTI统计">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/mbti-records/statistics</span>
+          <span class="description">获取MBTI类型统计信息，包括各类型人数分布，需要管理员权限</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要管理员权限
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/mbti-records/statistics', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI分析 -->
+    <div class="section">
+      <h2 class="section-title">AI分析</h2>
+      
+      <div class="endpoint" data-tags="ai analyze log 分析日志">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method post">POST</span>
+          <span class="path">/api/ai/analyze-log</span>
+          <span class="description">分析日志文本内容，提取关键词和主题，用于生成词云</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：分析日志文本；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>text</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>要分析的文本内容</td>
+                </tr>
+                <tr>
+                  <td><code>topK</code></td>
+                  <td>number</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>返回前K个关键词，默认20</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"text":"今天完成了重要项目，学习了新技术，与团队进行了有效沟通","topK":10}</textarea>
+            <button class="test-btn" onclick="testApi('/api/ai/analyze-log', 'POST', this, false)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="ai analyze today 分析今日日志">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/ai/analyze-today</span>
+          <span class="description">一键分析今日所有日志，使用DeepSeek AI进行智能分析，生成总结和洞察</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。使用DeepSeek API进行智能分析。
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/ai/analyze-today', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="ai save wordcloud 保存词云">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method post">POST</span>
+          <span class="path">/api/ai/save-wordcloud</span>
+          <span class="description">保存词云分析结果，包括关键词和词频数据</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：保存词云分析结果；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>analysisDate</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>分析日期</td>
+                </tr>
+                <tr>
+                  <td><code>keywords</code></td>
+                  <td>array</td>
+                  <td><span class="required">必填</span></td>
+                  <td>关键词数组</td>
+                </tr>
+                <tr>
+                  <td><code>wordFrequencies</code></td>
+                  <td>array</td>
+                  <td><span class="required">必填</span></td>
+                  <td>词频数组</td>
+                </tr>
+                <tr>
+                  <td><code>description</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>描述</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"analysisDate":"2025-10-16","keywords":[{"word":"项目","weight":1.0}],"wordFrequencies":[{"word":"项目","count":5}],"description":"今日日志分析"}</textarea>
+            <button class="test-btn" onclick="testApi('/api/ai/save-wordcloud', 'POST', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="ai wordcloud history 词云历史">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/ai/wordcloud-history</span>
+          <span class="description">获取用户的词云分析历史记录，支持按日期查询</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/ai/wordcloud-history', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="ai personality analysis 性格分析">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method post">POST</span>
+          <span class="path">/api/ai/personality-analysis</span>
+          <span class="description">使用DeepSeek AI分析用户的日志内容，生成性格分析报告</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证。使用DeepSeek API进行性格分析。
+          </div>
+
+          <div class="subsection">
+            <div class="subsection-title">请求参数</div>
+            <div class="param-type">接口名称：性格分析；请求参数类型：JSON（application/json）</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>类型</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>logText</code></td>
+                  <td>string</td>
+                  <td><span class="required">必填</span></td>
+                  <td>日志文本</td>
+                </tr>
+                <tr>
+                  <td><code>mbtiType</code></td>
+                  <td>string</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>MBTI类型</td>
+                </tr>
+                <tr>
+                  <td><code>useDeepSeek</code></td>
+                  <td>boolean</td>
+                  <td><span class="optional">可选</span></td>
+                  <td>是否使用DeepSeek API</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <textarea class="test-input">{"logText":"今天完成了重要项目，学习了新技术","mbtiType":"ENFP"}</textarea>
+            <button class="test-btn" onclick="testApi('/api/ai/personality-analysis', 'POST', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="ai personality history 性格分析历史">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/ai/personality-history</span>
+          <span class="description">获取用户的AI性格分析历史记录</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要认证
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/ai/personality-history', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 管理员 -->
+    <div class="section">
+      <h2 class="section-title">管理员</h2>
+      
+      <div class="endpoint" data-tags="admin dashboard stats 仪表盘统计">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/admin/dashboard-stats</span>
+          <span class="description">获取管理员仪表盘的统计数据，包括用户数、任务数、重要事项数等，需要管理员或创始人权限</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box">
+            🔒 此接口需要管理员或创始人权限
+          </div>
+
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/admin/dashboard-stats', 'GET', this, true)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 其他接口 -->
+    <div class="section">
+      <h2 class="section-title">其他接口</h2>
+      
+      <div class="endpoint" data-tags="personal info 个人信息">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/personal-info/:userId</span>
+          <span class="description">获取指定用户的个人信息，包括基本信息、部门、职位等</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/personal-info/user-id-here', 'GET', this, false)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="logs 系统日志">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/logs</span>
+          <span class="description">获取系统操作日志，记录系统的各种操作和事件</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/logs', 'GET', this, false)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint" data-tags="month view 月视图">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method get">GET</span>
+          <span class="path">/api/month-view/:userId/:year/:month</span>
+          <span class="description">获取指定用户的月视图数据（兼容旧版API），返回指定月份的任务和日志信息</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="test-area">
+            <div class="subsection-title">接口测试</div>
+            <button class="test-btn" onclick="testApi('/api/month-view/user-id-here/2025/10', 'GET', this, false)">发送请求</button>
+            <div class="result" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -1020,6 +2942,30 @@
     function toggleEndpoint(header) {
       const endpoint = header.parentElement;
       endpoint.classList.toggle('expanded');
+    }
+
+    // 公司重要事项：更新接口测试（带路径参数）
+    async function testUpdateCompanyImportantItem(button) {
+      const idInput = document.getElementById('updateCompanyImportantItemId');
+      const id = idInput ? idInput.value.trim() : '';
+      if (!id) {
+        alert('请先输入要更新的公司重要事项 ID（可从 /api/company-important-items/all 接口获取）。');
+        return;
+      }
+      const url = `/api/company-important-items/${encodeURIComponent(id)}`;
+      await testApi(url, 'PUT', button, true);
+    }
+
+    // 公司重要事项：删除接口测试（带路径参数）
+    async function testDeleteCompanyImportantItem(button) {
+      const idInput = document.getElementById('deleteCompanyImportantItemId');
+      const id = idInput ? idInput.value.trim() : '';
+      if (!id) {
+        alert('请先输入要删除的公司重要事项 ID。');
+        return;
+      }
+      const url = `/api/company-important-items/${encodeURIComponent(id)}`;
+      await testApi(url, 'DELETE', button, true);
     }
 
     // 测试 API

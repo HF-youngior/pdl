@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../models/log_task_update.dart';
 import 'api_service.dart';
 
 class CalendarService {
@@ -101,6 +102,13 @@ class CalendarService {
     String? logDate,
     String? title,
     String? content,
+    String? weather,
+    List<String>? keywords,
+    List<String>? images,
+    String? locationName,
+    double? latitude,
+    double? longitude,
+    List<LogTaskUpdate>? linkages,
   }) async {
     try {
       final resolvedTitle = (title?.trim().isNotEmpty ?? false) ? title!.trim() : null;
@@ -121,8 +129,36 @@ class CalendarService {
         logPayload['log_date'] = logDate;
       }
 
+      if (weather != null && weather.isNotEmpty) {
+        logPayload['weather'] = weather;
+      }
+
+      if (keywords != null) {
+        logPayload['keywords'] = keywords;
+      }
+
+      if (images != null) {
+        logPayload['images'] = images;
+      }
+
+      if (locationName != null || latitude != null || longitude != null) {
+        logPayload['location'] = {
+          if (locationName != null && locationName.isNotEmpty) 'name': locationName,
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
+        };
+      }
+
       // 移除空值，避免覆盖为 null
       logPayload.removeWhere((key, value) => value == null);
+
+      final requestBody = <String, dynamic>{
+        'log': logPayload,
+      };
+
+      if (linkages != null) {
+        requestBody['linkages'] = linkages.map((e) => e.toJson()).toList();
+      }
 
       final response = await http.put(
         Uri.parse('$baseUrl/personal-logs/$logId'),
@@ -130,7 +166,7 @@ class CalendarService {
           ...ApiService.getAuthHeaders(),
           'Content-Type': 'application/json',
         },
-        body: json.encode({'log': logPayload}),
+        body: json.encode(requestBody),
       );
 
       if (response.statusCode != 200) {
@@ -269,10 +305,14 @@ class CalendarLog {
   final String quadrant;
   final bool isCompleted;
   final String createdAt;
+  final String? logDate;
+  final String? weather;
+  final List<String> keywords;
   final List<String> images;
   final String? locationName;
   final double? latitude;
   final double? longitude;
+  final List<LogTaskUpdate> taskUpdates;
 
   CalendarLog({
     required this.id,
@@ -282,11 +322,16 @@ class CalendarLog {
     required this.quadrant,
     required this.isCompleted,
     required this.createdAt,
+    this.logDate,
+    this.weather,
+    List<String>? keywords,
     required this.images,
     this.locationName,
     this.latitude,
     this.longitude,
-  });
+    List<LogTaskUpdate>? taskUpdates,
+  })  : keywords = keywords ?? const [],
+        taskUpdates = taskUpdates ?? const [];
 
   factory CalendarLog.fromJson(Map<String, dynamic> json) {
     return CalendarLog(
@@ -297,10 +342,19 @@ class CalendarLog {
       quadrant: json['quadrant'] ?? '',
       isCompleted: json['is_completed'] == 1 || json['is_completed'] == true,
       createdAt: json['created_at'] ?? '',
+      logDate: json['log_date']?.toString(),
+      weather: json['weather']?.toString(),
+      keywords: _parseKeywords(json['keywords']),
       images: _parseImages(json['images']),
       locationName: json['location_name'],
       latitude: _toDouble(json['location_latitude']),
       longitude: _toDouble(json['location_longitude']),
+      taskUpdates: _parseTaskUpdates(
+        json['taskUpdates'] ??
+            json['task_updates'] ??
+            json['linkages'] ??
+            json['task_linkages'],
+      ),
     );
   }
 }
@@ -318,6 +372,37 @@ List<String> _parseImages(dynamic value) {
       }
     } catch (_) {}
     return value.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  }
+  return const [];
+}
+
+List<String> _parseKeywords(dynamic value) {
+  if (value == null) return const [];
+  if (value is List) {
+    return value.map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty).toList();
+  }
+  if (value is String && value.trim().isNotEmpty) {
+    return value
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+  return const [];
+}
+
+List<LogTaskUpdate> _parseTaskUpdates(dynamic value) {
+  if (value is List) {
+    return value.whereType<Map<String, dynamic>>().map((e) {
+      final dynamic taskIdValue = e['taskId'] ?? e['task_id'] ?? e['taskid'];
+      final normalized = <String, dynamic>{
+        'taskId': taskIdValue?.toString() ?? '',
+        'taskName': e['taskName'] ?? e['task_name'],
+        'progress_percentage': e['progress_percentage'] ?? e['progressPercentage'],
+        'task_status': e['task_status'] ?? e['taskStatus'],
+      };
+      return LogTaskUpdate.fromJson(normalized);
+    }).toList();
   }
   return const [];
 }

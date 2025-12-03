@@ -175,6 +175,84 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
+  bool _isAllDayStartTime(DateTime dateTime) => dateTime.hour == 0 && dateTime.minute == 0;
+
+  bool _isAllDayEndTime(DateTime dateTime) => dateTime.hour == 23 && dateTime.minute == 59;
+
+  Future<bool> _confirmCancelAllDay() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('是否取消“全天任务”？'),
+        content: const Text('您正在设置具体的时间段，是否取消“全天任务”并使用新的时间？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('保持全天'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('取消全天'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  void _exitAllDayMode() {
+    _isAllDay = false;
+    _previousStartTime = null;
+    _previousEndTime = null;
+  }
+
+  Future<void> _handleStartTimeSelected(DateTime dateTime) async {
+    bool exitAllDay = false;
+    if (_isAllDay && !_isAllDayStartTime(dateTime)) {
+      exitAllDay = await _confirmCancelAllDay();
+      if (!exitAllDay) {
+        return;
+      }
+    }
+
+    setState(() {
+      if (exitAllDay) {
+        _exitAllDayMode();
+      }
+      _startTime = dateTime;
+      if (_endTime == null || _endTime!.isBefore(dateTime)) {
+        _endTime = dateTime.add(const Duration(hours: 1));
+      }
+    });
+  }
+
+  Future<void> _handleEndTimeSelected(DateTime dateTime) async {
+    if (_startTime != null && dateTime.isBefore(_startTime!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('结束时间不能早于开始时间'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    bool exitAllDay = false;
+    if (_isAllDay && !_isAllDayEndTime(dateTime)) {
+      exitAllDay = await _confirmCancelAllDay();
+      if (!exitAllDay) {
+        return;
+      }
+    }
+
+    setState(() {
+      if (exitAllDay) {
+        _exitAllDayMode();
+      }
+      _endTime = dateTime;
+    });
+  }
+
   // 保存任务
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) {
@@ -307,6 +385,50 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
+  Future<void> _confirmDeleteTask() async {
+    if (widget.task == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除任务'),
+        content: const Text('删除后将无法恢复，确定要删除这个任务吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await TaskService.deleteTask(widget.task!.id);
+      if (!mounted) return;
+      Navigator.of(context).pop({'deleted': true});
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('删除任务失败: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   // 选择日期时间
   Future<void> _selectDateTime({
     required DateTime? initialDate,
@@ -383,14 +505,23 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 ),
               ),
             )
-          else
-          TextButton(
-            onPressed: _saveTask,
-            child: const Text(
-              '保存',
+          else ...[
+            if (widget.task != null &&
+                widget.task?.isRequest != true &&
+                widget.task?.createdBy == widget.currentUser.id)
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: '删除任务',
+                onPressed: _confirmDeleteTask,
+              ),
+            TextButton(
+              onPressed: _saveTask,
+              child: const Text(
+                '保存',
                 style: TextStyle(color: Colors.white, fontSize: 16),
               ),
-          ),
+            ),
+          ],
         ],
       ),
       body: Form(
@@ -644,15 +775,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   onTap: () => _selectDateTime(
                     initialDate: _startTime,
                     title: '选择开始时间',
-                    onDateSelected: (dateTime) {
-                      setState(() {
-                        _startTime = dateTime;
-                        // 如果结束时间早于开始时间，自动调整结束时间
-                        if (_endTime == null || _endTime!.isBefore(dateTime)) {
-                          _endTime = dateTime.add(const Duration(hours: 1));
-                        }
-                      });
-                    },
+                    onDateSelected: (dateTime) => _handleStartTimeSelected(dateTime),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -662,20 +785,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   onTap: () => _selectDateTime(
                     initialDate: _endTime,
                     title: '选择结束时间',
-                    onDateSelected: (dateTime) {
-                      if (_startTime != null && dateTime.isBefore(_startTime!)) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('结束时间不能早于开始时间'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                        return;
-                      }
-                      setState(() {
-                        _endTime = dateTime;
-                      });
-                    },
+                    onDateSelected: (dateTime) => _handleEndTimeSelected(dateTime),
                   ),
                 ),
                 const SizedBox(height: 16),
