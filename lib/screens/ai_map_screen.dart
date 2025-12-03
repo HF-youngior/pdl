@@ -160,22 +160,21 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     });
     
     try {
+      // 加载所有日志，不再按日期过滤
       final allLogs = await ApiService.getPersonalLogs(widget.user.id);
       
-      // 优先使用log_date字段，如果为空则使用created_at
-      final filteredLogs = allLogs.where((log) {
-        DateTime? logDate = log.logDate;
-        if (logDate == null) {
-          logDate = log.createdAtDate;
-        }
-        if (logDate == null) return false;
-        return logDate.year == selectedDate.year &&
-               logDate.month == selectedDate.month &&
-               logDate.day == selectedDate.day;
-      }).toList();
+      // 按日期排序，最新的在前
+      allLogs.sort((a, b) {
+        DateTime? dateA = a.logDate ?? a.createdAtDate;
+        DateTime? dateB = b.logDate ?? b.createdAtDate;
+        if (dateA == null && dateB == null) return 0;
+        if (dateA == null) return 1;
+        if (dateB == null) return -1;
+        return dateB.compareTo(dateA);
+      });
       
       setState(() {
-        _todayLogs = filteredLogs;
+        _todayLogs = allLogs;
         _selectedLogDate = selectedDate;
         _loadingTodayLogs = false;
       });
@@ -183,7 +182,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       setState(() {
         _loadingTodayLogs = false;
       });
-      print('加载指定日期日志失败: $e');
+      print('加载日志失败: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('加载日志失败: $e')),
       );
@@ -2700,7 +2699,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                           style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
                         ),
                         subtitle: Text(
-                          '分析日期: ${analysis.analysisDate.toString().split(' ')[0]}',
+                          '分析日期: ${DateFormat('yyyy-MM-dd').format(analysis.analysisDate.toLocal())}',
                           style: const TextStyle(color: Color(0xFF6B7280)),
                         ),
                         trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF3B82F6)),
@@ -2991,7 +2990,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '分析时间：${TimeUtils.formatDateTime(analysis.analysisDate.toLocal())}',
+                      '分析日期：${DateFormat('yyyy-MM-dd').format(analysis.analysisDate.toLocal())}',
                                       style: const TextStyle(
                                         fontSize: 13,
                                         color: Color(0xFF6B7280),
@@ -3196,7 +3195,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('分析日期: ${analysis.analysisDate.toString().split(' ')[0]}'),
+              Text('分析日期: ${DateFormat('yyyy-MM-dd').format(analysis.analysisDate.toLocal())}'),
               const SizedBox(height: 16),
               EnhancedWordCloud(words: analysis.wordFrequencies),
             ],
@@ -3240,7 +3239,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               children: [
                 Row(
                   children: [
-                    Text('分析日期: ${analysis.analysisDate.toString().split(' ')[0]}'),
+                    Text('分析日期: ${DateFormat('yyyy-MM-dd').format(analysis.analysisDate.toLocal())}'),
                     const SizedBox(width: 12),
                     if (analysis.isDeepSeek == true)
                       Container(
@@ -3370,7 +3369,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        '日期日志',
+                        '日志',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -3396,9 +3395,9 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                   )
                 else
                   IconButton(
-                    onPressed: () => _loadTodayLogs(targetDate: _selectedLogDate),
+                    onPressed: () => _loadTodayLogs(),
                     icon: const Icon(Icons.refresh, color: Color(0xFF3B82F6)),
-                    tooltip: '刷新当前日期日志',
+                    tooltip: '刷新日志',
                   ),
               ],
             ),
@@ -3537,23 +3536,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
-        children: _todayLogs.take(3).map((log) => _buildLogCard(log)).toList()
-          ..addAll([
-            if (_todayLogs.length > 3) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  '还有 ${_todayLogs.length - 3} 条日志...',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ),
-            ],
-          ]),
+        children: _todayLogs.map((log) => _buildLogCard(log)).toList(),
       ),
     );
   }
@@ -3650,10 +3633,10 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                                 const SizedBox(width: 4),
                                 Text(
                                   log.logDate != null
-                                      ? '${log.logDate!.hour.toString().padLeft(2, '0')}:${log.logDate!.minute.toString().padLeft(2, '0')}'
+                                      ? DateFormat('yyyy年MM月dd日').format(log.logDate!)
                                       : log.createdAtDate != null
-                                          ? '${log.createdAtDate!.hour.toString().padLeft(2, '0')}:${log.createdAtDate!.minute.toString().padLeft(2, '0')}'
-                                          : '--:--',
+                                          ? DateFormat('yyyy年MM月dd日').format(log.createdAtDate!)
+                                          : '--',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey[600],
@@ -3760,7 +3743,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 const SizedBox(width: 16),
               ],
               
-              // 时间
+              // 时间（只显示年月日）
               Icon(
                 Icons.access_time,
                 size: 16,
@@ -3769,10 +3752,10 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               const SizedBox(width: 4),
               Text(
                 log.logDate != null 
-                  ? '${log.logDate!.hour.toString().padLeft(2, '0')}:${log.logDate!.minute.toString().padLeft(2, '0')}'
+                  ? DateFormat('yyyy年MM月dd日').format(log.logDate!)
                   : log.createdAtDate != null
-                    ? '${log.createdAtDate!.hour.toString().padLeft(2, '0')}:${log.createdAtDate!.minute.toString().padLeft(2, '0')}'
-                    : '--:--',
+                    ? DateFormat('yyyy年MM月dd日').format(log.createdAtDate!)
+                    : '--',
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey[600],

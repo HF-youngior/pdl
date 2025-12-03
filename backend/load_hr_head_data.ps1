@@ -15,7 +15,7 @@ $tempFile = [System.IO.Path]::GetTempFileName()
 [System.IO.File]::WriteAllText($tempFile, $sqlContent, [System.Text.Encoding]::UTF8)
 
 # 执行 SQL
-& mysql -u root -p23301144 enterprise_management "--default-character-set=utf8mb4" -e "source $tempFile"
+& mysql -h rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com -u pdl -pPdl123456 enterprise_management "--default-character-set=utf8mb4" -e "source $tempFile"
 
 # 删除临时文件
 Remove-Item $tempFile

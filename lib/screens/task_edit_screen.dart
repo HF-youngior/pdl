@@ -37,6 +37,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   DateTime? _deadline;
   DateTime? _startTime;
   DateTime? _endTime;
+  DateTime? _previousStartTime;
+  DateTime? _previousEndTime;
   bool _isAllDay = false;
   bool _isLoading = false;
   double _progressPercentage = 0.0;
@@ -173,9 +175,99 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     }
   }
 
+  bool _isAllDayStartTime(DateTime dateTime) => dateTime.hour == 0 && dateTime.minute == 0;
+
+  bool _isAllDayEndTime(DateTime dateTime) => dateTime.hour == 23 && dateTime.minute == 59;
+
+  Future<bool> _confirmCancelAllDay() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('是否取消“全天任务”？'),
+        content: const Text('您正在设置具体的时间段，是否取消“全天任务”并使用新的时间？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('保持全天'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('取消全天'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  void _exitAllDayMode() {
+    _isAllDay = false;
+    _previousStartTime = null;
+    _previousEndTime = null;
+  }
+
+  Future<void> _handleStartTimeSelected(DateTime dateTime) async {
+    bool exitAllDay = false;
+    if (_isAllDay && !_isAllDayStartTime(dateTime)) {
+      exitAllDay = await _confirmCancelAllDay();
+      if (!exitAllDay) {
+        return;
+      }
+    }
+
+    setState(() {
+      if (exitAllDay) {
+        _exitAllDayMode();
+      }
+      _startTime = dateTime;
+      if (_endTime == null || _endTime!.isBefore(dateTime)) {
+        _endTime = dateTime.add(const Duration(hours: 1));
+      }
+    });
+  }
+
+  Future<void> _handleEndTimeSelected(DateTime dateTime) async {
+    if (_startTime != null && dateTime.isBefore(_startTime!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('结束时间不能早于开始时间'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    bool exitAllDay = false;
+    if (_isAllDay && !_isAllDayEndTime(dateTime)) {
+      exitAllDay = await _confirmCancelAllDay();
+      if (!exitAllDay) {
+        return;
+      }
+    }
+
+    setState(() {
+      if (exitAllDay) {
+        _exitAllDayMode();
+      }
+      _endTime = dateTime;
+    });
+  }
+
   // 保存任务
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (_startTime != null &&
+        _endTime != null &&
+        _endTime!.isBefore(_startTime!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('结束时间不能早于开始时间'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
@@ -184,6 +276,26 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     });
 
     try {
+      // 先上传新选择的图片
+      List<String> uploadedImageUrls = [];
+      if (_selectedImages.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('正在上传图片...'), duration: Duration(seconds: 1)),
+        );
+        
+        final urls = await ApiService.uploadImages(_selectedImages);
+        if (urls.length != _selectedImages.length) {
+          throw Exception('部分图片上传失败，请重试');
+        }
+        uploadedImageUrls = urls;
+      }
+
+      // 合并已存在的图片URL和新上传的图片URL
+      final allAttachmentUrls = [
+        ..._persistedAttachments, // 这些已经是URL了
+        ...uploadedImageUrls, // 新上传的URL
+      ];
+
       final now = DateTime.now();
       
       // 确定责任人
@@ -211,11 +323,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // 如果是邀约任务，只更新描述，其他字段保持不变
       final isRequest = widget.task?.isRequest ?? false;
       
-      final attachmentPaths = [
-        ..._persistedAttachments,
-        ..._selectedImages.map((img) => img.path),
-      ];
-      
       final task = Task(
         id: widget.task?.id ?? const Uuid().v4(),
         title: isRequest ? (widget.task?.title ?? _titleController.text.trim()) : _titleController.text.trim(),
@@ -237,7 +344,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         requestType: widget.task?.requestType,
         requestResponse: widget.task?.requestResponse,
         specialNotes: widget.task?.specialNotes,
-        attachments: attachmentPaths,
+        attachments: allAttachmentUrls,
       );
 
       // 调用服务保存任务
@@ -275,6 +382,50 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _confirmDeleteTask() async {
+    if (widget.task == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除任务'),
+        content: const Text('删除后将无法恢复，确定要删除这个任务吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await TaskService.deleteTask(widget.task!.id);
+      if (!mounted) return;
+      Navigator.of(context).pop({'deleted': true});
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('删除任务失败: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -354,14 +505,23 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                 ),
               ),
             )
-          else
-          TextButton(
-            onPressed: _saveTask,
-            child: const Text(
-              '保存',
+          else ...[
+            if (widget.task != null &&
+                widget.task?.isRequest != true &&
+                widget.task?.createdBy == widget.currentUser.id)
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: '删除任务',
+                onPressed: _confirmDeleteTask,
+              ),
+            TextButton(
+              onPressed: _saveTask,
+              child: const Text(
+                '保存',
                 style: TextStyle(color: Colors.white, fontSize: 16),
               ),
-          ),
+            ),
+          ],
         ],
       ),
       body: Form(
@@ -615,15 +775,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   onTap: () => _selectDateTime(
                     initialDate: _startTime,
                     title: '选择开始时间',
-                    onDateSelected: (dateTime) {
-                      setState(() {
-                        _startTime = dateTime;
-                        // 如果结束时间早于开始时间，自动调整结束时间
-                        if (_endTime == null || _endTime!.isBefore(dateTime)) {
-                          _endTime = dateTime.add(const Duration(hours: 1));
-                        }
-                      });
-                    },
+                    onDateSelected: (dateTime) => _handleStartTimeSelected(dateTime),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -633,11 +785,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   onTap: () => _selectDateTime(
                     initialDate: _endTime,
                     title: '选择结束时间',
-                    onDateSelected: (dateTime) {
-                      setState(() {
-                        _endTime = dateTime;
-                      });
-                    },
+                    onDateSelected: (dateTime) => _handleEndTimeSelected(dateTime),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -648,6 +796,47 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   onChanged: (value) {
                     setState(() {
                       _isAllDay = value;
+                      if (value) {
+                        // 记录切换前的时间，便于取消全天时恢复
+                        _previousStartTime = _startTime;
+                        _previousEndTime = _endTime;
+
+                        // 将时间调整为当天 00:00 和 23:59，保留原日期
+                        final baseStart = _startTime ?? _endTime ?? DateTime.now();
+                        final startDate = DateTime(
+                          baseStart.year,
+                          baseStart.month,
+                          baseStart.day,
+                        );
+                        _startTime = DateTime(
+                          startDate.year,
+                          startDate.month,
+                          startDate.day,
+                          0,
+                          0,
+                        );
+
+                        final baseEnd = _endTime ?? _startTime ?? DateTime.now();
+                        final endDate = DateTime(
+                          baseEnd.year,
+                          baseEnd.month,
+                          baseEnd.day,
+                        );
+                        _endTime = DateTime(
+                          endDate.year,
+                          endDate.month,
+                          endDate.day,
+                          23,
+                          59,
+                        );
+                      } else {
+                        // 取消全天任务，恢复之前设定的时间
+                        _startTime = _previousStartTime ?? _startTime;
+                        _endTime = _previousEndTime ??
+                            (_startTime != null ? _startTime!.add(const Duration(hours: 1)) : null);
+                        _previousStartTime = null;
+                        _previousEndTime = null;
+                      }
                     });
                   },
                 ),

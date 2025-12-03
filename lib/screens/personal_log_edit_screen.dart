@@ -10,6 +10,7 @@ import 'package:testflutterproject/models/log_task_update.dart';
 import 'package:testflutterproject/models/task.dart';
 import 'package:testflutterproject/services/api_service.dart';
 import 'package:testflutterproject/services/task_service.dart'; // 您的仓库中已存在
+import 'package:testflutterproject/services/geocoding_service.dart';
 
 class PersonalLogEditScreen extends StatefulWidget {
   final String userId;
@@ -309,13 +310,38 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
+      // 先设置坐标
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
         _locationName =
             '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
-        _isLoadingLocation = false;
       });
+
+      // 尝试将坐标转换为地址
+      try {
+        final address = await GeocodingService.reverseGeocodeCached(
+          position.latitude,
+          position.longitude,
+        );
+        if (address != null && mounted) {
+          setState(() {
+            _locationName = address;
+            _isLoadingLocation = false;
+          });
+        } else {
+          setState(() {
+            _isLoadingLocation = false;
+          });
+        }
+      } catch (e) {
+        // 如果逆地理编码失败，保持使用坐标
+        if (mounted) {
+          setState(() {
+            _isLoadingLocation = false;
+          });
+        }
+      }
     } catch (e) {
       setState(() => _isLoadingLocation = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -338,35 +364,52 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
     }
     setState(() => _isSaving = true);
 
-    // 匹配后端 API 的 {log, linkages} 结构
-    final logPayload = {
-      'log_date': DateFormat('yyyy-MM-dd').format(_selectedDate),
-      'title': _titleController.text,
-      'content': _contentController.text,
-      'category': _selectedCategory,
-      'keywords': _currentKeywords,
-      'is_completed': widget.isEditing ? widget.logToEdit!.isCompleted : false,
-      'images': [
-        ..._persistedImages,
-        ..._selectedImages.map((img) => img.path),
-      ],
-    };
-
-    if (_locationName != null) {
-      logPayload['location'] = {
-        'name': _locationName,
-        'latitude': _latitude,
-        'longitude': _longitude,
-      };
-    }
-
-    final logData = {
-      'log': logPayload,
-      // 确保 linkages 发送的是 snake_case
-      'linkages': _currentTaskUpdates.map((update) => update.toJson()).toList(),
-    };
-
     try {
+      // 先上传新选择的图片
+      List<String> uploadedImageUrls = [];
+      if (_selectedImages.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('正在上传图片...'), duration: Duration(seconds: 1)),
+        );
+        
+        final urls = await ApiService.uploadImages(_selectedImages);
+        if (urls.length != _selectedImages.length) {
+          throw Exception('部分图片上传失败，请重试');
+        }
+        uploadedImageUrls = urls;
+      }
+
+      // 合并已存在的图片URL和新上传的图片URL
+      final allImageUrls = [
+        ..._persistedImages, // 这些已经是URL了
+        ...uploadedImageUrls, // 新上传的URL
+      ];
+
+      // 匹配后端 API 的 {log, linkages} 结构
+      final logPayload = {
+        'log_date': DateFormat('yyyy-MM-dd').format(_selectedDate),
+        'title': _titleController.text,
+        'content': _contentController.text,
+        'category': _selectedCategory,
+        'keywords': _currentKeywords,
+        'is_completed': widget.isEditing ? widget.logToEdit!.isCompleted : false,
+        'images': allImageUrls,
+      };
+
+      if (_locationName != null) {
+        logPayload['location'] = {
+          'name': _locationName,
+          'latitude': _latitude,
+          'longitude': _longitude,
+        };
+      }
+
+      final logData = {
+        'log': logPayload,
+        // 确保 linkages 发送的是 snake_case
+        'linkages': _currentTaskUpdates.map((update) => update.toJson()).toList(),
+      };
+
       if (widget.isEditing) {
         await ApiService.updatePersonalLog(widget.logToEdit!.id, logData);
       } else {

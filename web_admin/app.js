@@ -36,6 +36,79 @@ let users = [];
 let authToken = null;
 let tasksList = [];
 let importantItemsList = [];
+let pendingNotifications = [];
+let displayedNotificationIds = new Set(); // 跟踪已显示过的通知ID
+let notificationModalInstance = null;
+const notificationFilters = {
+    keyword: '',
+    startTime: '',
+    endTime: ''
+};
+
+// 时间处理工具函数
+const TARGET_TIMEZONE_LABEL = 'UTC+08:00 北京时间';
+const TARGET_TZ_OFFSET_MINUTES = 8 * 60;
+
+function padZero(value) {
+    return value.toString().padStart(2, '0');
+}
+
+function parseLocalDateTime(value) {
+    if (!value) return null;
+    if (value instanceof Date) return new Date(value.getTime());
+    if (typeof value === 'number') return new Date(value);
+    if (typeof value !== 'string') return null;
+
+    const normalized = value.trim();
+    let parsed = new Date(normalized);
+
+    if (Number.isNaN(parsed.getTime())) {
+        const fallback = normalized.replace(' ', 'T');
+        parsed = new Date(fallback);
+    }
+
+    if (Number.isNaN(parsed.getTime())) {
+        return null;
+    }
+
+    return parsed;
+}
+
+function convertToBeijingDate(date) {
+    const utcMillis = date.getTime();
+    return new Date(utcMillis + TARGET_TZ_OFFSET_MINUTES * 60 * 1000);
+}
+
+function getBeijingDateParts(date) {
+    const beijingDate = convertToBeijingDate(date);
+    return {
+        year: beijingDate.getUTCFullYear(),
+        month: padZero(beijingDate.getUTCMonth() + 1),
+        day: padZero(beijingDate.getUTCDate()),
+        hours: padZero(beijingDate.getUTCHours()),
+        minutes: padZero(beijingDate.getUTCMinutes()),
+        seconds: padZero(beijingDate.getUTCSeconds())
+    };
+}
+
+function formatTimeZoneLabel(date) {
+    return TARGET_TIMEZONE_LABEL;
+}
+
+function formatDateTimeDisplay(value, fallback = '-') {
+    const date = parseLocalDateTime(value);
+    if (!date) return fallback;
+    const parts = getBeijingDateParts(date);
+    const formatted = `${parts.year}-${parts.month}-${parts.day} ${parts.hours}:${parts.minutes}`;
+    return formatted;
+}
+
+function formatDateInputValue(value) {
+    const date = parseLocalDateTime(value);
+    if (!date) return '';
+    const parts = getBeijingDateParts(date);
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hours}:${parts.minutes}`;
+}
 
 // 统一清理模态框遗留的遮罩与滚动锁
 function resetModalState() {
@@ -56,6 +129,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 检查是否已登录
     checkAuthStatus();
     initUserFormOptions();
+    createNotificationCenterLauncher();
     
     // 添加责任人选择事件监听器
     document.addEventListener('change', function(e) {
@@ -106,70 +180,384 @@ async function checkNotifications() {
         
         // 只显示未读的通知
         const unreadNotifications = notifications.filter(n => !n.is_read);
-        
-        // 如果有新通知，显示弹窗
-        if (unreadNotifications.length > 0) {
-            unreadNotifications.forEach(notification => {
-                // 显示弹窗通知
-                showNotificationModal(notification);
-                
-                // 标记为已读
-                markNotificationAsRead(notification.id);
-            });
+        let hasNew = false;
+        unreadNotifications.forEach(notification => {
+            // 如果通知不在pendingNotifications中，且未显示过，则添加
+            if (!pendingNotifications.some(item => item.id === notification.id) && 
+                !displayedNotificationIds.has(notification.id)) {
+                pendingNotifications.push(enhanceNotification(notification));
+                hasNew = true;
+            }
+        });
+
+        // 只在新通知且弹窗未打开时打开弹窗
+        if (hasNew && !notificationModalInstance) {
+            openNotificationCenterModal();
+        }
+
+        if (hasNew) {
+            updateNotificationBadge();
         }
     } catch (error) {
         console.error('检查通知失败:', error);
     }
 }
 
-// 显示通知弹窗
-function showNotificationModal(notification) {
-    // 创建通知弹窗
-    const modal = document.createElement('div');
-    modal.className = 'modal fade';
-    modal.id = 'notificationModal_' + notification.id;
-    modal.setAttribute('data-bs-backdrop', 'static');
-    modal.setAttribute('data-bs-keyboard', 'false');
+function enhanceNotification(notification) {
+    return {
+        ...notification,
+        created_at_label: notification.created_at ? formatDateTimeDisplay(notification.created_at) : formatDateTimeDisplay(new Date()),
+        deadline_label: notification.task_deadline ? formatDateTimeDisplay(notification.task_deadline) : '未设置',
+        keyword_source: [
+            notification.title || '',
+            notification.task_title || '',
+            notification.message || '',
+            notification.notification_type || ''
+        ].join(' ').toLowerCase()
+    };
+}
+
+function createNotificationCenterLauncher() {
+    if (document.getElementById('notificationCenterLauncher')) return;
+    const button = document.createElement('button');
+    button.id = 'notificationCenterLauncher';
+    button.type = 'button';
+    button.className = 'btn btn-warning position-fixed shadow';
+    button.style.right = '20px';
+    button.style.bottom = '20px';
+    button.style.zIndex = '1050';
+    button.innerHTML = `
+        <i class="bi bi-bell-fill"></i>
+        <span class="ms-1">通知</span>
+        <span class="badge bg-danger ms-1" id="notificationLauncherBadge" style="display:none;">0</span>
+    `;
+    button.addEventListener('click', openNotificationCenterModal);
+    document.body.appendChild(button);
+}
+
+async function updateNotificationBadge() {
+    const badge = document.getElementById('notificationLauncherBadge');
+    if (!badge) return;
+    
+    try {
+        // 获取所有未读通知的数量
+        const response = await fetch(`${API_BASE_URL}/notifications`, {
+            headers: getAuthHeaders()
+        });
+        
+        if (response.ok) {
+            const notifications = await response.json();
+            const unreadCount = notifications.filter(n => !n.is_read).length;
+            
+            if (unreadCount > 0) {
+                badge.style.display = 'inline-block';
+                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    } catch (error) {
+        console.error('更新通知徽章失败:', error);
+        // 如果获取失败，使用pendingNotifications作为后备
+        const unreadCount = pendingNotifications.length;
+        if (unreadCount > 0) {
+            badge.style.display = 'inline-block';
+            badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+}
+
+function openNotificationCenterModal() {
+    if (pendingNotifications.length === 0) return;
+    if (notificationModalInstance) {
+        refreshNotificationModalContent();
+        return;
+    }
+
+    let modal = document.getElementById('notificationCenterModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'notificationCenterModal';
+        modal.className = 'modal fade';
+        modal.setAttribute('data-bs-backdrop', 'true');
+        modal.setAttribute('data-bs-keyboard', 'true');
+        document.body.appendChild(modal);
+    }
+
     modal.innerHTML = `
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-fullscreen-md-down modal-lg">
             <div class="modal-content">
                 <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title">
-                        <i class="bi bi-bell-fill"></i> 新通知
-                    </h5>
+                    <div class="d-flex align-items-center w-100 gap-3 flex-wrap">
+                        <h5 class="modal-title mb-0">
+                            <i class="bi bi-bell-fill"></i> 通知中心
+                        </h5>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <input type="text" id="notificationSearchInput" class="form-control form-control-sm" placeholder="搜索标题/内容">
+                            <input type="datetime-local" id="notificationSearchStart" class="form-control form-control-sm">
+                            <input type="datetime-local" id="notificationSearchEnd" class="form-control form-control-sm">
+                            <button class="btn btn-sm btn-light" id="notificationSearchReset">重置</button>
+                        </div>
+                    </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
-                    <p><strong>${notification.message || notification.task_title || '您有新的通知'}</strong></p>
-                    ${notification.from_user_name ? `<p class="text-muted">来自：${notification.from_user_name}</p>` : ''}
+                <div class="modal-body notification-modal-body" style="max-height:70vh; overflow:auto;">
+                    ${renderNotificationCards()}
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">知道了</button>
+                <div class="modal-footer d-flex justify-content-between">
+                    <div>
+                        <button class="btn btn-outline-danger btn-sm" id="notificationDeleteAll">删除全部</button>
+                        <button class="btn btn-outline-secondary btn-sm" id="notificationMarkAllRead">全部已读</button>
+                    </div>
+                    <button class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
                 </div>
             </div>
         </div>
     `;
+
+    modal.removeEventListener('click', handleNotificationModalAction, true);
+    modal.addEventListener('click', handleNotificationModalAction, true);
+    modal.querySelector('#notificationSearchInput').addEventListener('input', handleNotificationSearchInput);
+    modal.querySelector('#notificationSearchStart').addEventListener('change', handleNotificationSearchInput);
+    modal.querySelector('#notificationSearchEnd').addEventListener('change', handleNotificationSearchInput);
+    modal.querySelector('#notificationSearchReset').addEventListener('click', resetNotificationSearchFilters);
+    modal.querySelector('#notificationMarkAllRead').addEventListener('click', markAllNotificationsAsRead);
+
+    notificationModalInstance = bootstrap.Modal.getInstance(modal) || new bootstrap.Modal(modal);
+    notificationModalInstance.show();
     
-    document.body.appendChild(modal);
-    const bsModal = new bootstrap.Modal(modal);
-    bsModal.show();
-    
-    // 模态框关闭后移除元素
-    modal.addEventListener('hidden.bs.modal', function() {
-        modal.remove();
+    // 标记所有当前通知为已显示
+    pendingNotifications.forEach(n => {
+        displayedNotificationIds.add(n.id);
     });
+    
+    modal.addEventListener('hidden.bs.modal', () => {
+        notificationModalInstance = null;
+    });
+}
+
+function renderNotificationCards() {
+    const list = applyNotificationFilters();
+    if (list.length === 0) {
+        return '<p class="text-muted mb-0">当前没有满足条件的通知。</p>';
+    }
+
+    return list.map((notification, index) => `
+        <div class="border rounded p-3 mb-3 notification-card" data-notification-id="${notification.id}">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <div>
+                    <strong>${notification.title || notification.task_title || `通知 ${index + 1}`}</strong>
+                    <div class="text-muted small">发送时间：${notification.created_at_label}</div>
+                </div>
+                <span class="badge bg-info text-dark">${notification.notification_type || '通知'}</span>
+            </div>
+            <div class="mb-2">
+                <p class="mb-1">${notification.message || '您有新的通知'}</p>
+                <div class="text-muted small">截止时间：${notification.deadline_label}</div>
+                ${notification.priority ? `<div class="text-muted small">优先级：${notification.priority}</div>` : ''}
+                ${notification.status ? `<div class="text-muted small">当前状态：${notification.status}</div>` : ''}
+                ${notification.from_user_name ? `<div class="text-muted small">来自：${notification.from_user_name}</div>` : ''}
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-sm btn-outline-primary" data-notification-action="view" data-notification-id="${notification.id}" data-notification-task-id="${notification.task_id || ''}">
+                    查看任务
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" data-notification-action="later" data-notification-id="${notification.id}">
+                    稍后处理
+                </button>
+                <button class="btn btn-sm btn-success" data-notification-action="done" data-notification-id="${notification.id}">
+                    已处理
+                </button>
+                <button class="btn btn-sm btn-outline-danger" data-notification-action="delete" data-notification-id="${notification.id}">
+                    删除
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function applyNotificationFilters() {
+    const keyword = notificationFilters.keyword.trim().toLowerCase();
+    const start = notificationFilters.startTime ? new Date(notificationFilters.startTime) : null;
+    const end = notificationFilters.endTime ? new Date(notificationFilters.endTime) : null;
+
+    return pendingNotifications
+        .filter(notification => {
+            if (keyword && !notification.keyword_source.includes(keyword)) {
+                return false;
+            }
+            if (start && notification.created_at && new Date(notification.created_at) < start) {
+                return false;
+            }
+            if (end && notification.created_at && new Date(notification.created_at) > end) {
+                return false;
+            }
+            return true;
+        })
+        .sort((a, b) => {
+            const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return bTime - aTime;
+        });
+}
+
+function handleNotificationSearchInput(event) {
+    const target = event.target;
+    if (target.id === 'notificationSearchInput') {
+        notificationFilters.keyword = target.value;
+    } else if (target.id === 'notificationSearchStart') {
+        notificationFilters.startTime = target.value;
+    } else if (target.id === 'notificationSearchEnd') {
+        notificationFilters.endTime = target.value;
+    }
+    refreshNotificationModalContent();
+}
+
+function resetNotificationSearchFilters() {
+    notificationFilters.keyword = '';
+    notificationFilters.startTime = '';
+    notificationFilters.endTime = '';
+    const modal = document.getElementById('notificationCenterModal');
+    if (modal) {
+        modal.querySelector('#notificationSearchInput').value = '';
+        modal.querySelector('#notificationSearchStart').value = '';
+        modal.querySelector('#notificationSearchEnd').value = '';
+    }
+    refreshNotificationModalContent();
+}
+
+function refreshNotificationModalContent() {
+    const container = document.querySelector('#notificationCenterModal .notification-modal-body');
+    if (!container) return;
+    container.innerHTML = renderNotificationCards();
 }
 
 // 标记通知为已读
 async function markNotificationAsRead(notificationId) {
     try {
-        await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+        const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
             method: 'PUT',
             headers: getAuthHeaders()
         });
+        return response.ok;
     } catch (error) {
         console.error('标记通知已读失败:', error);
+        return false;
     }
+}
+
+async function deleteNotification(notificationId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        return response.ok;
+    } catch (error) {
+        console.error('删除通知失败:', error);
+        return false;
+    }
+}
+
+async function deleteAllNotifications() {
+    if (pendingNotifications.length === 0) return;
+    
+    if (!confirm(`确定要删除所有 ${pendingNotifications.length} 条通知吗？此操作不可恢复。`)) {
+        return;
+    }
+    
+    try {
+        let successCount = 0;
+        let failCount = 0;
+        
+        for (const notification of pendingNotifications) {
+            const success = await deleteNotification(notification.id);
+            if (success) {
+                successCount++;
+                displayedNotificationIds.delete(notification.id);
+            } else {
+                failCount++;
+            }
+        }
+        
+        pendingNotifications = [];
+        updateNotificationBadge();
+        refreshNotificationModalContent();
+        
+        if (failCount > 0) {
+            alert(`已删除 ${successCount} 条通知，${failCount} 条删除失败`);
+        } else {
+            alert(`已删除 ${successCount} 条通知`);
+        }
+    } catch (error) {
+        console.error('批量删除通知失败:', error);
+        alert('删除通知时出错');
+    }
+}
+
+async function markAllNotificationsAsRead() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/notifications/mark-all-read`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                notification_ids: pendingNotifications.map(item => item.id)
+            })
+        });
+        if (response.ok) {
+            // 标记为已读后，通知仍在通知栏中，只是状态变为已读
+            pendingNotifications.forEach(n => n.is_read = true);
+            updateNotificationBadge();
+            refreshNotificationModalContent();
+        }
+    } catch (error) {
+        console.error('批量标记通知已读失败:', error);
+    }
+}
+
+async function handleNotificationModalAction(event) {
+    const button = event.target.closest('[data-notification-action]');
+    if (!button) return;
+
+    const action = button.dataset.notificationAction;
+    const notificationId = button.dataset.notificationId;
+    const taskId = button.dataset.notificationTaskId;
+    if (action === 'view') {
+        if (taskId) {
+            await viewTaskDetail(taskId);
+        }
+        if (await markNotificationAsRead(notificationId)) {
+            removeNotificationFromQueue(notificationId);
+        }
+    } else if (action === 'done') {
+        if (await markNotificationAsRead(notificationId)) {
+            removeNotificationFromQueue(notificationId);
+        }
+    } else if (action === 'later') {
+        // 稍后处理：只关闭弹窗，不标记已读，通知仍在通知栏中
+        const modalInstance = bootstrap.Modal.getInstance(document.getElementById('notificationCenterModal'));
+        if (modalInstance) modalInstance.hide();
+        return;
+    } else if (action === 'delete') {
+        if (await deleteNotification(notificationId)) {
+            removeNotificationFromQueue(notificationId);
+            displayedNotificationIds.delete(notificationId);
+        }
+    }
+
+    refreshNotificationModalContent();
+    updateNotificationBadge();
+
+    if (pendingNotifications.length === 0) {
+        const modalInstance = bootstrap.Modal.getInstance(document.getElementById('notificationCenterModal'));
+        if (modalInstance) modalInstance.hide();
+    }
+}
+
+function removeNotificationFromQueue(notificationId) {
+    pendingNotifications = pendingNotifications.filter(item => item.id !== notificationId);
 }
 
 // 启动通知轮询
@@ -311,6 +699,13 @@ async function validateToken() {
 function logout() {
     // 停止通知轮询
     stopNotificationPolling();
+    pendingNotifications = [];
+    updateNotificationBadge();
+    const modalEl = document.getElementById('notificationCenterModal');
+    if (modalEl) {
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+    }
     
     localStorage.removeItem('authToken');
     sessionStorage.removeItem('authToken');
@@ -490,7 +885,7 @@ function renderUsersTable() {
             <td>${user.position}</td>
             <td>${departmentLabel}</td>
             <td><span class="badge bg-${getRoleBadgeColor(user.role)}">${getRoleDisplay(user.role)}</span></td>
-            <td>${user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '从未登录'}</td>
+            <td>${user.last_login_at ? formatDateTimeDisplay(user.last_login_at) : '从未登录'}</td>
             <td>
                 <button class="btn btn-sm btn-outline-primary" onclick="showEditUserModal('${user.id}')">
                     <i class="bi bi-pencil"></i>
@@ -554,7 +949,7 @@ function renderImportantItemsTable() {
             <td><span class="badge bg-${getPriorityBadgeColor(item.priority)}">${item.priority}</span></td>
             <td><span class="badge bg-${getStatusBadgeColor(item.status)}">${item.status}</span></td>
             <td>${item.department || '-'}</td>
-            <td>${item.deadline ? new Date(item.deadline).toLocaleDateString() : '-'}</td>
+            <td>${formatDateTimeDisplay(item.deadline)}</td>
             <td>
                 <button class="btn btn-sm btn-outline-primary" onclick="editImportantItem('${item.id}')">
                     <i class="bi bi-pencil"></i>
@@ -622,9 +1017,11 @@ function renderTasksTable() {
     const totalTasks = filtered.length;
     const inProgressTasks = filtered.filter(task => task.status === 'in_progress' || task.status === 'pending').length;
     const completedTasks = filtered.filter(task => task.status === 'completed').length;
+    const now = new Date();
     const overdueTasks = filtered.filter(task => {
-        if (!task.deadline) return false;
-        return new Date(task.deadline) < new Date() && task.status !== 'completed';
+        const deadlineDate = parseLocalDateTime(task.deadline);
+        if (!deadlineDate) return false;
+        return deadlineDate < now && task.status !== 'completed';
     }).length;
     
     document.getElementById('totalTasksCount').textContent = totalTasks;
@@ -642,7 +1039,8 @@ function renderTasksTable() {
     filtered.forEach(task => {
         const row = document.createElement('tr');
         const progress = calculateTaskProgress(task);
-        const isOverdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'completed';
+        const deadlineDate = parseLocalDateTime(task.deadline);
+        const isOverdue = deadlineDate && deadlineDate < now && task.status !== 'completed';
         
         const isRequestTask = task.is_request === true || task.is_request === 1;
         const isAssignee = currentUser && (task.assignee_id === currentUser.id || task.assignee_name === currentUser.name);
@@ -697,7 +1095,7 @@ function renderTasksTable() {
                     </div>
                 </div>
             </td>
-            <td class="${isOverdue ? 'text-danger fw-bold' : ''}">${task.deadline ? new Date(task.deadline).toLocaleDateString() : '-'}</td>
+            <td class="${isOverdue ? 'text-danger fw-bold' : ''}">${formatDateTimeDisplay(task.deadline)}</td>
             <td>
                 ${actionButtons}
             </td>
@@ -722,7 +1120,7 @@ async function loadLogs() {
         logs.forEach(log => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${new Date(log.created_at).toLocaleString()}</td>
+                <td>${formatDateTimeDisplay(log.created_at)}</td>
                 <td>${log.user_name}</td>
                 <td>${log.action}</td>
                 <td>${log.description || '-'}</td>
@@ -997,7 +1395,7 @@ async function editImportantItem(itemId) {
         document.getElementById('editImportantItemDescription').value = item.description || '';
         document.getElementById('editImportantItemPriority').value = item.priority;
         document.getElementById('editImportantItemStatus').value = item.status;
-        document.getElementById('editImportantItemDeadline').value = item.deadline ? new Date(item.deadline).toISOString().slice(0, 16) : '';
+        document.getElementById('editImportantItemDeadline').value = formatDateInputValue(item.deadline);
         
         const modal = new bootstrap.Modal(document.getElementById('editImportantItemModal'));
         modal.show();
@@ -1165,8 +1563,8 @@ function showAddTaskModal() {
     // 设置默认时间
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    document.getElementById('taskStartTime').value = now.toISOString().slice(0, 16);
-    document.getElementById('taskDeadline').value = tomorrow.toISOString().slice(0, 16);
+    document.getElementById('taskStartTime').value = formatDateInputValue(now);
+    document.getElementById('taskDeadline').value = formatDateInputValue(tomorrow);
     
     const modal = new bootstrap.Modal(document.getElementById('addTaskModal'));
     modal.show();
@@ -1536,9 +1934,9 @@ async function viewTaskDetail(taskId) {
         document.getElementById('detailTaskDepartment').textContent = currentTask.department;
         document.getElementById('detailTaskPriority').textContent = getPriorityText(currentTask.priority);
         document.getElementById('detailTaskStatus').textContent = getStatusText(currentTask.status);
-        document.getElementById('detailTaskStartTime').textContent = currentTask.start_time ? new Date(currentTask.start_time).toLocaleString() : '未设置';
-        document.getElementById('detailTaskDeadline').textContent = currentTask.deadline ? new Date(currentTask.deadline).toLocaleString() : '未设置';
-        document.getElementById('detailTaskCreatedAt').textContent = currentTask.created_at ? new Date(currentTask.created_at).toLocaleString() : '未知';
+        document.getElementById('detailTaskStartTime').textContent = currentTask.start_time ? formatDateTimeDisplay(currentTask.start_time, '未设置') : '未设置';
+        document.getElementById('detailTaskDeadline').textContent = currentTask.deadline ? formatDateTimeDisplay(currentTask.deadline, '未设置') : '未设置';
+        document.getElementById('detailTaskCreatedAt').textContent = currentTask.created_at ? formatDateTimeDisplay(currentTask.created_at, '未知') : '未知';
         document.getElementById('detailTaskCreatedBy').textContent = currentTask.created_by || '未知';
         
         // 更新进度条
@@ -1728,7 +2126,7 @@ async function loadTaskLogs(taskId) {
                         <h6 class="mb-1">${log.title || '工作日志'}</h6>
                         ${log.content ? `<p class="mb-1 text-muted small">${log.content.length > 100 ? log.content.substring(0, 100) + '...' : log.content}</p>` : ''}
                         <small class="text-muted">
-                            <i class="bi bi-clock"></i> ${new Date(log.created_at).toLocaleString()}
+                            <i class="bi bi-clock"></i> ${formatDateTimeDisplay(log.created_at)}
                         </small>
                     </div>
                     <span class="badge bg-${getCategoryBadgeColor(log.category)}">${log.category}</span>
@@ -1738,7 +2136,7 @@ async function loadTaskLogs(taskId) {
         });
         
         document.getElementById('detailTaskLogsCount').textContent = logs.length;
-        document.getElementById('detailTaskLastActivity').textContent = logs.length > 0 ? new Date(logs[0].created_at).toLocaleString() : '无';
+        document.getElementById('detailTaskLastActivity').textContent = logs.length > 0 ? formatDateTimeDisplay(logs[0].created_at, '无') : '无';
     } catch (error) {
         console.error('加载任务日志失败:', error);
         const logsList = document.getElementById('taskLogsList');
@@ -1801,7 +2199,7 @@ async function editTask(taskId) {
         document.getElementById('editTaskDepartment').value = task.department_name || task.department || '';
 
         // 时间字段
-        const toLocalInput = (dt) => dt ? new Date(dt).toISOString().slice(0,16) : '';
+        const toLocalInput = (dt) => formatDateInputValue(dt);
         document.getElementById('editTaskStartTime').value = toLocalInput(task.start_time);
         document.getElementById('editTaskEndTime').value = toLocalInput(task.end_time);
         document.getElementById('editTaskDeadline').value = toLocalInput(task.deadline);
@@ -1967,7 +2365,7 @@ async function updateTaskProgress() {
             // 刷新任务详情
             await viewTaskDetail(currentTask.id);
             // 更新“最后更新”时间显示
-            const nowStr = new Date().toLocaleString();
+            const nowStr = formatDateTimeDisplay(new Date());
             const last = document.getElementById('lastProgressUpdate');
             if (last) last.textContent = nowStr;
             // 刷新任务列表

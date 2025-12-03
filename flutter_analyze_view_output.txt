@@ -1,0 +1,156 @@
+﻿flutter : Flutter assets will be downloaded from https://storage.flutter-io.cn.
+ Make sure you trust this source!
+所在位置 行:1 字符: 20
++ ... hixun3\pdl; flutter analyze lib/screens/view_screen.dart lib/widgets/ ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Flutter assets ...st this source! 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Resolving dependencies...
+Downloading packages...
+  characters 1.4.0 (1.4.1 available)
+  crypto 3.0.6 (3.0.7 available)
+  fl_chart 0.68.0 (1.1.1 available)
+  flutter_lints 5.0.0 (6.0.0 available)
+  http 1.5.0 (1.6.0 available)
+  lints 5.1.1 (6.0.0 available)
+  material_color_utilities 0.11.1 (0.13.0 available)
+  meta 1.16.0 (1.17.0 available)
+  test_api 0.7.6 (0.7.8 available)
+  uuid 4.5.1 (4.5.2 available)
+Got dependencies!
+10 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Analyzing 2 items...                                            
+
+warning - Duplicate import - lib\widgets\calendar_widget.dart:3:8 - duplicate_import
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:221:34 - deprecated_member_use
+warning - The operand can't be 'null', so the condition is always 'true' - lib\widgets\calendar_widget.dart:481:54 - unnecessary_null_comparison
+warning - The operand can't be 'null', so the condition is always 'true' - lib\widgets\calendar_widget.dart:491:54 - unnecessary_null_comparison
+warning - Dead code - lib\widgets\calendar_widget.dart:560:28 - dead_code
+warning - The left operand can't be null, so the right operand is never executed - lib\widgets\calendar_widget.dart:560:31 - dead_null_aware_expression
+warning - Dead code - lib\widgets\calendar_widget.dart:584:27 - dead_code
+warning - The left operand can't be null, so the right operand is never executed - lib\widgets\calendar_widget.dart:584:30 - dead_null_aware_expression
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:643:42 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:696:35 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:697:35 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:698:26 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:713:70 - deprecated_member_use
+   info - Don't invoke 'print' in production code - lib\widgets\calendar_widget.dart:750:9 - avoid_print
+   info - Don't invoke 'print' in production code - lib\widgets\calendar_widget.dart:761:9 - avoid_print
+warning - The '!' will have no effect because the receiver can't be null - lib\widgets\calendar_widget.dart:780:55 - unnecessary_non_null_assertion
+warning - The operand can't be 'null', so the condition is always 'true' - lib\widgets\calendar_widget.dart:781:30 - unnecessary_null_comparison
+warning - The operand can't be 'null', so the condition is always 'true' - lib\widgets\calendar_widget.dart:782:32 - unnecessary_null_comparison
+warning - The operand can't be 'null', so the condition is always 'true' - lib\widgets\calendar_widget.dart:782:59 - unnecessary_null_comparison
+   info - Don't invoke 'print' in production code - lib\widgets\calendar_widget.dart:804:7 - avoid_print
+warning - The operand can't be 'null', so the condition is always 'false' - lib\widgets\calendar_widget.dart:811:23 - unnecessary_null_comparison
+warning - Dead code - lib\widgets\calendar_widget.dart:811:32 - dead_code
+warning - The '!' will have no effect because the receiver can't be null - lib\widgets\calendar_widget.dart:818:56 - unnecessary_non_null_assertion
+   info - Don't invoke 'print' in production code - lib\widgets\calendar_widget.dart:848:7 - avoid_print
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:908:43 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:1044:34 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:1235:32 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:1378:32 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:1397:40 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:1415:65 - deprecated_member_use
+warning - The value of the local variable 'cardColor' isn't used - lib\widgets\calendar_widget.dart:1602:13 - unused_local_variable
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:1653:40 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:1696:59 - deprecated_member_use
+   info - Don't invoke 'print' in production code - lib\widgets\calendar_widget.dart:1775:7 - avoid_print
+warning - The declaration '_buildTaskInTimeline' isn't referenced - lib\widgets\calendar_widget.dart:1781:10 - unused_element
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:1883:47 - deprecated_member_use
+   info - Don't invoke 'print' in production code - lib\widgets\calendar_widget.dart:1935:7 - avoid_print
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:1971:41 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:1996:36 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2011:41 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2045:38 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2127:42 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2132:38 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2162:56 - deprecated_member_use
+warning - The declaration '_isSameDay' isn't referenced - lib\widgets\calendar_widget.dart:2212:8 - unused_element
+warning - The declaration '_parseColor' isn't referenced - lib\widgets\calendar_widget.dart:2218:9 - unused_element
+warning - The declaration '_buildDataIndicators' isn't referenced - lib\widgets\calendar_widget.dart:2239:10 - unused_element
+warning - The declaration '_buildBeautifiedDataIndicators' isn't referenced - lib\widgets\calendar_widget.dart:2276:10 - unused_element
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2299:84 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2324:38 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2361:32 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2473:26 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2484:35 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2506:28 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2563:32 - deprecated_member_use
+   info - Use a 'SizedBox' to add whitespace to a layout - lib\widgets\calendar_widget.dart:2647:11 - sized_box_for_whitespace
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2711:34 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2724:28 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2759:30 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2764:32 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2775:32 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2816:40 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2889:59 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:2963:55 - deprecated_member_use
+   info - Unnecessary use of 'toList' in a spread - lib\widgets\calendar_widget.dart:3040:30 - unnecessary_to_list_in_spreads
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:3075:55 - deprecated_member_use
+warning - The operand can't be 'null', so the condition is always 'true' - lib\widgets\calendar_widget.dart:3145:56 - unnecessary_null_comparison
+warning - The '!' will have no effect because the receiver can't be null - lib\widgets\calendar_widget.dart:3147:79 - unnecessary_non_null_assertion
+   info - Unnecessary use of 'toList' in a spread - lib\widgets\calendar_widget.dart:3155:30 - unnecessary_to_list_in_spreads
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:3227:57 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:3650:22 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:3653:24 - deprecated_member_use
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:3782:25 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:3803:30 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:3810:22 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:3815:30 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:3859:32 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:3866:24 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:3871:32 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:3942:24 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:3961:30 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:3968:22 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:3973:30 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:4017:32 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:4024:24 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\widgets\calendar_widget.dart:4029:32 - use_build_context_synchronously
+warning - The receiver can't be null, so the null-aware operator '?.' is unnecessary - lib\widgets\calendar_widget.dart:4209:47 - invalid_null_aware_operator
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:4224:47 - deprecated_member_use
+warning - Dead code - lib\widgets\calendar_widget.dart:4244:46 - dead_code
+warning - The left operand can't be null, so the right operand is never executed - lib\widgets\calendar_widget.dart:4244:49 - dead_null_aware_expression
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:4258:72 - deprecated_member_use
+warning - The receiver can't be null, so the null-aware operator '?.' is unnecessary - lib\widgets\calendar_widget.dart:4263:49 - invalid_null_aware_operator
+warning - The receiver can't be null, so the null-aware operator '?.' is unnecessary - lib\widgets\calendar_widget.dart:4312:48 - invalid_null_aware_operator
+warning - The left operand can't be null, so the right operand is never executed - lib\widgets\calendar_widget.dart:4340:57 - dead_null_aware_expression
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:4466:49 - deprecated_member_use
+warning - Dead code - lib\widgets\calendar_widget.dart:4486:46 - dead_code
+warning - The left operand can't be null, so the right operand is never executed - lib\widgets\calendar_widget.dart:4486:49 - dead_null_aware_expression
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:4500:72 - deprecated_member_use
+warning - The receiver can't be null, so the null-aware operator '?.' is unnecessary - lib\widgets\calendar_widget.dart:4505:49 - invalid_null_aware_operator
+warning - The receiver can't be null, so the null-aware operator '?.' is unnecessary - lib\widgets\calendar_widget.dart:4552:48 - invalid_null_aware_operator
+warning - The receiver can't be null, so the null-aware operator '?.' is unnecessary - lib\widgets\calendar_widget.dart:4562:49 - invalid_null_aware_operator
+warning - The operand can't be 'null', so the condition is always 'true' - lib\widgets\calendar_widget.dart:4690:51 - unnecessary_null_comparison
+warning - The '!' will have no effect because the receiver can't be null - lib\widgets\calendar_widget.dart:4691:62 - unnecessary_non_null_assertion
+warning - Dead code - lib\widgets\calendar_widget.dart:4692:27 - dead_code
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:4706:48 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:4711:50 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:4745:58 - deprecated_member_use
+warning - The operand can't be 'null', so the condition is always 'true' - lib\widgets\calendar_widget.dart:4825:46 - unnecessary_null_comparison
+warning - Dead code - lib\widgets\calendar_widget.dart:4827:15 - dead_code
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:4858:42 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:4859:42 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:5161:40 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:5297:37 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:5319:45 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:5340:40 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:5360:51 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:5448:42 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:5449:42 - deprecated_member_use
+   info - Don't use 'BuildContext's across async gaps - lib\widgets\calendar_widget.dart:5549:48 - use_build_context_synchronously
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:5773:40 - deprecated_member_use
+warning - The receiver can't be null, so the null-aware operator '?.' is unnecessary - lib\widgets\calendar_widget.dart:5831:45 - invalid_null_aware_operator
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:5846:46 - deprecated_member_use
+warning - Dead code - lib\widgets\calendar_widget.dart:5865:44 - dead_code
+warning - The left operand can't be null, so the right operand is never executed - lib\widgets\calendar_widget.dart:5865:47 - dead_null_aware_expression
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\calendar_widget.dart:5881:70 - deprecated_member_use
+warning - The receiver can't be null, so the null-aware operator '?.' is unnecessary - lib\widgets\calendar_widget.dart:5886:47 - invalid_null_aware_operator
+warning - The receiver can't be null, so the null-aware operator '?.' is unnecessary - lib\widgets\calendar_widget.dart:5928:46 - invalid_null_aware_operator
+warning - The left operand can't be null, so the right operand is never executed - lib\widgets\calendar_widget.dart:5931:49 - dead_null_aware_expression
+
+128 issues found. (ran in 1.7s)

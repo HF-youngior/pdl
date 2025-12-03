@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/important_item.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+import '../utils/time_utils.dart';
 
 class CompanyImportantEditScreen extends StatefulWidget {
   final User user;
@@ -728,6 +729,6 @@ class _CompanyImportantEditScreenState extends State<CompanyImportantEditScreen>
   }
 
   String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    return TimeUtils.formatDateTimeWithZone(dateTime);
   }
 }

@@ -2,9 +2,9 @@ const mysql = require('mysql2/promise');
 
 async function debugMonthView() {
   const db = await mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '23301144',
+    host: 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
+    user: 'pdl',
+    password: 'Pdl123456',
     database: 'pdl_enterprise',
     timezone: '+08:00'
   });
