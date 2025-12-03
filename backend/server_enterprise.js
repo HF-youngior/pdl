@@ -1256,7 +1256,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // 生成JWT令牌
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role, department_id: user.department_id },
+      { id: user.id, username: user.username, name: user.name, role: user.role, department_id: user.department_id },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
     );
@@ -5066,6 +5066,34 @@ app.get('/api/mbti-records/latest', authenticateToken, async (req, res) => {
   }
 });
 
+// 获取MBTI统计信息（管理员权限）
+app.get('/api/mbti-records/statistics', authenticateToken, async (req, res) => {
+  try {
+    // 检查管理员权限
+    if (!['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '权限不足' });
+    }
+
+    const [stats] = await db.execute(`
+      SELECT
+        mbti_type,
+        COUNT(*) as total_count,
+        AVG(confidence_score) as avg_confidence,
+        COUNT(DISTINCT user_id) as unique_users,
+        MAX(test_date) as latest_test
+      FROM mbti_records
+      WHERE is_active = TRUE
+      GROUP BY mbti_type
+      ORDER BY total_count DESC
+    `);
+
+    res.json(stats);
+  } catch (error) {
+    console.error('获取MBTI统计错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 获取特定MBTI记录详情
 app.get('/api/mbti-records/:id', authenticateToken, async (req, res) => {
   try {
@@ -5227,7 +5255,7 @@ app.delete('/api/mbti-records/:id', authenticateToken, async (req, res) => {
 
     // 记录系统日志
     await db.execute(
-      `INSERT INTO system_logs (id, user_id, user_name, action, description, category)
+      `INSERT INTO logs (id, user_id, user_name, action, description, category)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         `log-${Date.now()}`,
@@ -5246,33 +5274,7 @@ app.delete('/api/mbti-records/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// 获取MBTI统计信息（管理员权限）
-app.get('/api/mbti-records/statistics', authenticateToken, async (req, res) => {
-  try {
-    // 检查管理员权限
-    if (!['admin', 'founder'].includes(req.user.role)) {
-      return res.status(403).json({ error: '权限不足' });
-    }
 
-    const [stats] = await db.execute(`
-      SELECT
-        mbti_type,
-        COUNT(*) as total_count,
-        AVG(confidence_score) as avg_confidence,
-        COUNT(DISTINCT user_id) as unique_users,
-        MAX(test_date) as latest_test
-      FROM mbti_records
-      WHERE is_active = TRUE
-      GROUP BY mbti_type
-      ORDER BY total_count DESC
-    `);
-
-    res.json(stats);
-  } catch (error) {
-    console.error('获取MBTI统计错误:', error);
-    res.status(500).json({ error: '服务器内部错误' });
-  }
-});
 
 // ==================== 管理员总览 API ====================
 
@@ -5635,14 +5637,42 @@ startServer().catch(console.error);
 // 提取关键词和词频统计
 app.post('/api/ai/analyze-log', async (req, res) => {
   try {
-    const { text, topK = 20 } = req.body || {};
-    if (!text || typeof text !== 'string') {
-      return res.status(400).json({ error: 'text 不能为空' });
+    // 检查请求体是否存在
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ error: '请求体不能为空' });
+    }
+
+    const { text, topK = 20 } = req.body;
+    
+    // 验证text参数
+    if (text === undefined || text === null) {
+      return res.status(400).json({ error: 'text 参数不能为空' });
+    }
+    if (typeof text !== 'string') {
+      return res.status(400).json({ error: 'text 参数必须是字符串类型' });
+    }
+    if (text.trim().length === 0) {
+      return res.status(400).json({ error: 'text 参数不能是空白字符串' });
+    }
+
+    // 验证topK参数
+    let parsedTopK = parseInt(topK);
+    if (isNaN(parsedTopK) || parsedTopK <= 0 || parsedTopK > 100) {
+      parsedTopK = 20; // 默认值
     }
 
     // 临时使用简单分词（等segmentit安装后恢复）
     const tokens = text.split(/[\s\n\r\t,，。！？；：""''（）()【】\[\]{}]+/)
       .filter(w => w && w.trim().length > 1);
+    
+    // 处理没有有效分词的情况
+    if (tokens.length === 0) {
+      return res.json({
+        keywords: [],
+        wordFrequencies: []
+      });
+    }
+
     const freqMap = {};
     for (const w of tokens) {
       freqMap[w] = (freqMap[w] || 0) + 1;
@@ -5650,11 +5680,11 @@ app.post('/api/ai/analyze-log', async (req, res) => {
     const wordFrequencies = Object.entries(freqMap)
       .map(([word, count]) => ({ word, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, topK);
+      .slice(0, parsedTopK);
 
     // 用频次代替简易"权重"，并归一化一个权重字段
-    const maxCount = wordFrequencies.length > 0 ? wordFrequencies[0].count : 1;
-    const keywords = wordFrequencies.map(x => ({ word: x.word, weight: x.count / (maxCount || 1) }));
+    const maxCount = wordFrequencies[0].count;
+    const keywords = wordFrequencies.map(x => ({ word: x.word, weight: x.count / maxCount }));
 
     return res.json({
       keywords,

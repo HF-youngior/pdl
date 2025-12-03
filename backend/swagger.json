@@ -895,8 +895,66 @@
       "post": {
         "summary": "创建 MBTI 测评记录",
         "tags": ["MBTI"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["mbti_type", "test_scores", "personality_traits"],
+                "properties": {
+                  "mbti_type": {
+                    "type": "string",
+                    "description": "MBTI类型，格式为4个字符，如ENFP",
+                    "example": "ENFP"
+                  },
+                  "test_scores": {
+                    "type": "object",
+                    "description": "测试分数，包含8个维度",
+                    "properties": {
+                      "E": { "type": "number", "example": 75 },
+                      "I": { "type": "number", "example": 25 },
+                      "S": { "type": "number", "example": 20 },
+                      "N": { "type": "number", "example": 80 },
+                      "T": { "type": "number", "example": 30 },
+                      "F": { "type": "number", "example": 70 },
+                      "J": { "type": "number", "example": 35 },
+                      "P": { "type": "number", "example": 65 }
+                    }
+                  },
+                  "personality_traits": {
+                    "type": "object",
+                    "description": "性格特质",
+                    "example": {
+                      "extroversion": "外向型，善于社交和沟通",
+                      "intuition": "直觉型，喜欢探索新可能性",
+                      "feeling": "情感型，重视人际关系和价值观",
+                      "perceiving": "感知型，灵活适应环境变化"
+                    }
+                  },
+                  "personal_info": {
+                    "type": "object",
+                    "description": "个人信息（可选）",
+                    "example": {
+                      "full_name": "测试用户",
+                      "birth_date": "1990-01-01",
+                      "address": "测试地址"
+                    }
+                  },
+                  "test_version": {
+                    "type": "string",
+                    "description": "测试版本（可选，默认v1.0）",
+                    "example": "v1.0"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
-          "201": { "description": "创建成功" }
+          "201": { "description": "创建成功" },
+          "400": { "description": "请求参数错误" },
+          "401": { "description": "未认证" }
         }
       },
       "get": {
@@ -933,8 +991,78 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mbti_type": {
+                    "type": "string",
+                    "description": "MBTI类型，格式为4个字符，如ENFP",
+                    "example": "ENFP"
+                  },
+                  "test_scores": {
+                    "type": "object",
+                    "description": "测试分数，包含8个维度",
+                    "properties": {
+                      "E": { "type": "number", "example": 75 },
+                      "I": { "type": "number", "example": 25 },
+                      "S": { "type": "number", "example": 20 },
+                      "N": { "type": "number", "example": 80 },
+                      "T": { "type": "number", "example": 30 },
+                      "F": { "type": "number", "example": 70 },
+                      "J": { "type": "number", "example": 35 },
+                      "P": { "type": "number", "example": 65 }
+                    }
+                  },
+                  "personality_traits": {
+                    "type": "object",
+                    "description": "性格特质",
+                    "example": {
+                      "extroversion": "外向型，善于社交和沟通",
+                      "intuition": "直觉型，喜欢探索新可能性",
+                      "feeling": "情感型，重视人际关系和价值观",
+                      "perceiving": "感知型，灵活适应环境变化"
+                    }
+                  },
+                  "personal_info": {
+                    "type": "object",
+                    "description": "个人信息",
+                    "example": {
+                      "full_name": "测试用户",
+                      "birth_date": "1990-01-01",
+                      "address": "测试地址"
+                    }
+                  },
+                  "ai_analysis": {
+                    "type": "object",
+                    "description": "AI分析结果"
+                  },
+                  "work_suggestions": {
+                    "type": "object",
+                    "description": "工作建议"
+                  },
+                  "improvement_advice": {
+                    "type": "object",
+                    "description": "改进建议"
+                  },
+                  "confidence_score": {
+                    "type": "number",
+                    "description": "置信度分数",
+                    "example": 0.85
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "更新成功" }
+          "200": { "description": "更新成功" },
+          "400": { "description": "请求参数错误" },
+          "401": { "description": "未认证" },
+          "404": { "description": "记录不存在" }
         }
       },
       "delete": {
@@ -961,8 +1089,40 @@
       "post": {
         "summary": "对日志进行 AI 分析",
         "tags": ["AI 分析"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "日志文本内容"
+                  },
+                  "topK": {
+                    "type": "integer",
+                    "description": "返回的关键词数量，默认20",
+                    "default": 20
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "description": "用户ID"
+                  },
+                  "log_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "日志日期"
+                  }
+                },
+                "required": ["text"]
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "成功" }
+          "200": { "description": "成功" },
+          "400": { "description": "请求参数错误" }
         }
       }
     },
@@ -979,6 +1139,50 @@
       "post": {
         "summary": "保存词云分析结果",
         "tags": ["AI 分析"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "analysisDate": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "分析日期"
+                  },
+                  "keywords": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "word": { "type": "string" },
+                        "weight": { "type": "number" }
+                      }
+                    },
+                    "description": "关键词列表"
+                  },
+                  "wordFrequencies": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "word": { "type": "string" },
+                        "count": { "type": "integer" }
+                      }
+                    },
+                    "description": "词频列表"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "分析描述"
+                  }
+                },
+                "required": ["keywords", "wordFrequencies"]
+              }
+            }
+          }
+        },
         "responses": {
           "200": { "description": "保存成功" }
         }
@@ -997,6 +1201,31 @@
       "post": {
         "summary": "发起人格分析请求",
         "tags": ["AI 分析"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "logText": {
+                    "type": "string",
+                    "description": "日志文本内容"
+                  },
+                  "mbtiType": {
+                    "type": "string",
+                    "description": "MBTI类型"
+                  },
+                  "useDeepSeek": {
+                    "type": "boolean",
+                    "description": "是否使用DeepSeek API"
+                  }
+                },
+                "required": ["logText"]
+              }
+            }
+          }
+        },
         "responses": {
           "200": { "description": "成功" }
         }
