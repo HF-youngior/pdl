@@ -8,6 +8,7 @@ class User {
   final String? departmentId; // 添加 department_id 字段
   final String role;
   final String? parentId; // 上级ID，用于判断层级关系
+  final int points; // 积分
   final DateTime createdAt;
   final DateTime? lastLoginAt;
   final int focusDuration; // 番茄钟累计专注秒数
@@ -22,6 +23,7 @@ class User {
     this.departmentId,
     required this.role,
     this.parentId,
+    this.points = 0,
     required this.createdAt,
     this.lastLoginAt,
     this.focusDuration = 0,
@@ -47,8 +49,9 @@ class User {
       departmentId: json['department_id'],
       role: json['role'] ?? 'employee',
       parentId: json['parent_id'],
+      points: json['points'] != null ? (json['points'] is int ? json['points'] : int.tryParse(json['points'].toString()) ?? 0) : 0,
       createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'])
+          ? DateTime.parse(json['created_at']) 
           : DateTime.now(),
       lastLoginAt: json['last_login_at'] != null
           ? DateTime.parse(json['last_login_at'])
@@ -66,6 +69,7 @@ class User {
       'position': position,
       'department': department,
       'role': role,
+      'points': points,
       'createdAt': createdAt.toIso8601String(),
       'lastLoginAt': lastLoginAt?.toIso8601String(),
       'focus_duration': focusDuration,

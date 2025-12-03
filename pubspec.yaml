@@ -89,6 +89,7 @@ flutter:
     - assets/images/mbti/ISFP.png
     - assets/images/mbti/ISTJ.png
     - assets/images/mbti/ISTP.png
+    - assets/images/loopy/
     - assets/images/focus/
 
   # An image asset can refer to one or more resolution-specific "variants", see

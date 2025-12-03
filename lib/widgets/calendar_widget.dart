@@ -1,12 +1,16 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
+import '../models/log_task_update.dart';
 import '../models/task.dart';
+import '../services/api_service.dart';
 import '../services/calendar_service.dart';
+import '../services/geocoding_service.dart';
 import '../utils/time_utils.dart';
 
 enum CalendarView { month, week, day }
@@ -3225,7 +3229,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                         icon: const Icon(Icons.edit, size: 18),
                                         color: Colors.blue,
                                         onPressed: () {
-                                          _showEditLogDialog(context, log, day);
+                                          _showEditLogDialog(context, log, dayDetail, day);
                                         },
                                         tooltip: '编辑',
                                       ),
@@ -3620,18 +3624,11 @@ class _CalendarWidgetState extends State<CalendarWidget> {
 
   // 获取分类标签
   String _getCategoryLabel(String category) {
-    switch (category.toLowerCase()) {
-      case 'work':
-        return '工作';
-      case 'meeting':
-        return '会议';
-      case 'learning':
-        return '学习';
-      case 'personal':
-        return '个人';
-      default:
-        return '其他';
+    // 现在分类支持手动输入，优先直接展示用户填写的内容
+    if (category.trim().isNotEmpty) {
+      return category.trim();
     }
+    return '其他';
   }
 
   // 获取状态文本
@@ -3676,18 +3673,10 @@ class _CalendarWidgetState extends State<CalendarWidget> {
 
   // 获取分类文本
   String _getCategoryText(String category) {
-    switch (category.toLowerCase()) {
-      case 'work':
-        return '工作';
-      case 'meeting':
-        return '会议';
-      case 'learning':
-        return '学习';
-      case 'personal':
-        return '个人';
-      default:
-        return '其他';
+    if (category.trim().isNotEmpty) {
+      return category.trim();
     }
+    return '其他';
   }
 
   // 获取象限文本
@@ -3974,60 +3963,29 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   }
 
   // 显示编辑日志对话框
-  Future<void> _showEditLogDialog(BuildContext context, CalendarLog log, DateTime day) async {
-    final titleController = TextEditingController(text: log.title);
-    final contentController = TextEditingController(text: log.content);
+  Future<void> _showEditLogDialog(
+    BuildContext context,
+    CalendarLog log,
+    DayDetailData dayDetail,
+    DateTime day,
+  ) async {
+    DateTime initialDate = day;
+    if (log.logDate != null && log.logDate!.isNotEmpty) {
+      initialDate = DateTime.tryParse(log.logDate!) ?? day;
+    } else {
+      try {
+        initialDate = DateTime.parse(log.createdAt);
+      } catch (_) {}
+    }
 
-    final result = await showDialog<Map<String, String>>(
+    final result = await showDialog<_CalendarLogEditResult>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('编辑日志'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('标题:'),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: '请输入日志标题',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text('内容:'),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: contentController,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: '请输入日志内容',
-                  ),
-                  maxLines: 5,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('取消'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop({
-                  'title': titleController.text,
-                  'content': contentController.text,
-                });
-              },
-              child: const Text('保存'),
-            ),
-          ],
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return _CalendarLogEditDialog(
+          log: log,
+          availableTasks: dayDetail.tasks,
+          initialDate: initialDate,
         );
       },
     );
@@ -4041,42 +3999,63 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   Future<void> _updateLog(
     BuildContext context,
     CalendarLog log,
-    Map<String, String> updates,
+    _CalendarLogEditResult editResult,
     DateTime day,
   ) async {
     try {
-      final updatedTitle = (updates['title'] ?? '').trim();
-      final updatedContent = (updates['content'] ?? '').trim();
+      final logDateStr = DateFormat('yyyy-MM-dd').format(editResult.selectedDate);
 
-      String? createdAt = log.createdAt.isEmpty ? null : log.createdAt;
-      String? logDate;
+      DateTime? parsedCreatedAt;
       try {
-        if ((log.createdAt).isNotEmpty) {
-          final parsed = DateTime.parse(log.createdAt);
-          logDate =
-              '${parsed.year.toString().padLeft(4, '0')}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
-          createdAt = parsed.toIso8601String();
+        if (log.createdAt.isNotEmpty) {
+          parsedCreatedAt = DateTime.parse(log.createdAt);
         }
       } catch (_) {
-        // 保持原始值，如果解析失败则忽略
-        logDate = log.createdAt.split(' ').firstWhere(
-          (segment) => segment.contains('-'),
-          orElse: () => '',
-        );
+        parsedCreatedAt = null;
       }
 
-      final effectiveTitle = updatedTitle.isNotEmpty
-          ? updatedTitle
-          : (log.title.isNotEmpty ? log.title : '个人日志');
+      final createdAtDateTime = DateTime(
+        editResult.selectedDate.year,
+        editResult.selectedDate.month,
+        editResult.selectedDate.day,
+        parsedCreatedAt?.hour ?? 0,
+        parsedCreatedAt?.minute ?? 0,
+        parsedCreatedAt?.second ?? 0,
+        parsedCreatedAt?.millisecond ?? 0,
+        parsedCreatedAt?.microsecond ?? 0,
+      );
+
+      List<String> uploadedImageUrls = [];
+      if (editResult.newImages.isNotEmpty) {
+        final snackBar = SnackBar(
+          content: const Text('正在上传图片...'),
+          duration: const Duration(seconds: 1),
+          backgroundColor: Colors.blue.shade600,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(snackBar);
+        uploadedImageUrls = await ApiService.uploadImages(editResult.newImages);
+      }
+
+      final allImages = [
+        ...editResult.persistedImages,
+        ...uploadedImageUrls,
+      ];
 
       await CalendarService.updateLog(
         log.id,
-        title: effectiveTitle,
-        content: updatedContent,
-        category: log.category.isNotEmpty ? log.category : '其他',
+        title: editResult.title,
+        content: editResult.content,
+        category: editResult.category,
         isCompleted: log.isCompleted,
-        createdAt: createdAt,
-        logDate: logDate?.isNotEmpty == true ? logDate : null,
+        createdAt: createdAtDateTime.toIso8601String(),
+        logDate: logDateStr,
+        weather: editResult.weather,
+        keywords: editResult.keywords,
+        images: allImages,
+        locationName: editResult.locationName,
+        latitude: editResult.latitude,
+        longitude: editResult.longitude,
+        linkages: editResult.taskUpdates,
       );
 
       if (mounted) {
@@ -4086,7 +4065,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
             backgroundColor: Colors.green,
           ),
         );
-        // 重新加载日期详情
         Navigator.of(context).pop();
         _showDayDetail(day);
       }
@@ -5578,6 +5556,767 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       default:
         return Colors.teal.shade800;
     }
+  }
+
+}
+
+class _CalendarLogEditResult {
+  final DateTime selectedDate;
+  final String title;
+  final String content;
+  final String category;
+  final String weather;
+  final List<String> keywords;
+  final List<String> persistedImages;
+  final List<File> newImages;
+  final String? locationName;
+  final double? latitude;
+  final double? longitude;
+  final List<LogTaskUpdate> taskUpdates;
+
+  _CalendarLogEditResult({
+    required this.selectedDate,
+    required this.title,
+    required this.content,
+    required this.category,
+    required this.weather,
+    required this.keywords,
+    required this.persistedImages,
+    required this.newImages,
+    required this.taskUpdates,
+    this.locationName,
+    this.latitude,
+    this.longitude,
+  });
+}
+
+class _CalendarLogEditDialog extends StatefulWidget {
+  final CalendarLog log;
+  final List<CalendarTask> availableTasks;
+  final DateTime initialDate;
+
+  const _CalendarLogEditDialog({
+    required this.log,
+    required this.availableTasks,
+    required this.initialDate,
+  });
+
+  @override
+  State<_CalendarLogEditDialog> createState() => _CalendarLogEditDialogState();
+}
+
+class _CalendarLogEditDialogState extends State<_CalendarLogEditDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final ImagePicker _imagePicker = ImagePicker();
+  late final TextEditingController _titleController;
+  late final TextEditingController _contentController;
+  late final TextEditingController _categoryController;
+  late final TextEditingController _keywordController;
+  late final TextEditingController _locationController;
+
+  DateTime _selectedDate = DateTime.now();
+  String _selectedWeather = 'sunny';
+  final List<String> _keywords = [];
+  List<String> _persistedImages = [];
+  final List<File> _newImages = [];
+  bool _isLocating = false;
+  double? _latitude;
+  double? _longitude;
+  late List<LogTaskUpdate> _taskUpdates;
+
+  static const int _maxKeywords = 5;
+  static const List<Map<String, String>> _weatherOptions = [
+    {'value': 'sunny', 'label': '晴朗', 'icon': '☀️'},
+    {'value': 'cloudy', 'label': '多云', 'icon': '⛅'},
+    {'value': 'light_rain', 'label': '小雨', 'icon': '🌦️'},
+    {'value': 'heavy_rain', 'label': '大雨', 'icon': '⛈️'},
+    {'value': 'snow', 'label': '下雪', 'icon': '❄️'},
+    {'value': 'storm', 'label': '雷暴', 'icon': '⚡'},
+    {'value': 'fog', 'label': '多雾', 'icon': '🌫️'},
+  ];
+  static const Map<String, String> _taskStatuses = {
+    'pending': '待处理',
+    'in_progress': '进行中',
+    'completed': '已完成',
+    'cancelled': '已取消',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = widget.initialDate;
+    _selectedWeather = widget.log.weather ?? 'sunny';
+    _keywords
+      ..clear()
+      ..addAll(widget.log.keywords);
+    _persistedImages = List<String>.from(widget.log.images);
+    _latitude = widget.log.latitude;
+    _longitude = widget.log.longitude;
+    _taskUpdates = widget.log.taskUpdates.map((e) => e.copyWith()).toList();
+
+    _titleController = TextEditingController(text: widget.log.title);
+    _contentController = TextEditingController(text: widget.log.content);
+    _categoryController = TextEditingController(text: widget.log.category);
+    _keywordController = TextEditingController();
+    _locationController = TextEditingController(text: widget.log.locationName ?? '');
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _contentController.dispose();
+    _categoryController.dispose();
+    _keywordController.dispose();
+    _locationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: min(MediaQuery.of(context).size.width * 0.9, 900),
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildHeader(),
+            const Divider(height: 1),
+            Expanded(
+              child: Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildDateAndWeather(),
+                      const SizedBox(height: 16),
+                      _buildTitleAndCategory(),
+                      const SizedBox(height: 16),
+                      _buildKeywordInput(),
+                      const SizedBox(height: 16),
+                      _buildContentInput(),
+                      const SizedBox(height: 16),
+                      _buildImageSection(),
+                      const SizedBox(height: 16),
+                      _buildLocationSection(),
+                      const SizedBox(height: 16),
+                      _buildTaskSection(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            _buildActions(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.note_alt, color: Colors.green),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              '编辑日志',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateAndWeather() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('日期'),
+                subtitle: Text(DateFormat('yyyy-MM-dd').format(_selectedDate)),
+                leading: const Icon(Icons.calendar_today),
+                onTap: _pickDate,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text('天气', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _weatherOptions.map((option) {
+            final isSelected = _selectedWeather == option['value'];
+            return ChoiceChip(
+              label: Text('${option['icon']} ${option['label']}'),
+              selected: isSelected,
+              onSelected: (_) {
+                setState(() {
+                  _selectedWeather = option['value']!;
+                });
+              },
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTitleAndCategory() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: _titleController,
+          decoration: const InputDecoration(
+            labelText: '标题',
+            border: OutlineInputBorder(),
+          ),
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return '请输入日志标题';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _categoryController,
+          decoration: const InputDecoration(
+            labelText: '分类（可手动输入，例如：培训、总结、项目等）',
+            border: OutlineInputBorder(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKeywordInput() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('关键词 (${_keywords.length}/$_maxKeywords)',
+                style: Theme.of(context).textTheme.titleMedium),
+            if (_keywords.length >= _maxKeywords)
+              const Text('已达上限', style: TextStyle(color: Colors.red)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _keywords
+              .map(
+                (keyword) => Chip(
+                  label: Text(keyword),
+                  onDeleted: () => setState(() => _keywords.remove(keyword)),
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _keywordController,
+          decoration: InputDecoration(
+            labelText: '输入后按回车添加',
+            border: const OutlineInputBorder(),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.add),
+              onPressed: () => _submitKeyword(_keywordController.text),
+            ),
+          ),
+          onSubmitted: _submitKeyword,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContentInput() {
+    return TextFormField(
+      controller: _contentController,
+      maxLines: 6,
+      decoration: const InputDecoration(
+        labelText: '详细内容',
+        alignLabelWithHint: true,
+        border: OutlineInputBorder(),
+      ),
+    );
+  }
+
+  Widget _buildImageSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('图片', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _pickImage(ImageSource.gallery),
+                icon: const Icon(Icons.photo_library),
+                label: const Text('相册'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _pickImage(ImageSource.camera),
+                icon: const Icon(Icons.camera_alt),
+                label: const Text('拍照'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_persistedImages.isEmpty && _newImages.isEmpty)
+          Text('暂无图片', style: TextStyle(color: Colors.grey[600])),
+        if (_persistedImages.isNotEmpty) ...[
+          Text('已保存', style: TextStyle(color: Colors.grey[700])),
+          const SizedBox(height: 8),
+          _buildImageList(
+            children: List.generate(_persistedImages.length, (index) {
+              final path = _persistedImages[index];
+              return _buildImagePreview(
+                child: _buildCalendarImage(path, width: 100, height: 80),
+                onRemove: () => setState(() => _persistedImages.removeAt(index)),
+              );
+            }),
+          ),
+        ],
+        if (_newImages.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text('待上传', style: TextStyle(color: Colors.grey[700])),
+          const SizedBox(height: 8),
+          _buildImageList(
+            children: List.generate(_newImages.length, (index) {
+              final file = _newImages[index];
+              return _buildImagePreview(
+                child: Image.file(file, width: 100, height: 80, fit: BoxFit.cover),
+                onRemove: () => setState(() => _newImages.removeAt(index)),
+              );
+            }),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildImageList({required List<Widget> children}) {
+    return SizedBox(
+      height: 90,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemBuilder: (context, index) => children[index],
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemCount: children.length,
+      ),
+    );
+  }
+
+  Widget _buildImagePreview({required Widget child, required VoidCallback onRemove}) {
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: child,
+        ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: GestureDetector(
+            onTap: onRemove,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.black54,
+                shape: BoxShape.circle,
+              ),
+              padding: const EdgeInsets.all(4),
+              child: const Icon(Icons.close, color: Colors.white, size: 16),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLocationSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('地理位置', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _locationController,
+          readOnly: true,
+          decoration: InputDecoration(
+            labelText: '地点描述（通过按钮自动获取）',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            ElevatedButton.icon(
+              onPressed: _isLocating ? null : _getCurrentLocation,
+              icon: _isLocating
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.my_location),
+              label: const Text('获取当前位置'),
+            ),
+            const SizedBox(width: 12),
+            if (_latitude != null && _longitude != null)
+              Expanded(
+                child: Text(
+                  '(${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)})',
+                  style: const TextStyle(color: Colors.green),
+                  textAlign: TextAlign.end,
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTaskSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('关联的任务', style: Theme.of(context).textTheme.titleMedium),
+            TextButton.icon(
+              onPressed: _showAddTaskDialog,
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text('添加'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_taskUpdates.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '暂无关联任务',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+          )
+        else
+          Column(
+            children: List.generate(_taskUpdates.length, (index) {
+              final update = _taskUpdates[index];
+              final sliderValue = (update.progress_percentage ?? 0).toDouble();
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            update.taskName ?? '任务 #${update.taskId}',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          onPressed: () => setState(() => _taskUpdates.removeAt(index)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('进度'),
+                        Text('${sliderValue.round()}%'),
+                      ],
+                    ),
+                    Slider(
+                      min: 0,
+                      max: 100,
+                      divisions: 10,
+                      value: sliderValue,
+                      onChanged: (value) => _updateTaskProgress(index, value.round()),
+                    ),
+                    DropdownButtonFormField<String>(
+                      initialValue: update.task_status,
+                      hint: const Text('状态（可选）'),
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _taskStatuses.entries
+                          .map(
+                            (entry) => DropdownMenuItem<String>(
+                              value: entry.key,
+                              child: Text(entry.value),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => _updateTaskStatus(index, value),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildActions() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton(
+            onPressed: _handleSave,
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        _selectedDate = picked;
+      });
+    }
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? picked = await _imagePicker.pickImage(source: source, imageQuality: 80);
+      if (picked != null) {
+        setState(() {
+          _newImages.add(File(picked.path));
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('选择图片失败: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      _isLocating = true;
+    });
+
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) {
+        setState(() => _isLocating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('位置权限被拒绝'), backgroundColor: Colors.red),
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      final address = await GeocodingService.reverseGeocodeCached(position.latitude, position.longitude);
+
+      if (!mounted) return;
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _locationController.text =
+            address ?? '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+        _isLocating = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLocating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('获取位置失败: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  void _showAddTaskDialog() {
+    final existingIds = _taskUpdates.map((e) => e.taskId).toSet();
+    final available = widget.availableTasks.where((task) => !existingIds.contains(task.id)).toList();
+
+    if (available.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂无可关联的任务')),
+      );
+      return;
+    }
+
+    CalendarTask? selectedTask;
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('选择任务'),
+          content: DropdownButtonFormField<CalendarTask>(
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+            items: available
+                .map(
+                  (task) => DropdownMenuItem<CalendarTask>(
+                    value: task,
+                    child: Text(task.title, overflow: TextOverflow.ellipsis),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              selectedTask = value;
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (selectedTask != null) {
+                  setState(() {
+                    _taskUpdates.add(
+                      LogTaskUpdate(
+                        taskId: selectedTask!.id,
+                        taskName: selectedTask!.title,
+                        progress_percentage: 0,
+                        task_status: 'in_progress',
+                      ),
+                    );
+                  });
+                  Navigator.of(ctx).pop();
+                }
+              },
+              child: const Text('添加'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _updateTaskProgress(int index, int value) {
+    setState(() {
+      _taskUpdates[index] = _taskUpdates[index].copyWith(progress_percentage: value);
+    });
+  }
+
+  void _updateTaskStatus(int index, String? value) {
+    setState(() {
+      _taskUpdates[index] = _taskUpdates[index].copyWith(
+        task_status: value,
+        setStatusToNull: value == null,
+      );
+    });
+  }
+
+  void _submitKeyword(String? raw) {
+    final value = raw?.trim() ?? '';
+    if (value.isEmpty) return;
+    if (_keywords.length >= _maxKeywords) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('最多添加$_maxKeywords 个关键词')),
+      );
+      return;
+    }
+    if (!_keywords.contains(value)) {
+      setState(() {
+        _keywords.add(value);
+      });
+    }
+    _keywordController.clear();
+  }
+
+  void _handleSave() {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final locationName = _locationController.text.trim();
+    final result = _CalendarLogEditResult(
+      selectedDate: _selectedDate,
+      title: _titleController.text.trim(),
+      content: _contentController.text.trim(),
+      category: _categoryController.text.trim(),
+      weather: _selectedWeather,
+      keywords: List<String>.from(_keywords),
+      persistedImages: List<String>.from(_persistedImages),
+      newImages: List<File>.from(_newImages),
+      locationName: locationName.isEmpty ? null : locationName,
+      latitude: _latitude,
+      longitude: _longitude,
+      taskUpdates: _taskUpdates.map((e) => e.copyWith()).toList(),
+    );
+
+    Navigator.of(context).pop(result);
   }
 
 }

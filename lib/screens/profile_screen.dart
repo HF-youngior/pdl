@@ -6,6 +6,7 @@ import 'login_screen.dart';
 import 'settings_screen.dart';
 import 'help_support_screen.dart';
 import 'about_screen.dart';
+import 'checkin_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final User user;
@@ -114,8 +115,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 20),
 
-            // 小组件区域（仅展示今日数据）
-            _buildDataWidget(),
+            // 小组件区域（并排展示今日数据和每日签到）
+            Row(
+              children: [
+                Expanded(child: _buildDataWidget()),
+                const SizedBox(width: 12),
+                Expanded(child: _buildCheckinWidget()),
+              ],
+            ),
             const SizedBox(height: 20),
 
             // 功能菜单
@@ -138,27 +145,82 @@ class _ProfileScreenState extends State<ProfileScreen> {
         },
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 Icons.analytics,
-                size: 40,
+                size: 36,
                 color: Theme.of(context).primaryColor,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                '今日数据',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
               ),
               const SizedBox(height: 8),
               const Text(
+                '今日数据',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
                 '查看完成情况和优先级分布',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
+                  color: Colors.grey,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCheckinWidget() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => CheckinScreen(user: widget.user),
+            ),
+          ).then((_) {
+            // 返回后可能需要刷新用户信息（因为积分可能已更新）
+            if (mounted) {
+              setState(() {});
+            }
+          });
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.calendar_today,
+                size: 36,
+                color: Colors.orange[600],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '每日签到',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '签到领积分',
+                style: TextStyle(
+                  fontSize: 11,
                   color: Colors.grey,
                 ),
                 textAlign: TextAlign.center,

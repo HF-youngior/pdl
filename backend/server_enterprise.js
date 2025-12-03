@@ -7,6 +7,8 @@ const path = require('path');
 const axios = require('axios');
 const multer = require('multer');
 const fs = require('fs');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./swagger.json');
 require('dotenv').config();
 // const { useDefault, Segment } = require('segmentit');
 // const segmenter = useDefault(new Segment());
@@ -31,6 +33,10 @@ app.use('/public', express.static(publicDir));
 
 // 静态文件服务 - 根路径访问public目录
 app.use('/', express.static(publicDir));
+
+// Swagger UI 文档（基于 OpenAPI）
+// 访问地址示例：http://localhost:8080/swagger
+app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 // 确保uploads目录存在
 const uploadsDir = path.join(publicDir, 'uploads');
@@ -166,6 +172,23 @@ function safeParseJSON(value) {
   return value;
 }
 
+// 将数据库中的关键词字段统一转换为字符串数组
+function normalizeKeywordList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map(item => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 // 初始化数据库连接
 async function initDatabase() {
   try {
@@ -209,6 +232,7 @@ async function createTables() {
       department_id VARCHAR(36) NOT NULL,
       role ENUM('admin', 'founder', 'department_head', 'team_leader', 'employee') NOT NULL,
       parent_id VARCHAR(36) NULL,
+      points INT DEFAULT 0,
       is_active BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       last_login_at TIMESTAMP NULL,
@@ -392,7 +416,35 @@ async function createTables() {
       UNIQUE KEY log_task_unique (log_id, task_id),
       FOREIGN KEY (log_id) REFERENCES personal_logs(id) ON DELETE CASCADE,
       FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
+    // 签到记录表
+    `CREATE TABLE IF NOT EXISTS checkin_records (
+      id VARCHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      checkin_date DATE NOT NULL,
+      points_earned INT DEFAULT 5,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY user_checkin_date (user_id, checkin_date),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_user_id (user_id),
+      INDEX idx_checkin_date (checkin_date),
+      INDEX idx_user_date (user_id, checkin_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='签到记录表';`,
+
+    // 积分流水表（包含获取与消耗）
+    `CREATE TABLE IF NOT EXISTS points_transactions (
+      id VARCHAR(64) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      type VARCHAR(20) NOT NULL, -- earn / spend
+      amount INT NOT NULL,
+      description VARCHAR(255),
+      related_id VARCHAR(64),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_points_user_created (user_id, created_at),
+      INDEX idx_points_type (type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='积分流水表（获取/消耗记录）';`
   ];
 
   for (const table of tables) {
@@ -440,6 +492,9 @@ async function ensureSchemaCompatibility() {
     try { await db.execute("ALTER TABLE tasks ADD COLUMN request_type VARCHAR(50) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN request_response VARCHAR(20) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN related_task_id VARCHAR(36) NULL"); } catch(e){}
+    
+    // users表积分字段
+    try { await db.execute("ALTER TABLE users ADD COLUMN points INT DEFAULT 0"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN attachments JSON NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE mbti_records ADD COLUMN personal_info JSON NULL"); } catch(e){}
     // 索引、关联关系等原有包裹不变
@@ -1615,14 +1670,50 @@ app.put('/api/company-important-items/:id/select', authenticateToken, checkPermi
 });
 
 // 创建重要事项
+// 兼容两种用法：
+// 1）旧版：直接传入 title/description/priority/deadline 创建一条新记录
+// 2）新版（文档示例）：传入 item_id，从重要事项库中选择并标记为公司重要事项
 app.post('/api/company-important-items', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
   try {
-    const { title, description, priority, deadline } = req.body;
+    const { item_id, title, description, priority, deadline } = req.body;
+
+    // 新版用法：从重要事项库中选择
+    if (item_id) {
+      try {
+        // 检查记录是否存在
+        const [rows] = await db.execute(
+          'SELECT id FROM company_important_items WHERE id = ?',
+          [item_id]
+        );
+
+        if (!rows || rows.length === 0) {
+          return res.status(404).json({ error: '指定的重要事项不存在' });
+        }
+
+        // 标记为已选择
+        await db.execute(
+          'UPDATE company_important_items SET is_selected = TRUE, updated_by = ? WHERE id = ?',
+          [req.user.id, item_id]
+        );
+
+        return res.status(200).json({ message: '重要事项添加成功', id: item_id });
+      } catch (innerError) {
+        console.error('根据 item_id 创建公司重要事项错误:', innerError);
+        return res.status(500).json({ error: '服务器内部错误' });
+      }
+    }
+
+    // 旧版用法：直接创建新记录，做一下基本参数校验，避免插入 NULL 导致 500
+    if (!title || !description) {
+      return res.status(400).json({ error: 'title 和 description 为必填字段' });
+    }
+
+    const safePriority = priority || 'p1';
     const id = require('crypto').randomUUID();
 
     await db.execute(
       'INSERT INTO company_important_items (id, title, description, priority, deadline, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, title, description, priority, deadline, req.user.id]
+      [id, title, description, safePriority, deadline || null, req.user.id]
     );
 
     res.status(201).json({ message: '创建成功', id });
@@ -1680,15 +1771,50 @@ app.put('/api/company-important-items/batch-select', authenticateToken, checkPer
 });
 
 // 更新重要事项（编辑内容）
+// 支持部分字段更新，避免未传字段被写成 NULL 导致 500
 app.put('/api/company-important-items/:id', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, priority, status, deadline } = req.body;
 
-    await db.execute(
-      'UPDATE company_important_items SET title = ?, description = ?, priority = ?, status = ?, deadline = ?, updated_by = ? WHERE id = ?',
-      [title, description, priority, status, deadline, req.user.id, id]
-    );
+    const fields = [];
+    const params = [];
+
+    if (title !== undefined) {
+      fields.push('title = ?');
+      params.push(title);
+    }
+    if (description !== undefined) {
+      fields.push('description = ?');
+      params.push(description);
+    }
+    if (priority !== undefined) {
+      fields.push('priority = ?');
+      params.push(priority);
+    }
+    if (status !== undefined) {
+      fields.push('status = ?');
+      params.push(status);
+    }
+    if (deadline !== undefined) {
+      fields.push('deadline = ?');
+      params.push(deadline);
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: '没有提供需要更新的字段' });
+    }
+
+    fields.push('updated_by = ?');
+    params.push(req.user.id);
+    params.push(id);
+
+    const sql = `UPDATE company_important_items SET ${fields.join(', ')} WHERE id = ?`;
+    const [result] = await db.execute(sql, params);
+
+    if (!result || result.affectedRows === 0) {
+      return res.status(404).json({ error: '公司重要事项不存在' });
+    }
 
     res.json({ message: '更新成功' });
   } catch (error) {
@@ -3107,6 +3233,416 @@ app.put('/api/notifications/mark-all-read', authenticateToken, async (req, res) 
   }
 });
 
+// ==================== 签到相关API ====================
+
+// 获取用户积分（兼容是否带 /api 前缀的两种路由）
+app.get(['/api/checkin/points', '/checkin/points'], authenticateToken, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    
+    // 验证权限：只能查询自己的积分，或者管理员/创始人可以查询其他人的
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权查询该用户的积分' });
+    }
+
+    const [rows] = await db.execute(
+      'SELECT points FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    res.json({ points: rows[0].points || 0 });
+  } catch (error) {
+    console.error('获取积分错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取签到记录（按月查询，兼容是否带 /api 前缀）
+app.get(['/api/checkin/records', '/checkin/records'], authenticateToken, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
+    
+    // 验证权限
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权查询该用户的签到记录' });
+    }
+
+    // 查询该月的签到记录
+    const [rows] = await db.execute(
+      `SELECT checkin_date, points_earned, created_at
+       FROM checkin_records
+       WHERE user_id = ? 
+         AND YEAR(checkin_date) = ?
+         AND MONTH(checkin_date) = ?
+       ORDER BY checkin_date ASC`,
+      [userId, year, month]
+    );
+
+    // 格式化日期为 YYYY-MM-DD 格式
+    const records = rows.map(row => ({
+      checkin_date: formatDateOnlyForBeijing(row.checkin_date),
+      points_earned: row.points_earned,
+      created_at: formatDateTimeForBeijing(row.created_at)
+    }));
+
+    res.json({ records });
+  } catch (error) {
+    console.error('获取签到记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取积分获取/消耗记录
+// type=earn 使用 checkin_records；type=spend 使用 points_transactions
+// 兼容是否带 /api 前缀
+app.get(['/api/checkin/points-history', '/checkin/points-history'], authenticateToken, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    const type = req.query.type || 'earn'; // earn | spend
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
+
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权查询该用户的积分记录' });
+    }
+
+    let rows;
+
+    if (type === 'spend') {
+      // 消耗记录：来自积分流水表
+      [rows] = await db.execute(
+        `SELECT DATE(created_at) AS date, amount, description, created_at
+         FROM points_transactions
+         WHERE user_id = ?
+           AND type = 'spend'
+           AND YEAR(created_at) = ?
+           AND MONTH(created_at) = ?
+         ORDER BY created_at DESC`,
+        [userId, year, month]
+      );
+    } else {
+      // 获取记录：来自签到记录表
+      [rows] = await db.execute(
+        `SELECT checkin_date AS date, points_earned AS amount, '每日签到' AS description, created_at
+         FROM checkin_records
+         WHERE user_id = ?
+           AND YEAR(checkin_date) = ?
+           AND MONTH(checkin_date) = ?
+         ORDER BY checkin_date DESC`,
+        [userId, year, month]
+      );
+    }
+
+    const records = rows.map(row => ({
+      date: formatDateOnlyForBeijing(row.date),
+      amount: row.amount,
+      description: row.description,
+      created_at: formatDateTimeForBeijing(row.created_at)
+    }));
+
+    res.json({ records });
+  } catch (error) {
+    console.error('获取积分记录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取连续签到天数
+app.get('/api/checkin/consecutive', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    
+    // 验证权限
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权查询该用户的连续签到天数' });
+    }
+
+    // 获取所有签到日期，按日期降序排列
+    const [rows] = await db.execute(
+      `SELECT checkin_date
+       FROM checkin_records
+       WHERE user_id = ?
+       ORDER BY checkin_date DESC`,
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.json({ consecutiveDays: 0 });
+    }
+
+    // 计算连续签到天数
+    let consecutiveDays = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // 将日期格式化为 YYYY-MM-DD 并转换为Date对象进行比较
+    const checkinDates = rows.map(row => {
+      const date = new Date(row.checkin_date);
+      date.setHours(0, 0, 0, 0);
+      return date;
+    });
+
+    // 检查今天是否签到
+    let expectedDate = new Date(today);
+    let checkIndex = 0;
+    
+    // 如果今天已签到，从今天开始计算；否则从昨天开始
+    if (checkinDates.length > 0 && checkinDates[0].getTime() === expectedDate.getTime()) {
+      consecutiveDays = 1;
+      checkIndex = 1;
+      expectedDate = new Date(today);
+      expectedDate.setDate(expectedDate.getDate() - 1);
+    } else {
+      // 从昨天开始检查
+      expectedDate = new Date(today);
+      expectedDate.setDate(expectedDate.getDate() - 1);
+    }
+
+    // 检查连续签到
+    while (checkIndex < checkinDates.length) {
+      const expectedTime = expectedDate.getTime();
+      const checkinTime = checkinDates[checkIndex].getTime();
+      
+      if (checkinTime === expectedTime) {
+        consecutiveDays++;
+        expectedDate.setDate(expectedDate.getDate() - 1);
+        checkIndex++;
+      } else if (checkinTime < expectedTime) {
+        // 日期不连续，停止计算
+        break;
+      } else {
+        // 跳过更早的签到记录（理论上不应该出现）
+        checkIndex++;
+      }
+    }
+
+    res.json({ consecutiveDays });
+  } catch (error) {
+    console.error('获取连续签到天数错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 每日签到
+app.post('/api/checkin', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.body.userId || req.user.id;
+    
+    // 验证权限：只能为自己签到，或者管理员/创始人可以为其他人签到
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权为该用户签到' });
+    }
+
+    // 获取今天的日期（北京时间）
+    const today = new Date();
+    const beijingDate = shiftToBeijing(today);
+    const todayStr = formatDateOnlyForBeijing(beijingDate);
+
+    // 检查今天是否已经签到
+    const [existing] = await db.execute(
+      'SELECT id FROM checkin_records WHERE user_id = ? AND checkin_date = ?',
+      [userId, todayStr]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({ error: '今天已经签到过了' });
+    }
+
+    // 计算连续签到天数（用于可能的奖励）
+    // 先检查昨天是否签到
+    const yesterday = new Date(beijingDate);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = formatDateOnlyForBeijing(yesterday);
+    
+    const [lastCheckin] = await db.execute(
+      `SELECT checkin_date
+       FROM checkin_records
+       WHERE user_id = ?
+       ORDER BY checkin_date DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    let consecutiveDays = 1; // 今天签到至少是1天
+    
+    if (lastCheckin.length > 0 && lastCheckin[0].checkin_date === yesterdayStr) {
+      // 昨天签到了，需要计算之前的连续天数
+      const [allCheckins] = await db.execute(
+        `SELECT checkin_date
+         FROM checkin_records
+         WHERE user_id = ?
+         ORDER BY checkin_date DESC`,
+        [userId]
+      );
+
+      // 从昨天开始往前计算连续天数
+      let expectedDate = new Date(yesterday);
+      let count = 1; // 包括昨天
+      
+      for (let i = 0; i < allCheckins.length; i++) {
+        const checkinDate = new Date(allCheckins[i].checkin_date);
+        checkinDate.setHours(0, 0, 0, 0);
+        expectedDate.setHours(0, 0, 0, 0);
+        
+        if (checkinDate.getTime() === expectedDate.getTime()) {
+          count++;
+          expectedDate.setDate(expectedDate.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+      
+      consecutiveDays = count; // 加上今天
+    } else if (lastCheckin.length === 0) {
+      // 第一次签到
+      consecutiveDays = 1;
+    }
+    // 如果昨天没签到，但之前有签到记录，则连续天数重置为1（已经设置）
+
+    // 基础积分
+    let pointsEarned = 5;
+    
+    // 连续签到奖励（可选）
+    if (consecutiveDays >= 30) {
+      pointsEarned = 20; // 连续30天额外奖励
+    } else if (consecutiveDays >= 7) {
+      pointsEarned = 10; // 连续7天额外奖励
+    }
+
+    // 开始事务
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      // 生成签到记录ID
+      const checkinId = `checkin-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // 插入签到记录
+      await connection.execute(
+        `INSERT INTO checkin_records (id, user_id, checkin_date, points_earned, created_at)
+         VALUES (?, ?, ?, ?, NOW())`,
+        [checkinId, userId, todayStr, pointsEarned]
+      );
+
+      // 写入积分流水（获取）
+      const txnId = `ptx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      await connection.execute(
+        `INSERT INTO points_transactions (id, user_id, type, amount, description, related_id, created_at)
+         VALUES (?, ?, 'earn', ?, '每日签到', ?, NOW())`,
+        [txnId, userId, pointsEarned, checkinId]
+      );
+
+      // 更新用户积分
+      await connection.execute(
+        'UPDATE users SET points = COALESCE(points, 0) + ? WHERE id = ?',
+        [pointsEarned, userId]
+      );
+
+      // 获取更新后的积分
+      const [userRows] = await connection.execute(
+        'SELECT points FROM users WHERE id = ?',
+        [userId]
+      );
+
+      await connection.commit();
+      connection.release();
+
+      res.json({
+        message: '签到成功',
+        pointsEarned,
+        points: userRows[0].points || 0,
+        consecutiveDays,
+        checkinDate: todayStr
+      });
+    } catch (error) {
+      await connection.rollback();
+      connection.release();
+      throw error;
+    }
+  } catch (error) {
+    console.error('签到错误:', error);
+    res.status(500).json({ error: error.message || '服务器内部错误' });
+  }
+});
+
+// 使用积分兑换奖励（例如 Loopy 装扮），兼容是否带 /api 前缀
+app.post(['/api/checkin/redeem', '/checkin/redeem'], authenticateToken, async (req, res) => {
+  try {
+    const userId = req.body.userId || req.user.id;
+    const cost = parseInt(req.body.cost, 10);
+    const itemName = (req.body.itemName || '').toString().trim();
+
+    if (!Number.isFinite(cost) || cost <= 0) {
+      return res.status(400).json({ error: '无效的兑换积分消耗值' });
+    }
+
+    // 只能为自己兑换，或者管理员/创始人可以为其他人兑换
+    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+      return res.status(403).json({ error: '无权为该用户进行积分兑换' });
+    }
+
+    // 查询当前积分
+    const [rows] = await db.execute(
+      'SELECT points FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    const currentPoints = rows[0].points || 0;
+    if (currentPoints < cost) {
+      return res.status(400).json({ error: '积分不足，无法兑换该奖励' });
+    }
+
+    const newPoints = currentPoints - cost;
+
+    // 开启简单事务，确保扣减积分与流水记录一致
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      await connection.execute(
+        'UPDATE users SET points = ? WHERE id = ?',
+        [newPoints, userId]
+      );
+
+      const txnId = `ptx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const desc = itemName
+        ? `兑换：${itemName}`
+        : '兑换积分商城奖励';
+
+      await connection.execute(
+        `INSERT INTO points_transactions (id, user_id, type, amount, description, related_id, created_at)
+         VALUES (?, ?, 'spend', ?, ?, NULL, NOW())`,
+        [txnId, userId, cost, desc]
+      );
+
+      await connection.commit();
+      connection.release();
+
+      res.json({
+        message: '兑换成功',
+        points: newPoints
+      });
+    } catch (innerErr) {
+      await connection.rollback();
+      connection.release();
+      throw innerErr;
+    }
+  } catch (error) {
+    console.error('积分兑换错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 图片上传API
 app.post('/api/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
   try {
@@ -3394,7 +3930,6 @@ app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
       content: payload.content ?? null,
       category: payload.category,
       is_completed: payload.is_completed ?? false,
-      log_date: payload.log_date ? formatDateOnly(payload.log_date) : null,
       weather: payload.weather ?? null,
       keywords: dbKeywords,
       log_title: payload.log_title ?? null,
@@ -3403,6 +3938,12 @@ app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
       is_archived: payload.is_archived ? 1 : 0,
       related_task_id: payload.related_task_id ?? null
     };
+
+    // 只有在前端明确传入 log_date 字段时才更新数据库中的 log_date，
+    // 避免用户仅修改天气等其它字段时把原来的日期覆盖为 NULL。
+    if (Object.prototype.hasOwnProperty.call(payload, 'log_date')) {
+      fields.log_date = payload.log_date ? formatDateOnly(payload.log_date) : null;
+    }
     if (payload.images !== undefined) {
       const updatedImages = Array.isArray(payload.images)
         ? payload.images.filter(item => typeof item === 'string' && item.trim().length > 0)
@@ -3630,11 +4171,23 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
     if (!year || !month) {
       return res.status(400).json({ error: '请提供年份(year)和月份(month)参数' });
     }
+
+    // 年份必须是四位整数，例如 2025
+    const yearNum = parseInt(year, 10);
+    if (!/^\d{4}$/.test(String(year)) || !Number.isInteger(yearNum)) {
+      return res.status(400).json({ error: '年份(year)必须是四位整数，例如2025' });
+    }
+
+    // 月份必须是 1-12 的整数
+    const monthNum = parseInt(month, 10);
+    if (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
+      return res.status(400).json({ error: '月份(month)必须是1-12之间的整数' });
+    }
     
     // 计算月份的开始和结束日期
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
-    const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay} 23:59:59`;
+    const startDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-01 00:00:00`;
+    const lastDay = new Date(yearNum, monthNum, 0).getDate();
+    const endDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-${lastDay} 23:59:59`;
     
     // 获取任务（包含跨月跨度任务：与当月有任意重叠即纳入）
     let taskQuery = `
@@ -3664,8 +4217,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
       ORDER BY t.start_time, t.priority
     `;
     
-    const startDateOnly = `${year}-${String(month).padStart(2, '0')}-01`;
-    const endDateOnly = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+    const startDateOnly = `${yearNum}-${String(monthNum).padStart(2, '0')}-01`;
+    const endDateOnly = `${yearNum}-${String(monthNum).padStart(2, '0')}-${lastDay}`;
     
     const [tasks] = await db.execute(taskQuery, [
       req.user.id,
@@ -3687,7 +4240,18 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         pl.is_completed,
         pl.created_at,
         pl.images,
-        DATE_FORMAT(CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00'), '%Y-%m-%d') as log_date
+        pl.weather,
+        pl.keywords,
+        pl.location_name,
+        pl.location_latitude,
+        pl.location_longitude,
+        DATE_FORMAT(
+          CASE 
+            WHEN pl.log_date IS NOT NULL THEN pl.log_date
+            ELSE CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00')
+          END,
+          '%Y-%m-%d'
+        ) as log_date
       FROM personal_logs pl
       WHERE pl.user_id = ?
       AND pl.created_at >= ?
@@ -3816,6 +4380,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         const dateKey = log.log_date;
         console.log(`  日志 "${log.title}" 的日期: ${dateKey}, 日历中是否存在: ${!!calendar[dateKey]}`);
         if (calendar[dateKey]) {
+          const images = safeParseJSON(log.images) || [];
+          const keywords = normalizeKeywordList(log.keywords);
           calendar[dateKey].logs.push({
             id: log.id,
             title: log.title,
@@ -3824,7 +4390,13 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
             quadrant: log.quadrant,
             is_completed: log.is_completed,
             created_at: formatDateTimeForBeijing(log.created_at),
-            images: safeParseJSON(log.images) || []
+            log_date: log.log_date,
+            weather: log.weather,
+            keywords,
+            images,
+            location_name: log.location_name,
+            location_latitude: log.location_latitude,
+            location_longitude: log.location_longitude
           });
           calendar[dateKey].hasData = true;
         }
@@ -3859,11 +4431,23 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
     if (!userId || !year || !month) {
       return res.status(400).json({ error: '请提供userId、year和month参数' });
     }
+
+    // 年份必须是四位整数，例如 2025
+    const yearNum = parseInt(year, 10);
+    if (!/^\d{4}$/.test(String(year)) || !Number.isInteger(yearNum)) {
+      return res.status(400).json({ error: '年份(year)必须是四位整数，例如2025' });
+    }
+
+    // 月份必须是 1-12 的整数
+    const monthNum = parseInt(month, 10);
+    if (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
+      return res.status(400).json({ error: '月份(month)必须是1-12之间的整数' });
+    }
     
     // 计算月份的开始和结束日期
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
-    const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay} 23:59:59`;
+    const startDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-01 00:00:00`;
+    const lastDay = new Date(yearNum, monthNum, 0).getDate();
+    const endDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-${lastDay} 23:59:59`;
     
     // 获取任务
     let taskQuery = `
@@ -3891,8 +4475,8 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
       ORDER BY t.start_time, t.priority
     `;
     
-    const startDateOnly = `${year}-${String(month).padStart(2, '0')}-01`;
-    const endDateOnly = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+    const startDateOnly = `${yearNum}-${String(monthNum).padStart(2, '0')}-01`;
+    const endDateOnly = `${yearNum}-${String(monthNum).padStart(2, '0')}-${lastDay}`;
     
     const [tasks] = await db.execute(taskQuery, [
       userId, 
@@ -3913,7 +4497,18 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         pl.is_completed,
         pl.created_at,
         pl.images,
-        DATE_FORMAT(CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00'), '%Y-%m-%d') as log_date
+        pl.weather,
+        pl.keywords,
+        pl.location_name,
+        pl.location_latitude,
+        pl.location_longitude,
+        DATE_FORMAT(
+          CASE 
+            WHEN pl.log_date IS NOT NULL THEN pl.log_date
+            ELSE CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00')
+          END,
+          '%Y-%m-%d'
+        ) as log_date
       FROM personal_logs pl
       WHERE pl.user_id = ?
       AND pl.created_at >= ?
@@ -3948,7 +4543,12 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         isCompleted: log.is_completed === 1,
         date: log.log_date,
         createdAt: log.created_at,
-        images: safeParseJSON(log.images) || []
+        weather: log.weather,
+        keywords: normalizeKeywordList(log.keywords),
+        images: safeParseJSON(log.images) || [],
+        location_name: log.location_name,
+        location_latitude: log.location_latitude,
+        location_longitude: log.location_longitude
       })),
       tasks: tasks.map(task => ({
         id: task.id,
@@ -3989,6 +4589,39 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
     if (!date) {
       return res.status(400).json({ error: '请提供日期(date)参数，格式: YYYY-MM-DD' });
     }
+
+    // 校验日期格式与取值范围（年份四位，月份 1-12，日期根据月份和闰年规则）
+    const dateMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(date));
+    if (!dateMatch) {
+      return res.status(400).json({ error: '日期(date)格式必须为YYYY-MM-DD，例如2025-01-15' });
+    }
+
+    const yearNum = parseInt(dateMatch[1], 10);
+    const monthNum = parseInt(dateMatch[2], 10);
+    const dayNum = parseInt(dateMatch[3], 10);
+
+    if (!Number.isInteger(yearNum)) {
+      return res.status(400).json({ error: '年份必须是四位整数，例如2025' });
+    }
+
+    if (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
+      return res.status(400).json({ error: '月份必须是1-12之间的整数' });
+    }
+
+    // 根据月份和闰年规则检查日期
+    const isLeapYear = (yearNum % 4 === 0 && yearNum % 100 !== 0) || (yearNum % 400 === 0);
+    let maxDay;
+    if ([1, 3, 5, 7, 8, 10, 12].includes(monthNum)) {
+      maxDay = 31;
+    } else if (monthNum === 2) {
+      maxDay = isLeapYear ? 29 : 28;
+    } else {
+      maxDay = 30;
+    }
+
+    if (!Number.isInteger(dayNum) || dayNum < 1 || dayNum > maxDay) {
+      return res.status(400).json({ error: `日期(day)不合法：${yearNum}年${monthNum}月应在1-${maxDay}号之间` });
+    }
     
     // 获取该日期的所有任务（包括跨日任务，确保覆盖当天）
     let taskQuery = `
@@ -4025,7 +4658,12 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
       FROM personal_logs pl
       LEFT JOIN tasks t ON pl.related_task_id = t.id
       WHERE pl.user_id = ?
-      AND DATE(pl.created_at) = ?
+      AND DATE(
+        COALESCE(
+          pl.log_date,
+          CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00')
+        )
+      ) = ?
       ORDER BY pl.created_at DESC
     `;
     
@@ -4056,14 +4694,20 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
       })),
       logs: logs.map(l => {
         const images = safeParseJSON(l.images) || [];
+        const keywords = normalizeKeywordList(l.keywords);
         return {
-        id: l.id,
-        title: l.title,
-        content: l.content,
-        category: l.category,
-        quadrant: l.quadrant,
-        is_completed: l.is_completed,
+          id: l.id,
+          title: l.title,
+          content: l.content,
+          category: l.category,
+          quadrant: l.quadrant,
+          is_completed: l.is_completed,
           created_at: formatDateTimeForBeijing(l.created_at),
+          log_date: l.log_date
+            ? formatDateOnlyForBeijing(l.log_date)
+            : formatDateOnlyForBeijing(l.created_at),
+          weather: l.weather,
+          keywords,
           images,
           location_name: l.location_name,
           location_latitude: l.location_latitude,
@@ -4966,6 +5610,7 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`企业管理系统服务器运行在端口 ${PORT}`);
     console.log(`API地址: http://localhost:${PORT}/api`);
+    console.log(`Swagger UI: http://localhost:${PORT}/swagger`);
     console.log(`Web管理端: http://localhost:${PORT}/web_admin`);
     console.log(`\n📱 手机访问地址（同一WiFi网络）:`);
     console.log(`   请使用电脑的IP地址: http://[电脑IP]:${PORT}/api`);
@@ -4979,6 +5624,7 @@ async function startServer() {
     console.log(`   员工: hr_emp1 / hremp123, finance_emp1 / financeemp123, marketing_emp1 / marketingemp123`);
     console.log(`\n🌐 访问地址:`);
     console.log(`   API接口: http://localhost:${PORT}/api`);
+    console.log(`   Swagger UI: http://localhost:${PORT}/swagger`);
     console.log(`   Web管理: http://localhost:${PORT}/web_admin`);
   });
 }
