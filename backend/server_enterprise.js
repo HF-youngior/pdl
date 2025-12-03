@@ -5,6 +5,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const axios = require('axios');
+const multer = require('multer');
+const fs = require('fs');
 require('dotenv').config();
 // const { useDefault, Segment } = require('segmentit');
 // const segmenter = useDefault(new Segment());
@@ -24,10 +26,52 @@ app.use(express.json());
 app.use('/web_admin', express.static('../web_admin'));
 
 // 静态文件服务 - 提供公共资源
-app.use('/public', express.static(path.join(__dirname, 'public')));
+const publicDir = path.join(__dirname, 'public');
+app.use('/public', express.static(publicDir));
 
 // 静态文件服务 - 根路径访问public目录
-app.use('/', express.static(path.join(__dirname, 'public')));
+app.use('/', express.static(publicDir));
+
+// 确保uploads目录存在
+const uploadsDir = path.join(publicDir, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// 直接暴露上传目录，方便通过 http://host:port/uploads/xxx 访问
+app.use('/uploads', express.static(uploadsDir));
+
+// 配置multer用于图片上传
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    // 生成唯一文件名：时间戳 + 随机数 + 原始扩展名
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, 'img-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 限制文件大小为10MB
+  },
+  fileFilter: function (req, file, cb) {
+    // 只允许图片文件
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('只允许上传图片文件 (jpeg, jpg, png, gif, webp)'));
+    }
+  }
+});
 
 // 数据库连接 - 云数据库配置
 const dbConfig = {
@@ -1404,6 +1448,42 @@ app.delete('/api/users/:id', authenticateToken, checkPermission(['admin', 'found
   }
 });
 
+// 用户自己修改密码（需要验证旧密码）
+app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ error: '请提供旧密码和新密码' });
+    }
+
+    if (newPassword.trim().length < 6) {
+      return res.status(400).json({ error: '新密码长度至少为6位' });
+    }
+
+    // 获取当前用户信息
+    const [users] = await db.execute('SELECT id, password FROM users WHERE id = ? AND is_active = TRUE', [req.user.id]);
+    if (users.length === 0) {
+      return res.status(404).json({ error: '用户不存在或已被删除' });
+    }
+
+    const user = users[0];
+
+    // 验证旧密码
+    if (user.password !== oldPassword.trim()) {
+      return res.status(401).json({ error: '旧密码不正确' });
+    }
+
+    // 更新密码
+    await db.execute('UPDATE users SET password = ? WHERE id = ?', [newPassword.trim(), req.user.id]);
+
+    res.json({ message: '密码修改成功' });
+  } catch (error) {
+    console.error('修改密码错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 仪表盘统计数据
 app.get('/api/admin/dashboard-stats', authenticateToken, checkPermission(['admin', 'founder']), async (req, res) => {
   try {
@@ -1913,7 +1993,7 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
         if (parentTaskRows.length > 0) {
           const parentTask = parentTaskRows[0];
           const notifiedUserIds = new Set(); // 用于避免重复通知
-          
+
           // 1. 通知父任务的负责人（assignee_id）
           if (parentTask.assignee_id && !notifiedUserIds.has(parentTask.assignee_id)) {
             await createNotification(
@@ -1925,7 +2005,7 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
             );
             notifiedUserIds.add(parentTask.assignee_id);
           }
-          
+
           // 2. 通知父任务的创建者（任务总支），如果与负责人不同
           if (parentTask.created_by && !notifiedUserIds.has(parentTask.created_by)) {
             await createNotification(
@@ -1937,7 +2017,7 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
             );
             notifiedUserIds.add(parentTask.created_by);
           }
-          
+
           // 3. 通知子任务的创建者（直接上司），如果与父任务负责人和创建者不同
           if (task.created_by && !notifiedUserIds.has(task.created_by)) {
             await createNotification(
@@ -2106,12 +2186,12 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       const oldDeadline = task.deadline ? new Date(task.deadline).getTime() : null;
       newDeadline = cleanValue(deadline);
       const newDeadlineTime = newDeadline ? new Date(newDeadline).getTime() : null;
-      
+
       // 判断截止时间是否真的变动了（考虑null的情况）
       if (oldDeadline !== newDeadlineTime) {
         deadlineChanged = true;
       }
-      
+
       updates.push('deadline = ?');
       values.push(newDeadline);
     }
@@ -2155,16 +2235,16 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       // 删除该任务之前的截止时间通知，重新检测
       try {
         await db.execute(
-          `DELETE FROM task_notifications 
-           WHERE task_id = ? 
-           AND to_user_id = ? 
+          `DELETE FROM task_notifications
+           WHERE task_id = ?
+           AND to_user_id = ?
            AND notification_type = 'deadline_warning'`,
           [id, assigneeId]
         );
       } catch (err) {
         console.error('清除旧通知失败:', err);
       }
-      
+
       // 如果新的截止时间存在，重新检测是否在24小时内
       if (newDeadline) {
         await checkAndSendDeadlineNotification(id, assigneeId, newDeadline);
@@ -2691,16 +2771,16 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
       // 删除该任务之前的截止时间通知，重新检测
       try {
         await db.execute(
-          `DELETE FROM task_notifications 
-           WHERE task_id = ? 
-           AND to_user_id = ? 
+          `DELETE FROM task_notifications
+           WHERE task_id = ?
+           AND to_user_id = ?
            AND notification_type = 'deadline_warning'`,
           [id, assignee_id]
         );
       } catch (err) {
         console.error('清除旧通知失败:', err);
       }
-      
+
       // 如果新的截止时间存在，重新检测是否在24小时内
       if (formattedDeadline) {
         await checkAndSendDeadlineNotification(id, assignee_id, formattedDeadline);
@@ -2712,16 +2792,16 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
       // 删除该任务之前的截止时间通知，重新检测
       try {
         await db.execute(
-          `DELETE FROM task_notifications 
-           WHERE task_id = ? 
-           AND to_user_id = ? 
+          `DELETE FROM task_notifications
+           WHERE task_id = ?
+           AND to_user_id = ?
            AND notification_type = 'deadline_warning'`,
           [id, assignee_id]
         );
       } catch (err) {
         console.error('清除旧通知失败:', err);
       }
-      
+
       // 如果新的截止时间存在，重新检测是否在24小时内
       if (formattedDeadline) {
         await checkAndSendDeadlineNotification(id, assignee_id, formattedDeadline);
@@ -2927,23 +3007,23 @@ app.post('/api/notifications/deadline-reminders', authenticateToken, async (req,
 app.delete('/api/notifications/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // 验证通知是否属于当前用户
     const [notificationRows] = await db.execute(
       'SELECT to_user_id FROM task_notifications WHERE id = ?',
       [id]
     );
-    
+
     if (notificationRows.length === 0) {
       return res.status(404).json({ error: '通知不存在' });
     }
-    
+
     if (notificationRows[0].to_user_id !== req.user.id) {
       return res.status(403).json({ error: '无权删除此通知' });
     }
-    
+
     await db.execute('DELETE FROM task_notifications WHERE id = ?', [id]);
-    
+
     res.json({ message: '通知删除成功' });
   } catch (error) {
     console.error('删除通知错误:', error);
@@ -2992,6 +3072,53 @@ app.put('/api/notifications/mark-all-read', authenticateToken, async (req, res) 
   } catch (error) {
     console.error('批量标记通知已读错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 图片上传API
+app.post('/api/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: '没有上传文件' });
+    }
+
+    // 返回图片URL（相对于public目录）
+    const imageUrl = `/uploads/${req.file.filename}`;
+
+    // 如果需要完整URL，可以这样构建：
+    // const baseUrl = req.protocol + '://' + req.get('host');
+    // const fullUrl = baseUrl + imageUrl;
+
+    res.json({
+      success: true,
+      url: imageUrl,
+      filename: req.file.filename
+    });
+  } catch (error) {
+    console.error('图片上传错误:', error);
+    res.status(500).json({ error: '图片上传失败', details: error.message });
+  }
+});
+
+// 批量图片上传API
+app.post('/api/upload-images', authenticateToken, upload.array('images', 10), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: '没有上传文件' });
+    }
+
+    const imageUrls = req.files.map(file => ({
+      url: `/uploads/${file.filename}`,
+      filename: file.filename
+    }));
+
+    res.json({
+      success: true,
+      images: imageUrls
+    });
+  } catch (error) {
+    console.error('批量图片上传错误:', error);
+    res.status(500).json({ error: '图片上传失败', details: error.message });
   }
 });
 
@@ -3410,14 +3537,14 @@ async function createNotification(taskId, fromUserId, toUserId, type, message) {
 // oldDeadline: 旧的截止日期（用于比较是否变动），如果为null则从数据库获取
 async function checkAndSendDeadlineNotification(taskId, assigneeId, deadline, hoursBefore = 24, oldDeadline = null) {
   if (!deadline) return;
-  
+
   try {
     const deadlineDate = new Date(deadline);
     if (isNaN(deadlineDate.getTime())) return;
-    
+
     const now = new Date();
     const upcomingThreshold = new Date(now.getTime() + hoursBefore * 60 * 60 * 1000);
-    
+
     // 检查截止时间是否在24小时内
     if (deadlineDate > now && deadlineDate <= upcomingThreshold) {
       // 检查是否已经发送过通知（避免重复通知）
@@ -3432,20 +3559,20 @@ async function checkAndSendDeadlineNotification(taskId, assigneeId, deadline, ho
          LIMIT 1`,
         [taskId, assigneeId, formatDateTimeForMySQL(dedupeThreshold)]
       );
-      
+
       // 如果24小时内已发送过通知，则不重复发送
       // 注意：编辑任务时，会在更新前清除旧通知，所以这里不会重复
       if (existing.length > 0) {
         return;
       }
-      
+
       // 获取任务标题，确保通知消息中包含正确的任务标题
       const [taskRows] = await db.execute(
         'SELECT title FROM tasks WHERE id = ?',
         [taskId]
       );
       const taskTitle = taskRows.length > 0 ? taskRows[0].title : '任务';
-      
+
       // 发送通知（24小时内未发送过，或截止日期已变动）
       const message = `系统提醒：任务《${taskTitle}》截止时间已更新，将在${hoursBefore}小时内到期，请及时处理。`;
       await createNotification(
@@ -3491,6 +3618,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         t.deadline,
         t.is_all_day,
         t.assignee_name,
+        t.attachments,
         DATE_FORMAT(COALESCE(t.start_time, t.deadline), '%Y-%m-%d') as task_date
       FROM tasks t
       WHERE t.assignee_id = ?
@@ -3526,6 +3654,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         pl.quadrant,
         pl.is_completed,
         pl.created_at,
+        pl.images,
         DATE_FORMAT(CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00'), '%Y-%m-%d') as log_date
       FROM personal_logs pl
       WHERE pl.user_id = ?
@@ -3586,7 +3715,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
                 end_time: formatDateTimeForBeijing(task.end_time),
                 deadline: formatDateTimeForBeijing(task.deadline),
                 is_all_day: task.is_all_day,
-                assignee_name: task.assignee_name
+                assignee_name: task.assignee_name,
+                attachments: safeParseJSON(task.attachments) || []
               });
               calendar[key].hasData = true;
             }
@@ -3615,7 +3745,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
               end_time: formatDateTimeForBeijing(task.end_time),
               deadline: formatDateTimeForBeijing(task.deadline),
               is_all_day: task.is_all_day,
-              assignee_name: task.assignee_name
+              assignee_name: task.assignee_name,
+              attachments: safeParseJSON(task.attachments) || []
             });
             calendar[key].hasData = true;
           }
@@ -3638,7 +3769,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
               end_time: formatDateTimeForBeijing(task.end_time),
               deadline: formatDateTimeForBeijing(task.deadline),
               is_all_day: task.is_all_day,
-              assignee_name: task.assignee_name
+              assignee_name: task.assignee_name,
+              attachments: safeParseJSON(task.attachments) || []
             });
             calendar[key].hasData = true;
           }
@@ -3659,7 +3791,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
             category: log.category,
             quadrant: log.quadrant,
             is_completed: log.is_completed,
-            created_at: formatDateTimeForBeijing(log.created_at)
+            created_at: formatDateTimeForBeijing(log.created_at),
+            images: safeParseJSON(log.images) || []
           });
           calendar[dateKey].hasData = true;
         }
@@ -3714,6 +3847,7 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         t.deadline,
         t.is_all_day,
         t.assignee_name,
+        t.attachments,
         DATE_FORMAT(COALESCE(t.start_time, t.deadline), '%Y-%m-%d') as task_date
       FROM tasks t
       WHERE t.assignee_id = ?
@@ -3746,6 +3880,7 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         pl.quadrant,
         pl.is_completed,
         pl.created_at,
+        pl.images,
         DATE_FORMAT(CONVERT_TZ(pl.created_at, @@session.time_zone, '+08:00'), '%Y-%m-%d') as log_date
       FROM personal_logs pl
       WHERE pl.user_id = ?
@@ -3780,7 +3915,8 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         quadrant: log.quadrant,
         isCompleted: log.is_completed === 1,
         date: log.log_date,
-        createdAt: log.created_at
+        createdAt: log.created_at,
+        images: safeParseJSON(log.images) || []
       })),
       tasks: tasks.map(task => ({
         id: task.id,
@@ -3794,7 +3930,8 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         deadline: task.deadline,
         isAllDay: task.is_all_day === 1,
         assigneeName: task.assignee_name,
-        date: task.task_date
+        date: task.task_date,
+        attachments: safeParseJSON(task.attachments) || []
       })),
       statistics: {
         totalTasks: tasks.length,
@@ -3882,7 +4019,8 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         is_all_day: t.is_all_day,
         assignee_name: t.assignee_name,
         department_name: t.department_name,
-        creator_name: t.creator_name
+        creator_name: t.creator_name,
+        attachments: safeParseJSON(t.attachments) || []
       })),
       logs: logs.map(l => {
         const images = safeParseJSON(l.images) || [];
@@ -4456,6 +4594,335 @@ app.get('/api/mbti-records/statistics', authenticateToken, async (req, res) => {
     res.json(stats);
   } catch (error) {
     console.error('获取MBTI统计错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// ==================== 管理员总览 API ====================
+
+// 搜索员工（支持按名字、部门、职位搜索）
+app.get('/api/admin/search-users', authenticateToken, checkPermission(['admin']), async (req, res) => {
+  try {
+    const { keyword } = req.query;
+    
+    let query = `
+      SELECT u.id, u.username, u.name, u.position, u.role, u.department_id,
+             d.name as department_name, u.parent_id, p.name as parent_name,
+             u.created_at, u.last_login_at
+      FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      LEFT JOIN users p ON u.parent_id = p.id
+      WHERE u.is_active = TRUE
+    `;
+    let params = [];
+    
+    if (keyword && keyword.trim()) {
+      const searchKeyword = `%${keyword.trim()}%`;
+      query += ` AND (
+        u.name LIKE ? OR 
+        u.position LIKE ? OR 
+        d.name LIKE ? OR
+        u.username LIKE ?
+      )`;
+      params.push(searchKeyword, searchKeyword, searchKeyword, searchKeyword);
+    }
+    
+    query += ' ORDER BY u.role, u.name';
+    
+    const [rows] = await db.execute(query, params);
+    res.json(rows);
+  } catch (error) {
+    console.error('搜索员工错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取员工统计数据（每天/每周/每月任务完成情况）
+app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin']), async (req, res) => {
+  try {
+    const { userId, period } = req.query; // period: 'daily', 'weekly', 'monthly'
+    
+    if (!userId) {
+      return res.status(400).json({ error: '请提供userId参数' });
+    }
+    
+    let startDate, endDate;
+    const now = new Date();
+    
+    switch (period) {
+      case 'daily':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+        break;
+      case 'weekly':
+        const dayOfWeek = now.getDay();
+        const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // 周一
+        startDate = new Date(now.getFullYear(), now.getMonth(), diff);
+        endDate = new Date(now.getFullYear(), now.getMonth(), diff + 6, 23, 59, 59);
+        break;
+      case 'monthly':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+        break;
+      default:
+        return res.status(400).json({ error: 'period参数必须是daily、weekly或monthly' });
+    }
+    
+    // 获取任务统计
+    const taskQuery = `
+      SELECT 
+        COUNT(*) as total_tasks,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_tasks,
+        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_tasks,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_tasks
+      FROM tasks
+      WHERE assignee_id = ?
+      AND (
+        (start_time >= ? AND start_time <= ?) OR
+        (end_time >= ? AND end_time <= ?) OR
+        (start_time <= ? AND end_time >= ?)
+      )
+    `;
+    
+    const [taskStats] = await db.execute(taskQuery, [
+      userId,
+      startDate, endDate,
+      startDate, endDate,
+      startDate, endDate
+    ]);
+    
+    const stats = taskStats[0] || {};
+    const total = parseInt(stats.total_tasks) || 0;
+    const completed = parseInt(stats.completed_tasks) || 0;
+    const completionRate = total > 0 ? (completed / total * 100).toFixed(1) : '0.0';
+    
+    res.json({
+      period,
+      totalTasks: total,
+      completedTasks: completed,
+      pendingTasks: parseInt(stats.pending_tasks) || 0,
+      inProgressTasks: parseInt(stats.in_progress_tasks) || 0,
+      cancelledTasks: parseInt(stats.cancelled_tasks) || 0,
+      completionRate: parseFloat(completionRate),
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+    });
+  } catch (error) {
+    console.error('获取员工统计数据错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取员工日志（按日期）
+app.get('/api/admin/user-logs', authenticateToken, checkPermission(['admin']), async (req, res) => {
+  try {
+    const { userId, date } = req.query; // date格式: YYYY-MM-DD
+    
+    if (!userId) {
+      return res.status(400).json({ error: '请提供userId参数' });
+    }
+    
+    let query = `
+      SELECT pl.*, t.title as task_title
+      FROM personal_logs pl
+      LEFT JOIN tasks t ON pl.related_task_id = t.id
+      WHERE pl.user_id = ?
+    `;
+    let params = [userId];
+    
+    if (date) {
+      query += ' AND DATE(pl.created_at) = ?';
+      params.push(date);
+    }
+    
+    query += ' ORDER BY pl.created_at DESC';
+    
+    const [logs] = await db.execute(query, params);
+    res.json(logs);
+  } catch (error) {
+    console.error('获取员工日志错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取员工MBTI测试历史
+app.get('/api/admin/user-mbti-history', authenticateToken, checkPermission(['admin']), async (req, res) => {
+  try {
+    const { userId } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ error: '请提供userId参数' });
+    }
+    
+    const query = `
+      SELECT id, mbti_type, test_date, test_scores, personality_traits, 
+             confidence_score, created_at
+      FROM mbti_records
+      WHERE user_id = ? AND is_active = TRUE
+      ORDER BY test_date DESC
+    `;
+    
+    const [records] = await db.execute(query, [userId]);
+    res.json(records);
+  } catch (error) {
+    console.error('获取员工MBTI历史错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取公司所有任务（可按日期筛选）
+app.get('/api/admin/all-tasks', authenticateToken, checkPermission(['admin']), async (req, res) => {
+  try {
+    const { date } = req.query; // date格式: YYYY-MM-DD
+    
+    let query = `
+      SELECT t.*, d.name as department_name, u.name as creator_name,
+             assignee.name as assignee_name
+      FROM tasks t
+      LEFT JOIN departments d ON t.department_id = d.id
+      LEFT JOIN users u ON t.created_by = u.id
+      LEFT JOIN users assignee ON t.assignee_id = assignee.id
+      WHERE 1=1
+    `;
+    let params = [];
+    
+    if (date) {
+      query += ` AND (
+        (t.start_time IS NOT NULL AND t.end_time IS NOT NULL AND DATE(t.start_time) <= ? AND DATE(t.end_time) >= ?)
+        OR (t.start_time IS NOT NULL AND DATE(t.start_time) = ?)
+        OR (t.end_time IS NOT NULL AND DATE(t.end_time) = ?)
+        OR (t.deadline IS NOT NULL AND DATE(t.deadline) = ?)
+      )`;
+      params.push(date, date, date, date, date);
+    }
+    
+    query += ' ORDER BY t.created_at DESC';
+    
+    const [tasks] = await db.execute(query, params);
+    
+    // 处理时区转换
+    const processedTasks = tasks.map(task => {
+      const processed = { ...task };
+      if (task.start_time) processed.start_time = new Date(task.start_time).toISOString();
+      if (task.end_time) processed.end_time = new Date(task.end_time).toISOString();
+      if (task.deadline) processed.deadline = new Date(task.deadline).toISOString();
+      if (task.created_at) processed.created_at = new Date(task.created_at).toISOString();
+      if (task.completed_at) processed.completed_at = new Date(task.completed_at).toISOString();
+      return processed;
+    });
+    
+    res.json(processedTasks);
+  } catch (error) {
+    console.error('获取公司所有任务错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 获取任务树（完整层级结构）
+app.get('/api/admin/task-tree', authenticateToken, checkPermission(['admin']), async (req, res) => {
+  try {
+    const { taskId } = req.query;
+    
+    if (!taskId) {
+      return res.status(400).json({ error: '请提供taskId参数' });
+    }
+    
+    // 递归获取任务树
+    async function getTaskTree(currentTaskId) {
+      // 获取当前任务
+      const [tasks] = await db.execute(
+        `SELECT t.*, d.name as department_name, u.name as creator_name,
+                assignee.name as assignee_name
+         FROM tasks t
+         LEFT JOIN departments d ON t.department_id = d.id
+         LEFT JOIN users u ON t.created_by = u.id
+         LEFT JOIN users assignee ON t.assignee_id = assignee.id
+         WHERE t.id = ?`,
+        [currentTaskId]
+      );
+      
+      if (tasks.length === 0) {
+        return null;
+      }
+      
+      const task = tasks[0];
+      
+      // 获取所有子任务
+      const [subtasks] = await db.execute(
+        `SELECT t.*, d.name as department_name, u.name as creator_name,
+                assignee.name as assignee_name
+         FROM tasks t
+         LEFT JOIN departments d ON t.department_id = d.id
+         LEFT JOIN users u ON t.created_by = u.id
+         LEFT JOIN users assignee ON t.assignee_id = assignee.id
+         WHERE t.parent_task_id = ?
+         ORDER BY t.created_at ASC`,
+        [currentTaskId]
+      );
+      
+      // 递归获取每个子任务的子树
+      const subtaskTrees = await Promise.all(
+        subtasks.map(async (subtask) => await getTaskTree(subtask.id))
+      );
+      
+      // 如果有父任务，继续向上查找
+      let parentTask = null;
+      if (task.parent_task_id) {
+        parentTask = await getTaskTree(task.parent_task_id);
+      }
+      
+      return {
+        ...task,
+        parentTask,
+        subtasks: subtaskTrees.filter(t => t !== null),
+      };
+    }
+    
+    const taskTree = await getTaskTree(taskId);
+    
+    if (!taskTree) {
+      return res.status(404).json({ error: '任务不存在' });
+    }
+    
+    // 找到根任务（最顶层的父任务）
+    let rootTask = taskTree;
+    while (rootTask.parentTask) {
+      rootTask = rootTask.parentTask;
+    }
+    
+    res.json(rootTask);
+  } catch (error) {
+    console.error('获取任务树错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 数据埋点：记录用户操作
+app.post('/api/admin/tracking', authenticateToken, async (req, res) => {
+  try {
+    const { action, category, metadata } = req.body;
+    const userId = req.user.id;
+    
+    // 记录到系统日志表
+    const logId = require('crypto').randomUUID();
+    await db.execute(
+      `INSERT INTO system_logs (id, user_id, user_name, action, description, category, metadata, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        logId,
+        userId,
+        req.user.name || req.user.username,
+        action || 'unknown',
+        metadata?.description || '',
+        category || 'admin_tracking',
+        metadata ? JSON.stringify(metadata) : null
+      ]
+    );
+    
+    res.json({ success: true, logId });
+  } catch (error) {
+    console.error('数据埋点错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });

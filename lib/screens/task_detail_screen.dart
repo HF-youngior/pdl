@@ -67,46 +67,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
-  // 检查是否可以创建子任务
-  bool get _canCreateSubtask {
-    // 邀约任务且当前用户是被邀约人时，不能创建子任务
-    if (_currentTask!.isRequest && _currentTask!.assigneeId == widget.currentUser.id) {
-      return false;
-    }
-    // 只有任务接收者且不是普通员工才能创建子任务
-    final isAssignee = _currentTask!.assigneeId == widget.currentUser.id;
-    final canCreateTask = widget.currentUser.role != 'employee';
-    final isNotCompleted = _currentTask!.status != 'completed';
-    return isAssignee && canCreateTask && isNotCompleted;
-  }
-
-  // 创建子任务
-  Future<void> _createSubtask() async {
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => TaskEditScreen(
-          currentUser: widget.currentUser,
-          task: null,
-          parentTaskId: _currentTask!.id,
-          onSave: (task) {
-            // 子任务创建成功后刷新列表
-            _loadSubtasks();
-          },
-        ),
-      ),
-    );
-
-    if (result != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('子任务创建成功'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      _loadSubtasks();
-    }
-  }
-
   // 处理邀约请求（批准/反驳）
   Future<void> _handleRequestResponse(String action) async {
     if (!_currentTask!.isRequest) {
@@ -391,22 +351,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 tooltip: '编辑邀约内容',
               ),
           ] else ...[
-            // 普通任务：邀约任务且当前用户是被邀约人时，不显示编辑和创建子任务按钮
-            if (!(_currentTask!.isRequest && _currentTask!.assigneeId == widget.currentUser.id)) ...[
-              // 右上角加号按钮（创建子任务）
-              if (_canCreateSubtask)
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: _createSubtask,
-                  tooltip: '创建子任务',
-                ),
-              // 编辑按钮
+            // 普通任务：邀约任务且当前用户是被邀约人时，不显示编辑按钮
+            if (!(_currentTask!.isRequest && _currentTask!.assigneeId == widget.currentUser.id))
               IconButton(
                 icon: const Icon(Icons.edit),
                 onPressed: _editTask,
                 tooltip: '编辑任务',
               ),
-            ],
           ],
         ],
       ),
@@ -877,7 +828,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               const SizedBox(height: 16),
 
               // 子任务列表（邀约任务不显示）
-              if (!_currentTask!.isRequest && (_canCreateSubtask || _subtasks.isNotEmpty))
+              if (!_currentTask!.isRequest)
                 Card(
                   elevation: 4,
                   shape: RoundedRectangleBorder(
@@ -888,27 +839,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '子任务',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey[800],
-                              ),
-                            ),
-                            if (_canCreateSubtask)
-                              TextButton.icon(
-                                onPressed: _createSubtask,
-                                icon: const Icon(Icons.add, size: 18),
-                                label: const Text('创建子任务'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Theme.of(context).primaryColor,
-                                ),
-                              ),
-                          ],
+                        Text(
+                          '子任务',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          ),
                         ),
                         const SizedBox(height: 12),
                         if (_isLoadingSubtasks)

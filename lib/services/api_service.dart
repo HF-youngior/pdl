@@ -1,5 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:path/path.dart' as path;
+import 'package:mime/mime.dart';
 import '../models/user.dart';
 import '../models/important_item.dart';
 import '../models/task.dart';
@@ -105,6 +109,30 @@ class ApiService {
     } catch (e) {
       print('登录错误: $e');
       return null;
+    }
+  }
+
+  // 修改密码
+  static Future<Map<String, dynamic>> changePassword(String oldPassword, String newPassword) async {
+    try {
+      final response = await httpClient.put(
+        Uri.parse('$baseUrl/auth/change-password'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'oldPassword': oldPassword,
+          'newPassword': newPassword,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? '密码修改成功'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? '密码修改失败'};
+      }
+    } catch (e) {
+      print('修改密码错误: $e');
+      return {'success': false, 'message': '网络错误，请稍后重试'};
     }
   }
 
@@ -485,6 +513,269 @@ class ApiService {
     } catch (e) {
       print('更新邀约请求错误: $e');
       rethrow;
+    }
+  }
+
+  // ==================== 管理员总览 API ====================
+  
+  // 搜索员工（支持按名字、部门、职位搜索）
+  static Future<List<User>> searchUsers(String keyword) async {
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$baseUrl/admin/search-users?keyword=${Uri.encodeComponent(keyword)}'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((json) => User.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('搜索员工错误: $e');
+      return [];
+    }
+  }
+  
+  // 获取员工统计数据
+  static Future<Map<String, dynamic>?> getUserStatistics(String userId, String period) async {
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$baseUrl/admin/user-statistics?userId=$userId&period=$period'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print('获取员工统计数据错误: $e');
+      return null;
+    }
+  }
+  
+  // 获取员工日志
+  static Future<List<PersonalLog>> getUserLogs(String userId, {String? date}) async {
+    try {
+      String url = '$baseUrl/admin/user-logs?userId=$userId';
+      if (date != null) {
+        url += '&date=$date';
+      }
+      final response = await httpClient.get(
+        Uri.parse(url),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((json) => PersonalLog.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('获取员工日志错误: $e');
+      return [];
+    }
+  }
+  
+  // 获取员工MBTI测试历史
+  static Future<List<Map<String, dynamic>>> getUserMbtiHistory(String userId) async {
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$baseUrl/admin/user-mbti-history?userId=$userId'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      print('获取员工MBTI历史错误: $e');
+      return [];
+    }
+  }
+  
+  // 获取公司所有任务
+  static Future<List<Task>> getAllCompanyTasks({String? date}) async {
+    try {
+      String url = '$baseUrl/admin/all-tasks';
+      if (date != null) {
+        url += '?date=$date';
+      }
+      final response = await httpClient.get(
+        Uri.parse(url),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((json) => Task.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('获取公司所有任务错误: $e');
+      return [];
+    }
+  }
+  
+  // 获取任务树
+  static Future<Map<String, dynamic>?> getTaskTree(String taskId) async {
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$baseUrl/admin/task-tree?taskId=$taskId'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print('获取任务树错误: $e');
+      return null;
+    }
+  }
+  
+  // 数据埋点
+  static Future<bool> trackAction(String action, {String? category, Map<String, dynamic>? metadata}) async {
+    try {
+      final response = await httpClient.post(
+        Uri.parse('$baseUrl/admin/tracking'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'action': action,
+          'category': category ?? 'admin_action',
+          'metadata': metadata,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('数据埋点错误: $e');
+      return false;
+    }
+  }
+
+  // 上传单张图片
+  static Future<String?> uploadImage(File imageFile) async {
+    try {
+      final uri = Uri.parse('$baseUrl/upload-image');
+      final request = http.MultipartRequest('POST', uri);
+      
+      // 添加认证头
+      if (_authToken != null) {
+        request.headers['Authorization'] = 'Bearer $_authToken';
+      }
+      
+      // 添加图片文件
+      final fileStream = http.ByteStream(imageFile.openRead());
+      final fileLength = await imageFile.length();
+      final filename = path.basename(imageFile.path);
+      final mimeType = lookupMimeType(filename) ?? 'image/jpeg';
+      final multipartFile = http.MultipartFile(
+        'image',
+        fileStream,
+        fileLength,
+        filename: filename,
+        contentType: MediaType.parse(mimeType),
+      );
+      request.files.add(multipartFile);
+      
+      // 发送请求
+      final streamedResponse = await httpClient.send(request);
+      final response = await http.Response.fromStream(streamedResponse);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // 返回完整URL（包含服务器地址）
+        final imageUrl = data['url'] as String;
+        // 构建完整URL：baseUrl格式是 http://host:port/api，需要去掉/api
+        final baseUrlWithoutApi = baseUrl.replaceAll('/api', '');
+        final fullUrl = baseUrlWithoutApi + imageUrl;
+        print('图片上传成功，URL: $fullUrl');
+        return fullUrl;
+      } else {
+        print('图片上传失败: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('图片上传错误: $e');
+      return null;
+    }
+  }
+
+  // 批量上传图片
+  static Future<List<String>> uploadImages(List<File> imageFiles) async {
+    try {
+      if (imageFiles.isEmpty) {
+        return [];
+      }
+
+      final uri = Uri.parse('$baseUrl/upload-images');
+      final request = http.MultipartRequest('POST', uri);
+      
+      // 添加认证头
+      if (_authToken != null) {
+        request.headers['Authorization'] = 'Bearer $_authToken';
+      }
+      
+      // 添加所有图片文件
+      for (var imageFile in imageFiles) {
+        // 检查文件是否存在
+        if (!await imageFile.exists()) {
+          throw Exception('图片文件不存在: ${imageFile.path}');
+        }
+
+        final fileStream = http.ByteStream(imageFile.openRead());
+        final fileLength = await imageFile.length();
+        
+        // 使用跨平台的路径处理来提取文件名
+        final filename = path.basename(imageFile.path);
+        
+        // 根据文件扩展名确定MIME类型
+        final mimeType = lookupMimeType(filename) ?? 'image/jpeg';
+        
+        final multipartFile = http.MultipartFile(
+          'images',
+          fileStream,
+          fileLength,
+          filename: filename,
+          contentType: MediaType.parse(mimeType),
+        );
+        request.files.add(multipartFile);
+      }
+      
+      // 发送请求
+      final streamedResponse = await httpClient.send(request);
+      final response = await http.Response.fromStream(streamedResponse);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['images'] != null) {
+          final images = data['images'] as List;
+          // 构建完整URL：baseUrl格式是 http://host:port/api，需要去掉/api
+          final baseUrlWithoutApi = baseUrl.replaceAll('/api', '');
+          final urls = images.map((img) {
+            final url = baseUrlWithoutApi + (img['url'] as String);
+            print('图片上传成功，URL: $url');
+            return url;
+          }).toList().cast<String>();
+          
+          if (urls.length != imageFiles.length) {
+            throw Exception('上传的图片数量不匹配：期望 ${imageFiles.length} 张，实际返回 ${urls.length} 张');
+          }
+          
+          return urls;
+        } else {
+          throw Exception('服务器返回格式错误: ${response.body}');
+        }
+      } else {
+        final errorBody = response.body;
+        print('批量图片上传失败: ${response.statusCode} - $errorBody');
+        throw Exception('图片上传失败 (${response.statusCode}): ${errorBody.length > 100 ? errorBody.substring(0, 100) : errorBody}');
+      }
+    } catch (e) {
+      print('批量图片上传错误: $e');
+      // 重新抛出异常，让调用者能够看到具体的错误信息
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('图片上传失败: $e');
     }
   }
 }

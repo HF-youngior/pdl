@@ -225,6 +225,7 @@ class CalendarTask {
   final String? deadline;
   final bool? isAllDay;
   final String? assigneeName;
+  final List<String> attachments;
 
   CalendarTask({
     required this.id,
@@ -238,6 +239,7 @@ class CalendarTask {
     this.deadline,
     this.isAllDay,
     this.assigneeName,
+    this.attachments = const [],
   });
 
   factory CalendarTask.fromJson(Map<String, dynamic> json) {
@@ -253,6 +255,7 @@ class CalendarTask {
       deadline: json['deadline'],
       isAllDay: json['is_all_day'] == 1 || json['is_all_day'] == true,
       assigneeName: json['assignee_name'],
+      attachments: _parseImages(json['attachments']),
     );
   }
 }

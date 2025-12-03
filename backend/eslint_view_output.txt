@@ -1,0 +1,77 @@
+﻿
+  2865:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  2869:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  2874:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  2876:9    warning  'taskQuery' is never reassigned. Use 'const' instead      
+                           prefer-const
+  2901:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  2904:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  2912:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  2915:9    warning  'logQuery' is never reassigned. Use 'const' instead       
+                           prefer-const
+  2931:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  2937:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  2938:5    warning  Unexpected console statement                              
+                           no-console
+  2939:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  2942:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  2953:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3043:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3048:9    warning  Unexpected console statement                              
+                           no-console
+  3063:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3066:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3077:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3079:5    warning  Unexpected console statement                              
+                           no-console
+  3088:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3203:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3205:5    warning  Unexpected console statement                              
+                           no-console
+  3214:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3218:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3220:9    warning  'taskQuery' is never reassigned. Use 'const' instead      
+                           prefer-const
+  3237:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3245:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3247:9    warning  'logQuery' is never reassigned. Use 'const' instead       
+                           prefer-const
+  3257:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3262:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3263:5    warning  Unexpected console statement                              
+                           no-console
+  3264:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3298:1    warning  Trailing spaces not allowed                               
+                           no-trailing-spaces
+  3300:5    warning  Unexpected console statement                              
+                           no-console
+  3308:39   warning  'testScores' is defined but never used. Allowed unused arg
+s must match /^_/u         no-unused-vars
+  3308:51   warning  'personalityTraits' is defined but never used. Allowed unu
+sed args must match /^_/u  no-unused-vars
+
+
