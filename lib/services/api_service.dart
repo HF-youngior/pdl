@@ -439,6 +439,26 @@ class ApiService {
     }
   }
 
+  // 累加专注时长
+  static Future<int?> addFocusDuration(int durationSeconds) async {
+    try {
+      final response = await httpClient.post(
+        Uri.parse('$baseUrl/user/focus-duration'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({'duration': durationSeconds}),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['totalFocusDuration'] is int
+            ? data['totalFocusDuration'] as int
+            : int.tryParse(data['totalFocusDuration']?.toString() ?? '');
+      }
+    } catch (e) {
+      print('同步专注时长错误: $e');
+    }
+    return null;
+  }
+
   // 创建向上邀约请求
   static Future<bool> createRequest({
     required String requestType,

@@ -628,7 +628,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _isLoadingPreview = true;
     });
-    
+
     try {
       final results = await Future.wait([
         ApiService.getImportantItems(),
@@ -646,23 +646,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       if (!mounted) return;
       setState(() {
-        _companyImportantItems =
-            importantItems.map((item) => item.title).take(3).toList();
-        _companyTasks = tasks.map((task) => task.title).take(3).toList();
-        _personalImportantItems =
-            personalInfos.map((info) => info.title).take(3).toList();
-        _personalLogs = personalLogs
-            .map((log) =>
-                (log.title != null && log.title!.isNotEmpty)
-                    ? log.title!
-                    : (log.content ?? '个人日志'))
+        _companyImportantItems = importantItems
+            .map((item) => item.title ?? '无标题')
             .take(3)
             .toList();
+
+        _companyTasks = tasks
+            .map((task) => task.title ?? '任务')
+            .take(3)
+            .toList();
+
+        _personalImportantItems = personalInfos
+            .map((info) => info.title ?? '无标题')
+            .take(3)
+            .toList();
+
+        _personalLogs = personalLogs
+            .map((log) {
+              final title = log.title;
+              final content = log.content;
+
+              if (title != null && title.isNotEmpty) {
+                return title;
+              } else if (content != null) {
+                return content;
+              } else {
+                return '个人日志';
+              }
+            })
+            .take(3)
+            .toList();
+
         _latestMbti = latestMbti;
         _personalPreviewItems = _buildPersonalPreview();
         _isLoadingPreview = false;
       });
     } catch (e) {
+      // ignore: avoid_print
+      print('加载预览数据出错: $e');
       if (mounted) {
         setState(() {
           _isLoadingPreview = false;
@@ -893,49 +914,77 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
           ),
-          // 番茄钟入口已隐藏
-          // Positioned(
-          //   right: 24,
-          //   bottom: 32,
-          //   child: GestureDetector(
-          //     onTap: _openPomodoroScreen,
-          //     child: Container(
-          //       width: 92,
-          //       height: 92,
-          //       decoration: BoxDecoration(
-          //         shape: BoxShape.circle,
-          //         gradient: const LinearGradient(
-          //           colors: [Color(0xFFFF9A8B), Color(0xFFFF6A88)],
-          //           begin: Alignment.topLeft,
-          //           end: Alignment.bottomRight,
-          //         ),
-          //         boxShadow: [
-          //           BoxShadow(
-          //             color: Colors.redAccent.withOpacity(0.3),
-          //             blurRadius: 18,
-          //             offset: const Offset(0, 8),
-          //           ),
-          //         ],
-          //         border: Border.all(color: Colors.white, width: 4),
-          //       ),
-          //       child: Column(
-          //         mainAxisAlignment: MainAxisAlignment.center,
-          //         children: const [
-          //           Text('🍅', style: TextStyle(fontSize: 32)),
-          //           SizedBox(height: 4),
-          //           Text(
-          //             '番茄钟',
-          //             style: TextStyle(
-          //               color: Colors.white,
-          //               fontWeight: FontWeight.bold,
-          //               fontSize: 14,
-          //             ),
-          //           ),
-          //         ],
-          //       ),
-          //     ),
-          //   ),
-          // ),
+
+
+
+
+          Positioned(
+            right: 24,
+            bottom: 32,
+            child: GestureDetector(
+              onTap: _openPomodoroScreen,
+              child: Container(
+                width: 116,
+                height: 132,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: const Color(0xFFFF7A7A), width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.redAccent.withOpacity(0.18),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 64,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            width: 62,
+                            height: 62,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFFFFEBEC),
+                              border: Border.all(color: const Color(0xFFFFA8B4), width: 2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.redAccent.withOpacity(0.15),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.alarm_rounded,
+                            size: 32,
+                            color: Color(0xFFFF6A88),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      '番茄专注',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF3C3C3C),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -943,19 +992,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<String> _buildPersonalPreview() {
     final List<String> items = [];
+    final profile = _latestMbti?.personalInfo ?? {};
+
     if (_latestMbti != null && _latestMbti!.mbtiType.isNotEmpty) {
       items.add('MBTI: ${_latestMbti!.mbtiType}');
     }
-    final profile = _latestMbti?.personalInfo ?? {};
-    if (profile['birthday'] != null && (profile['birthday'] as String).isNotEmpty) {
-      items.add('生日: ${profile['birthday']}');
+
+    final birthday = profile['birthday'];
+    if (birthday != null && birthday.toString().isNotEmpty) {
+      items.add('生日: $birthday');
     }
-    if (profile['address'] != null && (profile['address'] as String).isNotEmpty) {
-      items.add('住址: ${profile['address']}');
+
+    final address = profile['address'];
+    if (address != null && address.toString().isNotEmpty) {
+      items.add('住址: $address');
     }
+
     if (!items.any((item) => item.startsWith('姓名'))) {
       items.add('姓名: ${widget.user.name}');
     }
+
     return items.take(3).toList();
   }
 
