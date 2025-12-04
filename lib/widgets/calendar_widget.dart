@@ -2729,20 +2729,8 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: filteredTasks.length,
                     itemBuilder: (context, index) {
-                      final item = filteredTasks[index];
-                      final dynamic taskRaw = item['task'];
-                      if (taskRaw is! CalendarTask) {
-                        return const SizedBox.shrink();
-                      }
-                      final CalendarTask task = taskRaw;
-                      final String date = item['date']?.toString() ?? '';
-                      final DateTime day = item['day'] is DateTime
-                          ? item['day'] as DateTime
-                          : DateTime.now();
-
-                      return _buildTaskListItem(task, date, day);
+                      return _buildTaskListItem(filteredTasks[index]);
                     },
-                    itemBuilder: (context, index) => _buildTaskListItem(filteredTasks[index]),
                   )
                 : Center(
                     child: Column(

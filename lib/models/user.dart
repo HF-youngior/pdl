@@ -51,8 +51,6 @@ class User {
       parentId: json['parent_id'],
       points: json['points'] != null ? (json['points'] is int ? json['points'] : int.tryParse(json['points'].toString()) ?? 0) : 0,
       createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at']) 
-      createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
       lastLoginAt: json['last_login_at'] != null

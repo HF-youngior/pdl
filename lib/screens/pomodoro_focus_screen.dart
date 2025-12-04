@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/task.dart';
 import '../models/user.dart';
@@ -20,6 +21,10 @@ class PomodoroFocusScreen extends StatefulWidget {
 }
 
 class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
+  /// 安卓原生强制锁机通道（屏幕固定 / App Pinning）
+  static const MethodChannel platform =
+      MethodChannel('com.example.testflutterproject/lock_task');
+
   static const String _customFocusPrefix = 'custom::';
   static const Map<String, String> _immersionBackgrounds = {
     '等我下班': 'assets/images/focus/linyi.jpg',
@@ -43,6 +48,7 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
   double _funExitProgress = 0;
   Timer? _funExitTimer;
   String? _selectedImmersionOption;
+  bool _isForcedLockActive = false; // 当前是否处于强制锁机模式
 
   @override
   void initState() {
@@ -64,6 +70,8 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
   void dispose() {
     _timer?.cancel();
     _funExitTimer?.cancel();
+    // 兜底解锁，防止异常情况下仍处于锁机模式
+    _unlockScreen();
     super.dispose();
   }
 
@@ -268,12 +276,15 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
             onPressed: () {
               Navigator.of(ctx).pop();
               _resetTimer();
+              _unlockScreen(); // 完成本轮后解除强制锁机（如果正在锁机）
             },
             child: const Text('稍后'),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.of(ctx).pop();
+              // 一轮已经自然结束，这里也先解除强制锁机，再按正常模式开启新一轮
+              _unlockScreen();
               _resetTimer();
               _startTimer();
             },
@@ -296,17 +307,30 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (_state == _PomodoroState.idle) return true;
-        final exit = await _confirmQuit();
-        if (exit) {
-          await _recordFocusDuration();
-          _resetTimer();
+    return PopScope(
+      // 当处于锁机状态时，禁止页面被系统 Pop（物理返回键 / 手势返回）
+      canPop: !_isForcedLockActive,
+      onPopInvoked: (didPop) {
+        if (_isForcedLockActive) {
+          // 已经被我们拦截，不允许退出，只给一个提示
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('当前为强制锁机专注中，无法返回')),
+          );
+          return;
         }
-        return exit;
       },
-      child: Scaffold(
+      child: WillPopScope(
+        onWillPop: () async {
+          // 非锁机状态下，保持原有“是否结束专注”的确认弹窗逻辑
+          if (_state == _PomodoroState.idle) return true;
+          final exit = await _confirmQuit();
+          if (exit) {
+            await _recordFocusDuration();
+            _resetTimer();
+          }
+          return exit;
+        },
+        child: Scaffold(
         body: Stack(
           children: [
             Container(
@@ -349,6 +373,7 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
           ],
         ),
       ),
+    )
     );
   }
 
@@ -467,7 +492,20 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
         final String desc = item['desc']?.toString() ?? '';
         return Expanded(
           child: InkWell(
-            onTap: label == '趣味沉浸' ? _showImmersionPicker : null,
+            onTap: label == '趣味沉浸'
+                ? () {
+                    // 强制锁机状态下禁止进入趣味沉浸
+                    if (_isForcedLockActive) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('当前为强制锁机模式，无法进入趣味沉浸')),
+                      );
+                      return;
+                    }
+                    _showImmersionPicker();
+                  }
+                : label == '强制锁机'
+                    ? _handleForceLockTap
+                    : null,
             borderRadius: BorderRadius.circular(22),
           child: Container(
               height: 110,
@@ -672,9 +710,18 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
         ],
       ),
       child: Column(
-      children: [
-        GestureDetector(
-          onTap: _pickDuration,
+        children: [
+          GestureDetector(
+          onTap: () {
+            // 在强制锁机或趣味沉浸中，禁止修改已经开始的倒计时时间
+            if (_isForcedLockActive || _isFunImmersionActive) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('当前模式下无法修改倒计时时长')),
+              );
+              return;
+            }
+            _pickDuration();
+          },
           child: Container(
             width: circleSize,
             height: circleSize,
@@ -778,6 +825,11 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
       case _PomodoroState.running:
         return _buildPrimaryButton('暂停一下', const Color(0xFFFFA07A), _pauseTimer);
       case _PomodoroState.paused:
+        // 如果处于强制锁机模式：只能“继续专注”，不允许结束本轮
+        if (_isForcedLockActive) {
+          return _buildPrimaryButton('继续专注（锁机中）', const Color(0xFFFF6A88), _resumeTimer);
+        }
+        // 普通暂停状态：可以结束本轮或继续
         return Row(
           children: [
             Expanded(
@@ -785,6 +837,7 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                 final confirm = await _confirmStopDialog();
                 if (confirm) {
                   _resetTimer();
+                  await _unlockScreen(); // 结束本轮时如果在锁机，则一并解除
                   if (mounted) Navigator.of(context).pop();
                 }
               }),
@@ -841,6 +894,15 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
   }
 
   Future<void> _handleClose() async {
+    // 在强制锁机模式下，关闭按钮无效，避免用户借此退出界面
+    if (_isForcedLockActive) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('当前为强制锁机专注中，无法退出')),
+        );
+      }
+      return;
+    }
     final exit = await _confirmQuit();
     if (exit && mounted) {
       await _recordFocusDuration();
@@ -895,6 +957,74 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
       return _tasks.firstWhere((task) => task.id == id);
     } catch (_) {
       return null;
+    }
+  }
+
+  /// ================== 强制锁机相关 ==================
+
+  /// 开启屏幕固定（App Pinning）
+  Future<void> _lockScreen() async {
+    try {
+      await platform.invokeMethod('startLockTask');
+      setState(() {
+        _isForcedLockActive = true;
+      });
+      debugPrint('✅ 已进入强制锁机模式');
+    } catch (e) {
+      debugPrint('❌ 启动强制锁机失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('无法启用强制锁机：$e')),
+        );
+      }
+    }
+  }
+
+  /// 关闭屏幕固定（App Pinning）
+  Future<void> _unlockScreen() async {
+    if (!_isForcedLockActive) return;
+    try {
+      await platform.invokeMethod('stopLockTask');
+    } catch (e) {
+      debugPrint('❌ 关闭强制锁机失败: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isForcedLockActive = false;
+        });
+      } else {
+        _isForcedLockActive = false;
+      }
+      debugPrint('✅ 已退出强制锁机模式');
+    }
+  }
+
+  /// 点击“强制锁机”入口
+  Future<void> _handleForceLockTap() async {
+    if (_isForcedLockActive) {
+      // 已在锁机模式下，避免重复调用
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已在强制锁机专注中')),
+        );
+      }
+      return;
+    }
+
+    // 如果当前没有在计时，则按当前设定时间开始一轮专注
+    if (_state != _PomodoroState.running) {
+      if (!_hasActiveSession) {
+        _remaining = _initialDuration;
+      }
+      _startTimer();
+    }
+
+    await _lockScreen();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已开启强制锁机专注，期间无法返回其他界面')),
+      );
     }
   }
 
