@@ -1,0 +1,984 @@
+{
+	"info": {
+		"_postman_id": "e5e8a483-5f9d-4594-941f-d21dac7e70f3",
+		"name": "视图模块集成测试",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50564060",
+		"_collection_link": "https://shiyi-0929-3598011.postman.co/workspace/a5992b14-ae97-41c1-8001-1e6258c4495a/collection/50564060-e5e8a483-5f9d-4594-941f-d21dac7e70f3?action=share&source=collection_link&creator=50564060"
+	},
+	"item": [
+		{
+			"name": "MV-001",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 400\", function () {\r",
+							"    pm.response.to.have.status(400);\r",
+							"});\r",
+							"pm.test(\"Error: 年份必须是四位整数\", function () {\r",
+							"    var jsonData = pm.response.json();\r",
+							"    pm.expect(jsonData.error).to.include(\"年份(year)必须是四位整数\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/month-view?year=20&month=5",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"month-view"
+					],
+					"query": [
+						{
+							"key": "year",
+							"value": "20"
+						},
+						{
+							"key": "month",
+							"value": "5"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MV-002",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Year is 2025\", function () {\r",
+							"    pm.expect(jsonData.year).to.eql(2025);\r",
+							"});\r",
+							"pm.test(\"Verify Month is 9\", function () {\r",
+							"    pm.expect(jsonData.month).to.eql(9);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/month-view?year=2025&month=9",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"month-view"
+					],
+					"query": [
+						{
+							"key": "year",
+							"value": "2025"
+						},
+						{
+							"key": "month",
+							"value": "9"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MV-003",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Year is 6666\", function () {\r",
+							"    pm.expect(jsonData.year).to.eql(6666);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/month-view?year=6666&month=9",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"month-view"
+					],
+					"query": [
+						{
+							"key": "year",
+							"value": "6666"
+						},
+						{
+							"key": "month",
+							"value": "9"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MV-005",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 400\", function () {\r",
+							"    pm.response.to.have.status(400);\r",
+							"});\r",
+							"pm.test(\"Error: 月份必须是1-12\", function () {\r",
+							"    var jsonData = pm.response.json();\r",
+							"    pm.expect(jsonData.error).to.include(\"月份(month)必须是1-12\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/month-view?year=2025&month=0",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"month-view"
+					],
+					"query": [
+						{
+							"key": "year",
+							"value": "2025"
+						},
+						{
+							"key": "month",
+							"value": "0"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MV-004",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 400\", function () {\r",
+							"    pm.response.to.have.status(400);\r",
+							"});\r",
+							"pm.test(\"Error: 年份必须是四位整数\", function () {\r",
+							"    var jsonData = pm.response.json();\r",
+							"    pm.expect(jsonData.error).to.include(\"年份(year)必须是四位整数\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/month-view?year=20225&month=8",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"month-view"
+					],
+					"query": [
+						{
+							"key": "year",
+							"value": "20225"
+						},
+						{
+							"key": "month",
+							"value": "8"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MV-006",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 400\", function () {\r",
+							"    pm.response.to.have.status(400);\r",
+							"});\r",
+							"pm.test(\"Error: 月份必须是1-12\", function () {\r",
+							"    var jsonData = pm.response.json();\r",
+							"    pm.expect(jsonData.error).to.include(\"月份(month)必须是1-12\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/month-view?year=2025&month=13",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"month-view"
+					],
+					"query": [
+						{
+							"key": "year",
+							"value": "2025"
+						},
+						{
+							"key": "month",
+							"value": "13"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MV-007",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Month is 12\", function () {\r",
+							"    pm.expect(jsonData.month).to.eql(12);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/month-view?year=2025&month=12",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"month-view"
+					],
+					"query": [
+						{
+							"key": "year",
+							"value": "2025"
+						},
+						{
+							"key": "month",
+							"value": "12"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DV-001",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 400\", function () {\r",
+							"    pm.response.to.have.status(400);\r",
+							"});\r",
+							"pm.test(\"Error: 日期格式必须为YYYY-MM-DD\", function () {\r",
+							"    var jsonData = pm.response.json();\r",
+							"    pm.expect(jsonData.error).to.include(\"日期(date)格式必须为YYYY-MM-DD\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/day-detail?date=20-13-1",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"day-detail"
+					],
+					"query": [
+						{
+							"key": "date",
+							"value": "20-13-1"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DV-002",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 400\", function () {\r",
+							"    pm.response.to.have.status(400);\r",
+							"});\r",
+							"pm.test(\"Error: 月份必须是1-12\", function () {\r",
+							"    var jsonData = pm.response.json();\r",
+							"    // 根据PDF，这里虽然是DV用例，但预期报错可能包含月份提示\r",
+							"    pm.expect(jsonData.error).to.include(\"月份必须是1-12\"); \r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/day-detail?date=2025-13-1",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"day-detail"
+					],
+					"query": [
+						{
+							"key": "date",
+							"value": "2025-13-1"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DV-003",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 400\", function () {\r",
+							"    pm.response.to.have.status(400);\r",
+							"});\r",
+							"pm.test(\"Error: 日期不合法\", function () {\r",
+							"    var jsonData = pm.response.json();\r",
+							"    pm.expect(jsonData.error).to.include(\"日期(day)不合法\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/day-detail?date=2025-12-00",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"day-detail"
+					],
+					"query": [
+						{
+							"key": "date",
+							"value": "2025-12-00"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DV-004",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Date is 2025-12-01\", function () {\r",
+							"    pm.expect(jsonData.date).to.eql(\"2025-12-01\");\r",
+							"});\r",
+							"pm.test(\"Has tasks array\", function () {\r",
+							"    pm.expect(jsonData).to.have.property(\"tasks\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/day-detail?date=2025-12-01",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"day-detail"
+					],
+					"query": [
+						{
+							"key": "date",
+							"value": "2025-12-01"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DV-005",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 400\", function () {\r",
+							"    pm.response.to.have.status(400);\r",
+							"});\r",
+							"pm.test(\"Error: 2月应在1-29号之间\", function () {\r",
+							"    var jsonData = pm.response.json();\r",
+							"    pm.expect(jsonData.error).to.include(\"不合法\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/day-detail?date=2020-02-30",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"day-detail"
+					],
+					"query": [
+						{
+							"key": "date",
+							"value": "2020-02-30"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DV-006",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Date is 2020-02-29\", function () {\r",
+							"    pm.expect(jsonData.date).to.eql(\"2020-02-29\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/day-detail?date=2020-02-29",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"day-detail"
+					],
+					"query": [
+						{
+							"key": "date",
+							"value": "2020-02-29"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DV-007",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 400\", function () {\r",
+							"    pm.response.to.have.status(400);\r",
+							"});\r",
+							"pm.test(\"Error: 平年2月应在1-28号之间\", function () {\r",
+							"    var jsonData = pm.response.json();\r",
+							"    pm.expect(jsonData.error).to.include(\"不合法\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/calendar/day-detail?date=2021-02-29",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"calendar",
+						"day-detail"
+					],
+					"query": [
+						{
+							"key": "date",
+							"value": "2021-02-29"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "登录获取token",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg0MTQ3NiwiZXhwIjoxNzY0OTI3ODc2fQ.m45GQT4tyZ0aD7kk_xctGVzGRW7JHP-ZOE49KTrOE9U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "  { \"username\": \"hr_head\", \"password\": \"hr123\" }",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/auth/login",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"auth",
+						"login"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": ""
+		}
+	]
+}
