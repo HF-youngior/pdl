@@ -412,7 +412,8 @@
         "summary": "获取当前登录用户信息",
         "tags": ["认证与用户"],
         "responses": {
-          "200": { "description": "成功" }
+          "200": { "description": "成功" },
+          "401": { "description": "未授权（缺少或无效的访问令牌）" }
         }
       }
     },
@@ -436,6 +437,42 @@
       "post": {
         "summary": "创建用户",
         "tags": ["认证与用户"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" },
+                  "name": { "type": "string" },
+                  "position": { "type": "string" },
+                  "department_id": { "type": "string" },
+                  "role": {
+                    "type": "string",
+                    "description": "admin / founder / department_head / team_leader / employee"
+                  },
+                  "parent_id": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "上级用户 ID，可为空"
+                  }
+                },
+                "required": ["username", "password", "name", "position", "department_id", "role"]
+              },
+              "example": {
+                "username": "test_user",
+                "password": "Test@123",
+                "name": "测试用户",
+                "position": "产品经理",
+                "department_id": "dept-001",
+                "role": "employee",
+                "parent_id": "admin-001"
+              }
+            }
+          }
+        },
         "responses": {
           "201": { "description": "创建成功" }
         }
@@ -453,6 +490,34 @@
             "schema": { "type": "string" }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": { "type": "string" },
+                  "name": { "type": "string" },
+                  "position": { "type": "string" },
+                  "department_id": { "type": "string" },
+                  "role": { "type": "string" },
+                  "parent_id": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              },
+              "example": {
+                "name": "张三",
+                "position": "高级产品经理",
+                "department_id": "dept-001",
+                "role": "employee",
+                "parent_id": "admin-001"
+              }
+            }
+          }
+        },
         "responses": {
           "200": { "description": "更新成功" }
         }
@@ -477,6 +542,25 @@
       "put": {
         "summary": "修改密码",
         "tags": ["认证与用户"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "oldPassword": { "type": "string" },
+                  "newPassword": { "type": "string" }
+                },
+                "required": ["oldPassword", "newPassword"]
+              },
+              "example": {
+                "oldPassword": "admin123",
+                "newPassword": "Admin@2025"
+              }
+            }
+          }
+        },
         "responses": {
           "200": { "description": "修改成功" }
         }
@@ -777,6 +861,32 @@
       "post": {
         "summary": "创建个人日志",
         "tags": ["日志与个人信息"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "content": { "type": "string" },
+                  "category": { "type": "string" },
+                  "log_date": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "日志时间，例如 2025-12-03T08:00:00+08:00"
+                  }
+                }
+              },
+              "example": {
+                "title": "每日复盘",
+                "content": "今天完成了需求评审和接口联调……",
+                "category": "work",
+                "log_date": "2025-12-03T08:00:00+08:00"
+              }
+            }
+          }
+        },
         "responses": {
           "201": { "description": "创建成功" }
         }
@@ -796,6 +906,31 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "content": { "type": "string" },
+                  "category": { "type": "string" },
+                  "log_date": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              },
+              "example": {
+                "title": "每日复盘（更新）",
+                "content": "补充了一些新的想法……",
+                "category": "work",
+                "log_date": "2025-12-03T09:00:00+08:00"
+              }
+            }
+          }
+        },
         "responses": {
           "200": { "description": "更新成功" }
         }

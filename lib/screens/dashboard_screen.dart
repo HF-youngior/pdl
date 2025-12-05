@@ -677,11 +677,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             .take(3)
             .toList();
 
+
         _latestMbti = latestMbti;
         _personalPreviewItems = _buildPersonalPreview();
         _isLoadingPreview = false;
       });
     } catch (e) {
+      // ignore: avoid_print
+      print('加载预览数据出错: $e');
       // ignore: avoid_print
       print('加载预览数据出错: $e');
       if (mounted) {
