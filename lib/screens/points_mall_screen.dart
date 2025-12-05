@@ -24,6 +24,7 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
   final Map<String, DateTime> _rewardExpiry = {};
   final Set<String> _redeemedRewardIds = {};
   bool _isRefreshing = false;
+  bool _showNailong = false; // 是否显示奶龙界面
 
   String? get _equippedRewardId => AppSettings.instance.equippedLoopyId;
 
@@ -89,7 +90,8 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final loopyRewards = _loopyRewards();
+    final rewards = _showNailong ? _nailongRewards() : _loopyRewards();
+    final categoryTitle = _showNailong ? '可爱的奶龙' : '可爱的 Loopy';
 
     return Scaffold(
       appBar: AppBar(
@@ -133,29 +135,54 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '可爱的 Loopy ',
-                  style: TextStyle(
-                    color: Colors.grey[900],
-                    fontWeight: FontWeight.w700,
-                    fontSize: 18,
+                Expanded(
+                  child: Text(
+                    categoryTitle,
+                    style: TextStyle(
+                      color: Colors.grey[900],
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                    ),
                   ),
                 ),
+                const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.pinkAccent.withOpacity(0.12),
+                    border: Border.all(color: Colors.pinkAccent, width: 1.5),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Row(
-                    children: const [
-                      Icon(Icons.favorite, size: 16, color: Colors.pinkAccent),
-                      SizedBox(width: 4),
-                      Text(
-                        '快来挑选可爱的 Loopy 吧～',
-                        style: TextStyle(fontSize: 12, color: Colors.pinkAccent),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () {
+                        setState(() {
+                          _showNailong = !_showNailong;
+                        });
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _showNailong ? '上一页' : '下一页',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.pinkAccent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              _showNailong ? Icons.arrow_back : Icons.arrow_forward,
+                              size: 16,
+                              color: Colors.pinkAccent,
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ],
@@ -170,9 +197,9 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
                 crossAxisSpacing: 14,
                 childAspectRatio: 0.5,
               ),
-              itemCount: loopyRewards.length,
+              itemCount: rewards.length,
               itemBuilder: (context, index) {
-                final reward = loopyRewards[index];
+                final reward = rewards[index];
                 final expiresAt = _rewardExpiry[reward.id];
                 final isRedeemed =
                     expiresAt != null && expiresAt.isAfter(DateTime.now()) && _redeemedRewardIds.contains(reward.id);
@@ -495,6 +522,21 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
     });
   }
 
+  List<_LoopyReward> _nailongRewards() {
+    const basePath = 'assets/images/nailong';
+    return List.generate(20, (index) {
+      final fileIndex = index + 1;
+      final no = fileIndex.toString().padLeft(2, '0');
+      return _LoopyReward(
+        id: 'nailong$no',
+        title: '可爱的奶龙 #$no',
+        assetPath: '$basePath/nailong$fileIndex.gif',
+        cost: 20,
+        validDays: 7,
+      );
+    });
+  }
+
   void _syncRedeemedRewardsFromSettings({bool useSetState = true}) {
     final settings = AppSettings.instance;
     settings.purgeExpiredLoopyRewards();
@@ -623,15 +665,21 @@ class _LoopyRewardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Colors.pinkAccent[100]!;
+    // 判断是奶龙还是Loopy
+    final isNailong = reward.id.startsWith('nailong');
+    final cardColor = isNailong ? const Color(0xFFFFF8E1) : const Color(0xFFFFE6F0); // 奶龙浅黄色，Loopy浅粉色
+    final shadowColor = isNailong ? Colors.amber.withOpacity(0.08) : Colors.pinkAccent.withOpacity(0.08);
+    final accent = isNailong ? Colors.amber[300]! : Colors.pinkAccent[100]!;
+    final buttonColor = isNailong ? Colors.orange[400]! : Colors.pinkAccent;
+    
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        color: const Color(0xFFFFE6F0),
+        color: cardColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.pinkAccent.withOpacity(0.08),
+            color: shadowColor,
             blurRadius: 14,
             offset: const Offset(0, 8),
           ),
@@ -645,14 +693,15 @@ class _LoopyRewardCard extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(18),
-                color: Colors.white,
+                color: cardColor,
               ),
               clipBehavior: Clip.antiAlias,
-              child: FittedBox(
-                fit: BoxFit.contain,
-                alignment: Alignment.center,
+              child: Center(
                 child: Image.asset(
                   reward.assetPath,
+                  fit: BoxFit.contain,
+                  width: double.infinity,
+                  height: double.infinity,
                 ),
               ),
             ),
@@ -679,7 +728,7 @@ class _LoopyRewardCard extends StatelessWidget {
               _InfoChip(
                 icon: Icons.schedule_rounded,
                 label: '有效期 ${reward.validDays} 天',
-                color: Colors.deepOrangeAccent[100]!,
+                color: isNailong ? Colors.orange[300]! : Colors.deepOrangeAccent[100]!,
               ),
               if (expiresAt != null) ...[
                 const SizedBox(height: 4),
@@ -700,14 +749,17 @@ class _LoopyRewardCard extends StatelessWidget {
             width: double.infinity,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: isRedeemed ? Colors.grey[400] : Colors.pinkAccent,
+                backgroundColor: isRedeemed ? Colors.grey[400] : buttonColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
                 padding: const EdgeInsets.symmetric(vertical: 10),
               ),
               onPressed: isRedeemed ? null : onRedeem,
-              child: Text(isRedeemed ? '已兑换' : '立即兑换'),
+              child: Text(
+                isRedeemed ? '已兑换' : '立即兑换',
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ),
           if (isRedeemed && onToggleEquip != null) ...[
@@ -717,7 +769,7 @@ class _LoopyRewardCard extends StatelessWidget {
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(
-                    color: isEquipped ? Colors.grey : Colors.pinkAccent,
+                    color: isEquipped ? Colors.grey : buttonColor,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -728,7 +780,7 @@ class _LoopyRewardCard extends StatelessWidget {
                 child: Text(
                   isEquipped ? '取消装扮' : '装扮',
                   style: TextStyle(
-                    color: isEquipped ? Colors.grey[800] : Colors.pinkAccent,
+                    color: isEquipped ? Colors.grey[800] : buttonColor,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
