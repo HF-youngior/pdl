@@ -693,14 +693,16 @@ class _LoopyRewardCard extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(18),
-                color: Colors.white,
+                color: cardColor,
               ),
               clipBehavior: Clip.antiAlias,
-              child: Image.asset(
-                reward.assetPath,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: double.infinity,
+              child: Center(
+                child: Image.asset(
+                  reward.assetPath,
+                  fit: BoxFit.contain,
+                  width: double.infinity,
+                  height: double.infinity,
+                ),
               ),
             ),
           ),
