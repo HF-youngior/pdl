@@ -149,6 +149,13 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 清空所有已兑换的 Loopy/奶龙记录（用于重置/调试）
+  void clearAllRedeemedRewards() {
+    _redeemedLoopyRewards.clear();
+    _saveRedeemedLoopyRewards();
+    notifyListeners();
+  }
+
   void _loadRedeemedLoopyRewards() {
     final raw = _prefs?.getString(_keyRedeemedLoopies);
     if (raw == null || raw.isEmpty) return;
