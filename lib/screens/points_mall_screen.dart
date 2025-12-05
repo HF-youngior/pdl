@@ -34,6 +34,7 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
     _remainingPoints = widget.totalPoints;
     _consumedPoints = 0;
     _syncRedeemedRewardsFromSettings(useSetState: false);
+    _loadRedeemedRewardsFromServer(); // 同步云端兑换记录，避免多端不一致
 
     // 如果当前已有装扮中的 Loopy，则默认认为已兑换，方便用户进行装扮和取消装扮操作
     final equippedId = _equippedRewardId;
@@ -100,6 +101,11 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
         backgroundColor: Theme.of(context).primaryColor,
         elevation: 0,
         actions: [
+          IconButton(
+            tooltip: '清零兑换',
+            onPressed: _resetRedeemedRewards,
+            icon: const Icon(Icons.restart_alt),
+          ),
           IconButton(
             tooltip: '刷新',
             onPressed: _isRefreshing ? null : _refreshData,
@@ -228,6 +234,7 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
     try {
       final latestPoints = await CheckinService.getUserPoints(widget.user.id);
       await _loadConsumedPoints();
+      await _loadRedeemedRewardsFromServer(); // 刷新时也同步云端兑换记录
       if (!mounted) return;
       setState(() {
         _remainingPoints = latestPoints;
@@ -477,7 +484,7 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
           Expanded(
             child: _PointsSummaryTile(
               label: '可用积分',
-              value: widget.totalPoints,
+              value: _remainingPoints,
               color: Theme.of(context).primaryColor,
               icon: Icons.stars_rounded,
             onTap: () => _openPointsHistory('earn'),
@@ -497,7 +504,7 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
           Expanded(
             child: _PointsSummaryTile(
               label: '累积获得积分',
-              value: widget.totalPoints + _consumedPoints,
+              value: _remainingPoints + _consumedPoints,
               color: Colors.green[500]!,
               icon: Icons.savings_rounded,
             ),
@@ -570,6 +577,101 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
       _redeemedRewardIds.remove(id);
       AppSettings.instance.removeRedeemedReward(id);
     }
+  }
+
+  /// 从服务器拉取兑换记录，确保多设备同步
+  Future<void> _loadRedeemedRewardsFromServer() async {
+    try {
+      final records = await CheckinService.getPointsHistory(
+        userId: widget.user.id,
+        type: 'spend',
+      );
+
+      final Map<String, DateTime> serverRewards = {};
+      final now = DateTime.now();
+
+      for (final r in records) {
+        final desc = (r['description'] ?? '').toString();
+        final reward = _matchRewardByDescription(desc);
+        if (reward == null) continue;
+
+        final dateStr = r['date']?.toString() ?? '';
+        final redeemDate = DateTime.tryParse(dateStr) ?? now;
+        final expiry = redeemDate.add(Duration(days: reward.validDays));
+        if (expiry.isAfter(now)) {
+          // 同一个 reward 取最晚的有效期
+          final existing = serverRewards[reward.id];
+          if (existing == null || expiry.isAfter(existing)) {
+            serverRewards[reward.id] = expiry;
+          }
+        }
+      }
+
+      if (!mounted || serverRewards.isEmpty) return;
+
+      setState(() {
+        serverRewards.forEach((id, expiry) {
+          final existing = _rewardExpiry[id];
+          if (existing == null || expiry.isAfter(existing)) {
+            _rewardExpiry[id] = expiry;
+          }
+          _redeemedRewardIds.add(id);
+        });
+      });
+
+      // 持久化到本地，离线时也能读取
+      final settings = AppSettings.instance;
+      serverRewards.forEach((id, expiry) {
+        settings.markRewardRedeemed(id, expiry);
+      });
+
+      _cleanupExpiredRewards();
+    } catch (e) {
+      // 云端同步失败时只记录日志，不阻塞主流程
+      // ignore: avoid_print
+      print('同步云端兑换记录失败: $e');
+    }
+  }
+
+  /// 根据兑换描述匹配到具体的 reward（Loopy/奶龙）
+  _LoopyReward? _matchRewardByDescription(String desc) {
+    final match =
+        RegExp(r'兑换[:：]?\s*可爱的\s*(Loopy|奶龙)\s*#?0*(\d+)', caseSensitive: false).firstMatch(desc);
+    if (match == null) return null;
+    final type = match.group(1)?.toLowerCase();
+    final index = int.tryParse(match.group(2) ?? '');
+    if (index == null || index <= 0) return null;
+
+    final rewards = type == '奶龙' ? _nailongRewards() : _loopyRewards();
+    if (index > rewards.length) return null;
+    return rewards[index - 1];
+  }
+
+  /// 手动清零兑换状态（调试/重置用）
+  Future<void> _resetRedeemedRewards() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('清零兑换记录'),
+          content: const Text('将清除本地已兑换/装扮状态，积分不会回滚，确认吗？'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
+            ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('确认')),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+
+    final settings = AppSettings.instance;
+    settings.clearLoopy();
+    settings.clearAllRedeemedRewards();
+
+    setState(() {
+      _redeemedRewardIds.clear();
+      _rewardExpiry.clear();
+    });
   }
 }
 
