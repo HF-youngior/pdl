@@ -4139,7 +4139,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
     if (!year || !month) {
       return res.status(400).json({ error: '请提供年份(year)和月份(month)参数' });
     }
-
+    
     // 年份必须是四位整数，例如 2025
     const yearNum = parseInt(year, 10);
     if (!/^\d{4}$/.test(String(year)) || !Number.isInteger(yearNum)) {

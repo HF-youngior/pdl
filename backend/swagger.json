@@ -758,18 +758,173 @@
     "/api/upload-image": {
       "post": {
         "summary": "上传单张图片",
+        "description": "上传单张图片文件，支持 jpeg、jpg、png、gif、webp 格式，最大 10MB。字段名：image",
         "tags": ["文件上传"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["image"],
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "图片文件，支持 jpeg、jpg、png、gif、webp 格式，最大 10MB"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "上传成功" }
+          "200": {
+            "description": "上传成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "url": { "type": "string", "description": "图片访问URL" },
+                    "filename": { "type": "string", "description": "保存的文件名" }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "url": "/uploads/img-1234567890-123456789.png",
+                  "filename": "img-1234567890-123456789.png"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                },
+                "example": {
+                  "error": "没有上传文件"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "details": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
     "/api/upload-images": {
       "post": {
         "summary": "批量上传图片",
+        "description": "批量上传多张图片，最多 10 张，支持 jpeg、jpg、png、gif、webp 格式，每张最大 10MB。字段名：images",
         "tags": ["文件上传"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["images"],
+                "properties": {
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "description": "图片文件数组，最多 10 张，支持 jpeg、jpg、png、gif、webp 格式，每张最大 10MB"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "上传成功" }
+          "200": {
+            "description": "上传成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "images": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "url": { "type": "string", "description": "图片访问URL" },
+                          "filename": { "type": "string", "description": "保存的文件名" }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "images": [
+                    {
+                      "url": "/uploads/img-1234567890-123456789.png",
+                      "filename": "img-1234567890-123456789.png"
+                    },
+                    {
+                      "url": "/uploads/img-1234567891-123456790.jpg",
+                      "filename": "img-1234567891-123456790.jpg"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                },
+                "example": {
+                  "error": "没有上传文件"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "details": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
