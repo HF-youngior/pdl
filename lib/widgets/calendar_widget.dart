@@ -2728,9 +2728,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                 ? ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: filteredTasks.length,
-                    itemBuilder: (context, index) {
-                      return _buildTaskListItem(filteredTasks[index]);
-                    },
+                    itemBuilder: (context, index) => _buildTaskListItem(filteredTasks[index]),
                   )
                 : Center(
                     child: Column(

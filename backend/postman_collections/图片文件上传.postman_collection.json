@@ -1,0 +1,583 @@
+{
+	"info": {
+		"_postman_id": "1d5440e9-57e1-43b0-987a-5fee2d71be05",
+		"name": "图片文件上传",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50564060",
+		"_collection_link": "https://shiyi-0929-3598011.postman.co/workspace/a5992b14-ae97-41c1-8001-1e6258c4495a/collection/50564060-1d5440e9-57e1-43b0-987a-5fee2d71be05?action=share&source=collection_link&creator=50564060"
+	},
+	"item": [
+		{
+			"name": "UP-001",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Upload Success\", function () {\r",
+							"    pm.expect(jsonData.success).to.eql(true);\r",
+							"});\r",
+							"pm.test(\"File extension is png\", function () {\r",
+							"    pm.expect(jsonData.filename).to.include(\".png\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU3ODc5LCJleHAiOjE3NjQ5NDQyNzl9.kINtM2992OzBpyAMgfr5wPyfZGAqYZI-W0GTLRJcDRU",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "image",
+							"type": "file",
+							"src": "C:\\Users\\1\\Documents\\GitHub\\pdl\\backend\\test_upload_images\\test.png"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/upload-image",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"upload-image"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "UP-002",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Upload Success\", function () {\r",
+							"    pm.expect(jsonData.success).to.eql(true);\r",
+							"});\r",
+							"pm.test(\"File extension is png\", function () {\r",
+							"    pm.expect(jsonData.filename).to.include(\".png\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU3ODc5LCJleHAiOjE3NjQ5NDQyNzl9.kINtM2992OzBpyAMgfr5wPyfZGAqYZI-W0GTLRJcDRU",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "image",
+							"type": "file",
+							"src": "C:\\Users\\1\\Documents\\GitHub\\pdl\\backend\\test_upload_images\\test.png"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/upload-image",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"upload-image"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "UP-003",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Upload Success\", function () {\r",
+							"    pm.expect(jsonData.success).to.eql(true);\r",
+							"});\r",
+							"pm.test(\"File extension is gif\", function () {\r",
+							"    pm.expect(jsonData.filename).to.include(\".gif\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU3ODc5LCJleHAiOjE3NjQ5NDQyNzl9.kINtM2992OzBpyAMgfr5wPyfZGAqYZI-W0GTLRJcDRU",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "image",
+							"type": "file",
+							"src": "C:\\Users\\1\\Documents\\GitHub\\pdl\\backend\\test_upload_images\\test.png"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/upload-image",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"upload-image"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "UP-004",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Upload Success\", function () {\r",
+							"    pm.expect(jsonData.success).to.eql(true);\r",
+							"});\r",
+							"pm.test(\"File extension is png\", function () {\r",
+							"    pm.expect(jsonData.filename).to.include(\".png\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU3ODc5LCJleHAiOjE3NjQ5NDQyNzl9.kINtM2992OzBpyAMgfr5wPyfZGAqYZI-W0GTLRJcDRU",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "image",
+							"type": "file",
+							"src": "C:\\Users\\1\\Documents\\GitHub\\pdl\\backend\\test_upload_images\\test.png"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/upload-image",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"upload-image"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "UP-005",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Returned 2 images\", function () {\r",
+							"    pm.expect(jsonData.images).to.be.an('array');\r",
+							"    pm.expect(jsonData.images.length).to.eql(2);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU3ODc5LCJleHAiOjE3NjQ5NDQyNzl9.kINtM2992OzBpyAMgfr5wPyfZGAqYZI-W0GTLRJcDRU",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "images",
+							"type": "file",
+							"src": [
+								"postman-cloud:///1f0d112f-76a7-4110-99d3-7c8e785091c8",
+								"postman-cloud:///1f0d112e-cc2e-4ee0-992e-f9a8ca655d32"
+							]
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/upload-images",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"upload-images"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "UP-006",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Returned 2 images\", function () {\r",
+							"    pm.expect(jsonData.images).to.be.an('array');\r",
+							"    pm.expect(jsonData.images.length).to.eql(2);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU3ODc5LCJleHAiOjE3NjQ5NDQyNzl9.kINtM2992OzBpyAMgfr5wPyfZGAqYZI-W0GTLRJcDRU",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "images",
+							"type": "file",
+							"src": [
+								"postman-cloud:///1f0d1133-2b3b-4fb0-a3b8-a9dfd0e9294a",
+								"postman-cloud:///1f0d1132-be58-4010-b69e-36238a65b80c"
+							]
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/upload-images",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"upload-images"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "UP-007",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// 只要有一个非法文件，整体应该失败返回 500\r",
+							"pm.test(\"Status code is 500\", function () {\r",
+							"    pm.response.to.have.status(500);\r",
+							"});\r",
+							"\r",
+							"// 防崩溃断言\r",
+							"pm.test(\"Error message check\", function () {\r",
+							"    if (pm.response.headers.get(\"Content-Type\").includes(\"application/json\")) {\r",
+							"        var jsonData = pm.response.json();\r",
+							"        pm.expect(jsonData.error).to.include(\"只允许上传图片文件\");\r",
+							"    }\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU3ODc5LCJleHAiOjE3NjQ5NDQyNzl9.kINtM2992OzBpyAMgfr5wPyfZGAqYZI-W0GTLRJcDRU",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "images",
+							"type": "file",
+							"src": [
+								"postman-cloud:///1f0d1137-758a-4f90-a652-f403c00339bd",
+								"postman-cloud:///1f0d1136-4f9e-4d50-a064-803e31fec456"
+							]
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/upload-images",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"upload-images"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "UP-008",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Returned 1 image array\", function () {\r",
+							"    pm.expect(jsonData.images).to.be.an('array');\r",
+							"    pm.expect(jsonData.images.length).to.eql(1);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU3ODc5LCJleHAiOjE3NjQ5NDQyNzl9.kINtM2992OzBpyAMgfr5wPyfZGAqYZI-W0GTLRJcDRU",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "images",
+							"type": "file",
+							"src": "postman-cloud:///1f0d113b-20dd-4480-af4d-2d9bec392521"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/upload-images",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"upload-images"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "UP-009",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// 只要有一个非法文件，整体应该失败返回 500\r",
+							"pm.test(\"Status code is 500\", function () {\r",
+							"    pm.response.to.have.status(500);\r",
+							"});\r",
+							"\r",
+							"// 防崩溃断言\r",
+							"pm.test(\"Error message check\", function () {\r",
+							"    if (pm.response.headers.get(\"Content-Type\").includes(\"application/json\")) {\r",
+							"        var jsonData = pm.response.json();\r",
+							"        pm.expect(jsonData.error).to.include(\"只允许上传图片文件\");\r",
+							"    }\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU3ODc5LCJleHAiOjE3NjQ5NDQyNzl9.kINtM2992OzBpyAMgfr5wPyfZGAqYZI-W0GTLRJcDRU",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "images",
+							"type": "file",
+							"src": "postman-cloud:///1f0d1140-58ea-4170-b598-facefcde90e4"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/upload-images",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"upload-images"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

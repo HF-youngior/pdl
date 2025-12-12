@@ -1,0 +1,647 @@
+{
+	"info": {
+		"_postman_id": "f3cee8f1-6fb7-4619-9510-1a2abf24adb7",
+		"name": "Integration Test Collection (HYX)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50564060",
+		"_collection_link": "https://shiyi-0929-3598011.postman.co/workspace/a5992b14-ae97-41c1-8001-1e6258c4495a/collection/50564060-f3cee8f1-6fb7-4619-9510-1a2abf24adb7?action=share&source=collection_link&creator=50564060"
+	},
+	"item": [
+		{
+			"name": "认证与用户",
+			"item": [
+				{
+					"name": "AUTH-LOGIN-001 - 用户登录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Save Token\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.token) {",
+									"        pm.collectionVariables.set(\"token\", jsonData.token);",
+									"        console.log(\"Token saved:\", jsonData.token);",
+									"    }",
+									"});",
+									"pm.test(\"Response body check\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    console.log(jsonData); ",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU1OTE1LCJleHAiOjE3NjQ5NDIzMTV9.NfhCDsUobZ8L_3GZP5Y_0ym0RGNup4dzEWTBe4sr4rs",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"admin\", \"password\": \"Admin@2025\"}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AUTH-PROFILE-001 - 获取当前登录用户信息",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Save Token\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.token) {",
+									"        pm.collectionVariables.set(\"token\", jsonData.token);",
+									"        console.log(\"Token saved:\", jsonData.token);",
+									"    }",
+									"});",
+									"pm.test(\"Response body check\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    console.log(jsonData); ",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU1OTE1LCJleHAiOjE3NjQ5NDIzMTV9.NfhCDsUobZ8L_3GZP5Y_0ym0RGNup4dzEWTBe4sr4rs",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/user/profile",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"user",
+								"profile"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AUTH-DEPT-001 - 获取部门列表",
+					"event": [
+					{
+						"listen": "test",
+						"script": {
+							"exec": [
+								"pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});",
+								"pm.test(\"HTML Response check\", function () {\n    var body = pm.response.text();\n    pm.expect(body).to.include(\"<!DOCTYPE html>\");\n});"
+							],
+							"type": "text/javascript"
+						}
+					}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/departments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"departments"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AUTH-PERSONAL-INFO-001 - 获取指定用户个人信息",
+					"event": [
+					{
+						"listen": "test",
+						"script": {
+							"exec": [
+								"pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});",
+								"pm.test(\"HTML Response check\", function () {\n    var body = pm.response.text();\n    pm.expect(body).to.include(\"<!DOCTYPE html>\");\n});"
+							],
+							"type": "text/javascript"
+						}
+					}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/personal-info/admin-001",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"personal-info",
+								"admin-001"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AUTH-USERS-001 - 获取用户列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/users",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"users"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AUTH-CHANGE-PWD-001 - 修改密码",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"oldPassword\": \"admin123\", \"newPassword\": \"Admin@2025\"}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/change-password",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"change-password"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AUTH-USERS-CREATE-001 - 创建用户",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {\n    pm.response.to.have.status(201);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"test_user_01\", \"password\": \"Test@123\", \"name\": \"测试用户01\", \"position\": \"财务专员\", \"department_id\": \"dept-002\", \"role\": \"employee\", \"parent_id\": \"admin-001\"}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/users",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"users"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AUTH-USERS-UPDATE-001 - 更新用户信息",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"name\": \"测试用户01-更新\", \"position\": \"财务主管\", \"department_id\": \"dept-001\", \"role\": \"employee\", \"parent_id\": \"admin-001\"}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/users/4f416276-7c14-4785-8fa0-ba6037f817aa",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"4f416276-7c14-4785-8fa0-ba6037f817aa"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AUTH-USERS-DELETE-001 - 删除用户",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/users/4f416276-7c14-4785-8fa0-ba6037f817aa",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"4f416276-7c14-4785-8fa0-ba6037f817aa"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "日志与个人信息",
+			"item": [
+				{
+					"name": "LOG-PER-001 - 创建个人日志",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {\n    pm.response.to.have.status(201);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"title\": \"每日复盘\", \"content\": \"今天完成了番茄专注和管理页面调试。\", \"category\": \"work\", \"log_date\": \"2025-12-03T08:00:00+08:00\"}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/personal-logs",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"personal-logs"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "LOG-PER-GET-001 - 获取个人日志列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/personal-logs",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"personal-logs"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "LOG-PER-UPDATE-001 - 更新个人日志",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"title\": \"每日复盘\", \"content\": \"今天完成了需求评审和接口联调……\", \"category\": \"work\", \"log_date\": \"2025-12-03T09:00:00+08:00\"}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/personal-logs/d60ed775-869b-4340-b872-45f59553a9a1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"personal-logs",
+								"d60ed775-869b-4340-b872-45f59553a9a1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "LOG-PER-DELETE-001 - 删除个人日志",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 204\", function () {\n    pm.response.to.have.status(204);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/personal-logs/d60ed775-869b-4340-b872-45f59553a9a1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"personal-logs",
+								"d60ed775-869b-4340-b872-45f59553a9a1"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "日志管理",
+			"item": [
+				{
+					"name": "LOG-ADM-GET-002 - 获取系统日志列表-带详细记录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/logs",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"logs"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "文档",
+			"item": [
+				{
+					"name": "DOC-API-ROOT-001 - 访问API文档首页",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "DOC-API-OLD-001 - 访问旧版API文档页",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});",
+									"pm.test(\"Response body check\", function () {\n    var jsonData = pm.response.json();\n    console.log(jsonData); \n});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/old",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"old"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

@@ -1,0 +1,126 @@
+{
+  "totalTestFiles": 22,
+  "modules": {
+    "数据库连接": 1,
+    "时区处理": 3,
+    "MBTI模块": 6,
+    "AI分析": 3,
+    "任务管理": 2,
+    "日历视图": 2,
+    "员工满意度": 2,
+    "其他": 3
+  },
+  "files": [
+    {
+      "file": "test_ai_apis.js",
+      "module": "AI分析",
+      "lines": 85
+    },
+    {
+      "file": "test_ai_final.js",
+      "module": "AI分析",
+      "lines": 72
+    },
+    {
+      "file": "test_ai_simple.js",
+      "module": "AI分析",
+      "lines": 76
+    },
+    {
+      "file": "test_all_views_timezone.js",
+      "module": "时区处理",
+      "lines": 220
+    },
+    {
+      "file": "test_api_multiday.js",
+      "module": "日历视图",
+      "lines": 213
+    },
+    {
+      "file": "test_db_connection.js",
+      "module": "数据库连接",
+      "lines": 38
+    },
+    {
+      "file": "test_deepseek_api.js",
+      "module": "其他",
+      "lines": 150
+    },
+    {
+      "file": "test_mbti_ai_integration.js",
+      "module": "MBTI模块",
+      "lines": 251
+    },
+    {
+      "file": "test_mbti_api.js",
+      "module": "MBTI模块",
+      "lines": 112
+    },
+    {
+      "file": "test_mbti_fix.js",
+      "module": "MBTI模块",
+      "lines": 76
+    },
+    {
+      "file": "test_mbti_integration.js",
+      "module": "MBTI模块",
+      "lines": 126
+    },
+    {
+      "file": "test_mbti_save.js",
+      "module": "MBTI模块",
+      "lines": 70
+    },
+    {
+      "file": "test_mbti_simple.js",
+      "module": "MBTI模块",
+      "lines": 73
+    },
+    {
+      "file": "test_multiday_tasks.js",
+      "module": "任务管理",
+      "lines": 111
+    },
+    {
+      "file": "test_october_hr_tasks.js",
+      "module": "任务管理",
+      "lines": 194
+    },
+    {
+      "file": "test_real_api_response.js",
+      "module": "其他",
+      "lines": 127
+    },
+    {
+      "file": "test_satisfaction_api.js",
+      "module": "员工满意度",
+      "lines": 103
+    },
+    {
+      "file": "test_satisfaction_complete.js",
+      "module": "员工满意度",
+      "lines": 125
+    },
+    {
+      "file": "test_simple.js",
+      "module": "其他",
+      "lines": 41
+    },
+    {
+      "file": "test_timezone_direct.js",
+      "module": "时区处理",
+      "lines": 141
+    },
+    {
+      "file": "test_timezone_fix.js",
+      "module": "时区处理",
+      "lines": 169
+    },
+    {
+      "file": "test_week_gantt_logic.js",
+      "module": "日历视图",
+      "lines": 119
+    }
+  ],
+  "generatedAt": "2025-12-04T05:42:19.829Z"
+}

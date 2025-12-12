@@ -1,0 +1,587 @@
+{
+  "info": {
+    "_postman_id": "5c6d7e8f-9a0b-1c2d-3e4f-5a6b7c8d9e0f",
+    "name": "PDL系统 - MBTI和AI分析接口测试",
+    "description": "MBTI测评和AI分析接口的Postman测试集合，包含所有功能测试用例",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "MBTI测评模块",
+      "item": [
+        {
+          "name": "MBTI-001 创建MBTI测评记录",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('应返回创建成功消息', function () {",
+                  "    pm.response.to.have.jsonBody('message', 'MBTI记录创建成功');",
+                  "    pm.response.to.have.jsonBody('id');",
+                  "    pm.response.to.have.jsonBody('mbti_type');",
+                  "    pm.response.to.have.jsonBody('confidence_score');",
+                  "    pm.environment.set('mbti_record_id', pm.response.json().id);",
+                  "    console.log('创建的MBTI记录ID:', pm.response.json().id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"mbti_type\": \"ENFP\", \"test_scores\": {\"E\": 75, \"I\": 25, \"S\": 20, \"N\": 80, \"T\": 30, \"F\": 70, \"J\": 35, \"P\": 65}, \"personality_traits\": {\"extroversion\": \"外向型，善于社交和沟通\", \"intuition\": \"直觉型，喜欢探索新可能性\", \"feeling\": \"情感型，重视人际关系和价值观\", \"perceiving\": \"感知型，灵活适应环境变化\"}, \"personal_info\": {\"full_name\": \"测试用户\", \"birth_date\": \"1990-01-01\", \"address\": \"测试地址\"}, \"test_version\": \"v1.0\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/mbti-records",
+              "host": ["{{base_url}}"],
+              "path": ["api", "mbti-records"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "MBTI-002 获取MBTI测评记录列表",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回MBTI记录列表', function () {",
+                  "    pm.response.to.have.jsonBody('records');",
+                  "    pm.response.to.have.jsonBody('total');",
+                  "    pm.response.to.have.jsonBody('page');",
+                  "    pm.response.to.have.jsonBody('limit');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mbti-records",
+              "host": ["{{base_url}}"],
+              "path": ["api", "mbti-records"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "MBTI-003 获取最近一次MBTI测评记录",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回最近的MBTI记录', function () {",
+                  "    pm.response.to.have.jsonBody('id');",
+                  "    pm.response.to.have.jsonBody('mbti_type');",
+                  "    pm.response.to.have.jsonBody('test_date');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mbti-records/latest",
+              "host": ["{{base_url}}"],
+              "path": ["api", "mbti-records", "latest"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "MBTI-004 获取单条MBTI测评记录",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回指定的MBTI记录', function () {",
+                  "    pm.response.to.have.jsonBody('id', pm.environment.get('mbti_record_id'));",
+                  "    pm.response.to.have.jsonBody('mbti_type');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mbti-records/{{mbti_record_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "mbti-records", "{{mbti_record_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "MBTI-005 更新MBTI测评记录",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回更新成功消息', function () {",
+                  "    pm.response.to.have.jsonBody('message', 'MBTI记录更新成功');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"mbti_type\": \"ENFP\", \"test_scores\": {\"E\": 75, \"I\": 25, \"S\": 20, \"N\": 80, \"T\": 30, \"F\": 70, \"J\": 35, \"P\": 65}, \"personality_traits\": {\"extroversion\": \"外向型，善于社交和沟通\", \"intuition\": \"直觉型，喜欢探索新可能性\", \"feeling\": \"情感型，重视人际关系和价值观\", \"perceiving\": \"感知型，灵活适应环境变化\"}, \"personal_info\": {\"full_name\": \"测试用户\", \"birth_date\": \"1990-01-01\", \"address\": \"测试地址\"}, \"ai_analysis\": {}, \"work_suggestions\": {}, \"improvement_advice\": {}, \"confidence_score\": 0.85}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/mbti-records/{{mbti_record_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "mbti-records", "{{mbti_record_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "MBTI-006 删除MBTI测评记录",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回删除成功消息', function () {",
+                  "    pm.response.to.have.jsonBody('success', true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mbti-records/{{mbti_record_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "mbti-records", "{{mbti_record_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "MBTI-007 获取MBTI统计信息",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回MBTI统计信息', function () {",
+                  "    pm.response.to.have.jsonBody('statistics');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mbti-records/statistics",
+              "host": ["{{base_url}}"],
+              "path": ["api", "mbti-records", "statistics"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "AI分析模块",
+      "item": [
+        {
+          "name": "AI-001 对日志进行AI分析",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回分析结果', function () {",
+                  "    pm.response.to.have.jsonBody('keywords');",
+                  "    pm.response.to.have.jsonBody('wordFrequencies');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"text\": \"string\", \"topK\": 20, \"user_id\": \"string\", \"log_date\": \"2025-12-03\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ai/analyze-log",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai", "analyze-log"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "AI-002 分析今日任务/日志",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回今日分析结果', function () {",
+                  "    pm.response.to.have.jsonBody('keywords');",
+                  "    pm.response.to.have.jsonBody('wordFrequencies');",
+                  "    pm.response.to.have.jsonBody('range');",
+                  "    pm.response.to.have.jsonBody('isDeepSeek');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ai/analyze-today",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai", "analyze-today"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "AI-003 保存词云分析结果",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回保存结果', function () {",
+                  "    pm.response.to.have.jsonBody('id');",
+                  "    pm.response.to.have.jsonBody('userId');",
+                  "    pm.environment.set('wordcloud_id', pm.response.json().id);",
+                  "    console.log('保存的词云ID:', pm.response.json().id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"analysisDate\": \"2025-12-03T17:48:23.363Z\", \"keywords\": [{\"word\": \"string\", \"weight\": 0}], \"wordFrequencies\": [{\"word\": \"string\", \"count\": 0}], \"description\": \"string\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ai/save-wordcloud",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai", "save-wordcloud"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "AI-004 获取词云历史记录",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回词云历史记录', function () {",
+                  "    pm.response.to.have.jsonBody('history');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ai/wordcloud-history",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai", "wordcloud-history"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "AI-005 发起人格分析请求",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回人格分析结果', function () {",
+                  "    pm.response.to.have.jsonBody('personalityTraits');",
+                  "    pm.response.to.have.jsonBody('abilityDimensions');",
+                  "    pm.response.to.have.jsonBody('aiAnalysis');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"logText\": \"今天完成了系统维护工作，处理了一些技术问题，感觉很有成就感。\", \"mbtiType\": \"ISTJ\", \"useDeepSeek\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ai/personality-analysis",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai", "personality-analysis"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "AI-006 获取人格分析历史记录",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('状态码应为200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('应返回人格分析历史记录', function () {",
+                  "    pm.response.to.have.jsonBody('history');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ai/personality-history",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai", "personality-history"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "mbti_record_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "wordcloud_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

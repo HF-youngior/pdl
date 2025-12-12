@@ -1041,6 +1041,43 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
       _startTimer();
     }
 
+    // 轻量确认弹窗，避免误触直接进入强制锁机
+    final confirmed = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            title: Row(
+              children: const [
+                Icon(Icons.lock_clock, color: Colors.pinkAccent),
+                SizedBox(width: 8),
+                Text('要开始强制锁机吗？'),
+              ],
+            ),
+            content: const Text(
+              '请先确认倒计时时间，开启后要等计时结束才能离开这个界面哦。',
+              style: TextStyle(height: 1.4),
+            ),
+            actionsPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('再想想'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('确认开启'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!confirmed) return;
+
     await _lockScreen();
 
     if (mounted) {
