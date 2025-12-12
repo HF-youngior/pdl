@@ -49,6 +49,10 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
   Timer? _funExitTimer;
   String? _selectedImmersionOption;
   bool _isForcedLockActive = false; // 当前是否处于强制锁机模式
+  // 协同专注相关
+  List<User> _availableUsers = []; // 可邀请的用户列表（同级和下级）
+  bool _isLoadingUsers = false; // 是否正在加载用户列表
+  Set<String> _selectedUserIds = {}; // 选中的用户ID集合
 
   @override
   void initState() {
@@ -503,9 +507,11 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                     }
                     _showImmersionPicker();
                   }
-                : label == '强制锁机'
-                    ? _handleForceLockTap
-                    : null,
+                : label == '协同专注'
+                    ? _handleCollaborativeFocusTap
+                    : label == '强制锁机'
+                        ? _handleForceLockTap
+                        : null,
             borderRadius: BorderRadius.circular(22),
           child: Container(
               height: 110,
@@ -821,7 +827,23 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
   Widget _buildControlButtons() {
     switch (_state) {
       case _PomodoroState.idle:
-        return _buildPrimaryButton('开始专注', const Color(0xFFFF6A88), _startTimer);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildPrimaryButton('开始专注', const Color(0xFFFF6A88), _startTimer),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: _showInviteDialog,
+              child: const Text(
+                '邀请伙伴陪我专注',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF7A7CFF),
+                ),
+              ),
+            ),
+          ],
+        );
       case _PomodoroState.running:
         return _buildPrimaryButton('暂停一下', const Color(0xFFFFA07A), _pauseTimer);
       case _PomodoroState.paused:
@@ -1018,6 +1040,43 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
       }
       _startTimer();
     }
+
+    // 轻量确认弹窗，避免误触直接进入强制锁机
+    final confirmed = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            title: Row(
+              children: const [
+                Icon(Icons.lock_clock, color: Colors.pinkAccent),
+                SizedBox(width: 8),
+                Text('要开始强制锁机吗？'),
+              ],
+            ),
+            content: const Text(
+              '请先确认倒计时时间，开启后要等计时结束才能离开这个界面哦。',
+              style: TextStyle(height: 1.4),
+            ),
+            actionsPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('再想想'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('确认开启'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!confirmed) return;
 
     await _lockScreen();
 
@@ -1288,6 +1347,260 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
         const SnackBar(content: Text('已退出趣味沉浸模式')),
       );
     }
+  }
+
+  /// ================== 协同专注相关 ==================
+
+  /// 角色等级函数（用于判断用户层级关系）
+  int _roleRank(String role) {
+    switch (role) {
+      case 'founder':
+      case 'admin':
+        return 5;
+      case 'department_head':
+        return 4;
+      case 'team_leader':
+        return 3;
+      case 'employee':
+      default:
+        return 1;
+    }
+  }
+
+  /// 加载可邀请的用户列表（同级和下级）
+  Future<void> _loadAvailableUsers() async {
+    setState(() {
+      _isLoadingUsers = true;
+    });
+
+    try {
+      final users = await ApiService.getUsers();
+      final currentUser = widget.user;
+      final currentUserRank = _roleRank(currentUser.role);
+
+      // 筛选同级或下级用户
+      final filteredUsers = users.where((user) {
+        // 排除自己
+        if (user.id == currentUser.id) {
+          return false;
+        }
+        
+        // 同级：parent_id 相同且不为 null
+        final isPeer = currentUser.parentId != null && 
+                       user.parentId == currentUser.parentId;
+        
+        // 下级：parent_id 指向当前用户
+        final isDirectSubordinate = user.parentId == currentUser.id;
+        
+        // 间接下级：同部门且角色等级更低
+        final userRank = _roleRank(user.role);
+        final isIndirectSubordinate = userRank < currentUserRank && 
+                                      user.departmentId != null &&
+                                      currentUser.departmentId != null &&
+                                      user.departmentId == currentUser.departmentId;
+
+        return isPeer || isDirectSubordinate || isIndirectSubordinate;
+      }).toList();
+
+      setState(() {
+        _availableUsers = filteredUsers;
+        _isLoadingUsers = false;
+      });
+    } catch (e) {
+      debugPrint('加载用户列表失败: $e');
+      setState(() {
+        _isLoadingUsers = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载用户列表失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 显示“陪我专注”弹窗（多选用户邀请）
+  void _showInviteDialog() {
+    // 强制锁机状态下禁止协同专注
+    if (_isForcedLockActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('当前为强制锁机模式，无法使用协同专注')),
+      );
+      return;
+    }
+
+    _loadAvailableUsers().then((_) {
+      if (!mounted) return;
+
+      // 打开弹窗时清空上次的选择
+      _selectedUserIds.clear();
+
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (ctx) {
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              return SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    top: 20,
+                    bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                  ),
+                  child: SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.65,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              '邀请伙伴陪你专注',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(),
+                              child: const Text('取消'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          '发送通知：xxx要开始专注了，你还在摸鱼吗？',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                        const SizedBox(height: 8),
+                        const Divider(height: 1),
+                        const SizedBox(height: 8),
+                        if (_isLoadingUsers)
+                          const Expanded(
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        else if (_availableUsers.isEmpty)
+                          Expanded(
+                            child: Center(
+                              child: Text(
+                                '暂无可邀请的用户',
+                                style: TextStyle(color: Colors.grey[600]),
+                              ),
+                            ),
+                          )
+                        else
+                          Expanded(
+                            child: ListView.builder(
+                              itemCount: _availableUsers.length,
+                              itemBuilder: (context, index) {
+                                final user = _availableUsers[index];
+                                final isSelected = _selectedUserIds.contains(user.id);
+                                return CheckboxListTile(
+                                  value: isSelected,
+                                  title: Text(user.name),
+                                  subtitle: Text('${user.position} · ${user.department}'),
+                                  activeColor: const Color(0xFF7A7CFF),
+                                  onChanged: (checked) {
+                                    setModalState(() {
+                                      if (checked == true) {
+                                        _selectedUserIds.add(user.id);
+                                      } else {
+                                        _selectedUserIds.remove(user.id);
+                                      }
+                                    });
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              backgroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: _selectedUserIds.isEmpty
+                                ? null
+                                : () {
+                                    Navigator.of(ctx).pop();
+                                    _sendInviteNotifications();
+                                  },
+                            child: Text(
+                              _selectedUserIds.isEmpty
+                                  ? '请选择要邀请的伙伴'
+                                  : '发送通知 (${_selectedUserIds.length})',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    });
+  }
+
+  /// 发送“陪我专注”通知
+  Future<void> _sendInviteNotifications() async {
+    if (_selectedUserIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请至少选择一位用户')),
+      );
+      return;
+    }
+
+    final currentUser = widget.user;
+    final success = await ApiService.inviteFocus(
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      targetUserIds: _selectedUserIds.toList(),
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已向 ${_selectedUserIds.length} 位用户发送“陪我专注”通知'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      setState(() {
+        _selectedUserIds.clear();
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('通知发送失败，请稍后重试'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// 处理"协同专注"按钮点击
+  void _handleCollaborativeFocusTap() {
+    // 强制锁机状态下禁止协同专注
+    if (_isForcedLockActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('当前为强制锁机模式，无法使用协同专注')),
+      );
+      return;
+    }
+    _showInviteDialog();
   }
 }
 
