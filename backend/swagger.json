@@ -502,6 +502,51 @@
       "post": {
         "summary": "创建任务",
         "tags": ["任务模块"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title", "start_time", "end_time"],
+                "properties": {
+                  "title": { "type": "string", "description": "任务标题" },
+                  "description": { "type": "string", "description": "任务描述" },
+                  "assignee_id": { "type": "string", "description": "单责任人ID（可选，建议使用 assignees 数组）" },
+                  "assignees": {
+                    "type": "array",
+                    "description": "责任人ID数组，至少1个。包含多人的时候会自动为每位创建子任务，并聚合父任务进度。",
+                    "items": { "type": "string" }
+                  },
+                  "department_id": { "type": "string", "description": "部门ID（可选，缺省时用首位责任人部门）" },
+                  "priority": { "type": "string", "enum": ["p0", "p1", "p2", "p3"], "default": "p1" },
+                  "deadline": { "type": "string", "description": "截止时间，格式：YYYY-MM-DD HH:MM:SS" },
+                  "start_time": { "type": "string", "description": "开始时间，格式：YYYY-MM-DD HH:MM:SS" },
+                  "end_time": { "type": "string", "description": "结束时间，格式：YYYY-MM-DD HH:MM:SS" },
+                  "location": { "type": "string", "description": "地点（可选）" },
+                  "is_all_day": { "type": "boolean", "description": "是否为全天任务" },
+                  "parent_task_id": { "type": "string", "description": "父任务ID（创建子任务时使用）" },
+                  "progress_percentage": { "type": "integer", "minimum": 0, "maximum": 100, "default": 0 },
+                  "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "cancelled"], "default": "pending" },
+                  "attachments": { "type": "array", "items": { "type": "string" }, "description": "附件路径数组（可选）" }
+                },
+                "example": {
+                  "title": "多负责人父任务",
+                  "description": "通过 Swagger 创建的多负责人任务，将为每位负责人创建子任务并汇总进度",
+                  "assignees": [
+                    "employee-001",
+                    "employee-010"
+                  ],
+                  "priority": "p1",
+                  "start_time": "2025-01-15 09:00:00",
+                  "end_time": "2025-01-15 12:00:00",
+                  "is_all_day": false,
+                  "progress_percentage": 0
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": { "description": "创建成功" }
         }
