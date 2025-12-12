@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -24,6 +25,8 @@ class CalendarWidget extends StatefulWidget {
   final Function(DateTime) onLogAdd;
   // 提供刷新回调给父组件（用于页眉右侧的刷新按钮）
   final void Function(VoidCallback refresh)? onProvideRefresh;
+  // 提供日期选择回调给父组件（用于页眉右侧跳转按钮）
+  final void Function(VoidCallback openDateSelector)? onProvideDateSelector;
 
   const CalendarWidget({
     super.key,
@@ -34,6 +37,7 @@ class CalendarWidget extends StatefulWidget {
     required this.onTaskAdd,
     required this.onLogAdd,
     this.onProvideRefresh,
+    this.onProvideDateSelector,
   });
 
   @override
@@ -60,6 +64,10 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     // 将刷新方法暴露给父组件（用于页眉右侧刷新按钮）
     if (widget.onProvideRefresh != null) {
       widget.onProvideRefresh!.call(_refreshCurrentView);
+    }
+    // 将日期选择方法暴露给父组件（用于页眉右侧跳转按钮）
+    if (widget.onProvideDateSelector != null) {
+      widget.onProvideDateSelector!.call(_openCurrentDateSelector);
     }
   }
 
@@ -112,6 +120,182 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       // 月视图切换时不触发日期选择事件，避免弹出浮窗
     } else if (_currentView == CalendarView.week) {
       _loadWeekViewData();
+    }
+  }
+
+  // 月视图选择具体年月（滚动选择）
+  Future<void> _selectMonth() async {
+    final now = TimeUtils.getSystemTime();
+    final years = List.generate(11, (i) => now.year - 5 + i);
+    int selectedYear = _currentDate.year;
+    int selectedMonth = _currentDate.month;
+
+    final picked = await showModalBottomSheet<DateTime>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SizedBox(
+          height: 320,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('选择年份与月份', style: TextStyle(fontWeight: FontWeight.bold)),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(ctx, DateTime(selectedYear, selectedMonth, 1));
+                      },
+                      child: const Text('完成'),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: CupertinoPicker(
+                        itemExtent: 32,
+                        scrollController: FixedExtentScrollController(
+                          initialItem: years.indexOf(selectedYear).clamp(0, years.length - 1),
+                        ),
+                        onSelectedItemChanged: (i) {
+                          selectedYear = years[i];
+                        },
+                        children: years.map((y) => Center(child: Text('$y年'))).toList(),
+                      ),
+                    ),
+                    Expanded(
+                      child: CupertinoPicker(
+                        itemExtent: 32,
+                        scrollController: FixedExtentScrollController(
+                          initialItem: selectedMonth - 1,
+                        ),
+                        onSelectedItemChanged: (i) {
+                          selectedMonth = i + 1;
+                        },
+                        children: List.generate(12, (i) => Center(child: Text('${i + 1}月'))),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _currentDate = DateTime(picked.year, picked.month, 1);
+      });
+      _loadMonthViewData();
+    }
+  }
+
+  // 根据当前视图打开对应选择器
+  void _openCurrentDateSelector() {
+    if (_currentView == CalendarView.month) {
+      _selectMonth();
+    } else if (_currentView == CalendarView.week) {
+      _selectWeek();
+    } else {
+      _selectDay();
+    }
+  }
+
+  // 通用滚动日期选择（周/日使用）
+  Future<DateTime?> _showCupertinoDatePicker({
+    required String title,
+    required Color themeColor,
+  }) {
+    final now = TimeUtils.getSystemTime();
+    final min = DateTime(now.year - 5, 1, 1);
+    final max = DateTime(now.year + 5, 12, 31);
+    DateTime temp = _currentDate;
+
+    return showModalBottomSheet<DateTime>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SizedBox(
+          height: 360,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, temp),
+                      child: const Text('完成'),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: CupertinoTheme(
+                  data: CupertinoThemeData(
+                    primaryColor: themeColor,
+                  ),
+                  child: CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.date,
+                    minimumDate: min,
+                    maximumDate: max,
+                    initialDateTime: _currentDate,
+                    onDateTimeChanged: (date) => temp = date,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 周视图选择具体周（按选中的日期所在周，滚动选择日期）
+  Future<void> _selectWeek() async {
+    final picked = await _showCupertinoDatePicker(
+      title: '选择目标周的任意日期',
+      themeColor: Colors.purple,
+    );
+
+    if (picked != null) {
+      final weekStart = _getWeekStart(picked);
+      setState(() {
+        _currentDate = weekStart;
+      });
+      _loadWeekViewData();
+    }
+  }
+
+  // 日视图选择具体年月日（滚动选择日期）
+  Future<void> _selectDay() async {
+    final picked = await _showCupertinoDatePicker(
+      title: '选择目标日期',
+      themeColor: Colors.teal,
+    );
+
+    if (picked != null) {
+      setState(() {
+        _currentDate = picked;
+      });
+      _loadDayViewData();
     }
   }
 
@@ -293,26 +477,25 @@ class _CalendarWidgetState extends State<CalendarWidget> {
           ),
           iconSize: 24,
         ),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.blue.shade700,
-          ),
-        ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              onPressed: () => _navigateDate(1),
-              icon: Icon(
-                Icons.chevron_right,
+        Expanded(
+          child: Center(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
                 color: Colors.blue.shade700,
               ),
-              iconSize: 24,
             ),
-          ],
+          ),
+        ),
+        IconButton(
+          onPressed: () => _navigateDate(1),
+          icon: Icon(
+            Icons.chevron_right,
+            color: Colors.blue.shade700,
+          ),
+          iconSize: 24,
         ),
       ],
     );
@@ -912,8 +1095,16 @@ class _CalendarWidgetState extends State<CalendarWidget> {
 
   // 解析任务时间并转换为系统本地时间
   DateTime _parseTaskTime(String timeStr) {
-    final dateTime = DateTime.parse(timeStr);
-    return dateTime.toLocal();
+    final dateTime = DateTime.parse(timeStr).toLocal();
+    // 按视图加偏移：月+16小时，周+8小时，日+8小时
+    switch (_currentView) {
+      case CalendarView.month:
+        return dateTime.add(const Duration(hours: 16));
+      case CalendarView.week:
+        return dateTime.add(const Duration(hours: 8));
+      case CalendarView.day:
+        return dateTime.add(const Duration(hours: 8));
+    }
   }
 
   // 解析日志时间并转换为系统本地时间
@@ -1032,11 +1223,14 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     final logsWithoutTime = <CalendarLog>[];
     
     for (final task in dayData.tasks) {
-      // 只有非全天任务且有具体开始和结束时间的才显示在时间轴
-      // 全天任务或没有时间的任务显示在"无具体时间段"区域
-      if (task.startTime != null && task.endTime != null && task.isAllDay == false) {
+      // 全天任务显示在时间轴的24小时中（0:00-23:59）
+      if (task.isAllDay == true) {
+        tasksWithTime.add(task);
+      } else if (task.startTime != null && task.endTime != null) {
+        // 非全天任务且有具体开始和结束时间的显示在时间轴
         tasksWithTime.add(task);
       } else {
+        // 没有时间的任务显示在"无具体时间段"区域
         tasksWithoutTime.add(task);
       }
     }
@@ -1386,6 +1580,31 @@ class _CalendarWidgetState extends State<CalendarWidget> {
 
   // 区域标题
   Widget _buildSectionTitle(String title) {
+    // "有具体时间段"和"无具体时间段"不显示箭头，并居中显示
+    if (title == '无具体时间段' || title == '有具体时间段') {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 4,
+            height: 20,
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      );
+    }
+    
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1529,38 +1748,48 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     // 为每个任务计算时间范围
     List<Map<String, dynamic>> taskInfos = [];
     for (var task in tasks) {
-      if (task.startTime == null || task.endTime == null) continue;
-      
       try {
-        final taskStartTime = _parseTaskTime(task.startTime!);
-        final taskEndTime = _parseTaskTime(task.endTime!);
-        
         final currentViewDate = _currentDate;
         final dayStart = DateTime(currentViewDate.year, currentViewDate.month, currentViewDate.day, 0, 0, 0);
         final dayEnd = DateTime(currentViewDate.year, currentViewDate.month, currentViewDate.day, 23, 59, 59);
         
         DateTime displayStartTime;
         DateTime displayEndTime;
+        double startHour;
+        double endHour;
         
-        if (taskStartTime.isBefore(dayStart)) {
+        // 全天任务显示在0:00-23:59
+        if (task.isAllDay == true) {
           displayStartTime = dayStart;
-        } else {
-          displayStartTime = taskStartTime;
-        }
-        
-        if (taskEndTime.isAfter(dayEnd)) {
           displayEndTime = dayEnd;
+          startHour = 0.0;
+          endHour = 23.99; // 接近24小时，但不等于24
+        } else if (task.startTime != null && task.endTime != null) {
+          final taskStartTime = _parseTaskTime(task.startTime!);
+          final taskEndTime = _parseTaskTime(task.endTime!);
+          
+          if (taskStartTime.isBefore(dayStart)) {
+            displayStartTime = dayStart;
+          } else {
+            displayStartTime = taskStartTime;
+          }
+          
+          if (taskEndTime.isAfter(dayEnd)) {
+            displayEndTime = dayEnd;
+          } else {
+            displayEndTime = taskEndTime;
+          }
+          
+          if (displayStartTime.isAfter(dayEnd) || displayEndTime.isBefore(dayStart)) {
+            continue;
+          }
+          
+          // 精确计算时间段，包括秒数，确保严格对应时间轴
+          startHour = displayStartTime.hour + displayStartTime.minute / 60.0 + displayStartTime.second / 3600.0;
+          endHour = displayEndTime.hour + displayEndTime.minute / 60.0 + displayEndTime.second / 3600.0;
         } else {
-          displayEndTime = taskEndTime;
+          continue; // 没有时间信息的任务跳过
         }
-        
-        if (displayStartTime.isAfter(dayEnd) || displayEndTime.isBefore(dayStart)) {
-          continue;
-        }
-        
-        // 精确计算时间段，包括秒数，确保严格对应时间轴
-        final startHour = displayStartTime.hour + displayStartTime.minute / 60.0 + displayStartTime.second / 3600.0;
-        final endHour = displayEndTime.hour + displayEndTime.minute / 60.0 + displayEndTime.second / 3600.0;
         
         taskInfos.add({
           'task': task,
@@ -2962,7 +3191,13 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     if (!normalized.contains('T') && normalized.contains(' ')) {
       normalized = normalized.replaceFirst(' ', 'T');
     }
-    return DateTime.tryParse(normalized)?.toLocal();
+    final parsed = DateTime.tryParse(normalized)?.toLocal();
+    if (parsed == null) return null;
+    // 月视图时间点显示需+16小时，保证与任务时间一致
+    if (_currentView == CalendarView.month) {
+      return parsed.add(const Duration(hours: 16));
+    }
+    return parsed;
   }
 
   bool _isSameCalendarDay(DateTime a, DateTime b) {
@@ -4401,7 +4636,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                 Text(
                                   task.isAllDay == true
                                       ? '全天任务'
-                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!).toLocal())} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!).toLocal())}',
+                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!))} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!))}',
                                   style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                                 ),
                               ],
@@ -4669,7 +4904,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                 Text(
                                   task.isAllDay == true
                                       ? '全天任务'
-                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!).toLocal())} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!).toLocal())}',
+                                      : '${DateFormat('HH:mm').format(_parseTaskTime(task.startTime!))} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!))}',
                                   style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                                 ),
                               ],
@@ -4982,9 +5217,9 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                             task.isAllDay == true
                                                 ? '全天任务'
                                                 : (task.startTime != null && task.endTime != null
-                                                    ? '${DateFormat('yyyy-MM-dd HH:mm').format(_parseTaskTime(task.startTime!).toLocal())} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!).toLocal())}'
+                                                    ? '${DateFormat('yyyy-MM-dd HH:mm').format(_parseTaskTime(task.startTime!))} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!))}'
                                                     : (task.startTime != null
-                                                        ? '开始时间: ${DateFormat('yyyy-MM-dd HH:mm').format(_parseTaskTime(task.startTime!).toLocal())}'
+                                                        ? '开始时间: ${DateFormat('yyyy-MM-dd HH:mm').format(_parseTaskTime(task.startTime!))}'
                                                         : '时间未设置')),
                                             style: TextStyle(
                                               fontSize: 13,
@@ -5316,6 +5551,22 @@ class _CalendarWidgetState extends State<CalendarWidget> {
             ? _formatLogCreatedTime(log.createdAt)
             : '';
         final String category = log.category;
+        // 在闭包内部获取天气标签（直接内联转换逻辑）
+        final String weatherLabel = log.weather != null && log.weather.toString().isNotEmpty
+            ? () {
+                final w = log.weather.toString().toLowerCase();
+                switch (w) {
+                  case 'sunny': return '☀️ 晴天';
+                  case 'cloudy': return '⛅ 多云';
+                  case 'light_rain': return '🌧️ 小雨';
+                  case 'heavy_rain': return '⛈️ 大雨';
+                  case 'snow': return '❄️ 雪';
+                  case 'storm': return '⚡ 暴风雨';
+                  case 'fog': return '🌫️ 雾';
+                  default: return log.weather.toString();
+                }
+              }()
+            : '';
 
         return Dialog(
           shape: RoundedRectangleBorder(
@@ -5426,6 +5677,81 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // 天气信息 - 移到上面
+                        if (weatherLabel.isNotEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.blue.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.wb_sunny, size: 18, color: Colors.orange.shade700),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '天气: $weatherLabel',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: textColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        
+                        // 位置信息 - 移到上面
+                        if ((log.locationName != null && log.locationName!.isNotEmpty) ||
+                            (log.latitude != null && log.longitude != null)) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.green.shade200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.location_on, size: 18, color: Colors.red.shade700),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '位置信息',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: textColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (log.locationName != null && log.locationName!.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '地点: ${log.locationName}',
+                                    style: TextStyle(fontSize: 13, color: textColor),
+                                  ),
+                                ],
+                                if (log.latitude != null && log.longitude != null) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '经纬度: ${log.latitude!.toStringAsFixed(6)}, ${log.longitude!.toStringAsFixed(6)}',
+                                    style: TextStyle(fontSize: 13, color: textColor),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        
+                        // 日志内容
                         SelectableText(
                           content.isNotEmpty ? content : '无内容',
                           style: TextStyle(
@@ -5434,6 +5760,8 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                             height: 1.6,
                           ),
                         ),
+                        
+                        // 图片
                         if (log.images.isNotEmpty) ...[
                           const SizedBox(height: 16),
                           Text('图片', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: textColor)),
@@ -5457,21 +5785,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                 );
                               },
                             ),
-                          ),
-                        ],
-                        if (log.locationName != null && log.locationName!.isNotEmpty) ...[
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Icon(Icons.location_on, color: accentDarkColor),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  log.locationName!,
-                                  style: TextStyle(fontSize: 14, color: textColor),
-                                ),
-                              ),
-                            ],
                           ),
                         ],
                       ],
@@ -6929,6 +7242,81 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // 天气信息 - 移到上面
+                        if (log.weather != null && log.weather.toString().isNotEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.blue.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.wb_sunny, size: 18, color: Colors.orange.shade700),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '天气: ${_getWeatherLabel(log.weather.toString())}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: textColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        
+                        // 位置信息 - 移到上面
+                        if ((log.locationName != null && log.locationName.toString().isNotEmpty) ||
+                            (log.latitude != null && log.longitude != null)) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.green.shade200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.location_on, size: 18, color: Colors.red.shade700),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '位置信息',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: textColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (log.locationName != null && log.locationName.toString().isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '地点: ${log.locationName}',
+                                    style: TextStyle(fontSize: 13, color: textColor),
+                                  ),
+                                ],
+                                if (log.latitude != null && log.longitude != null) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '经纬度: ${log.latitude!.toStringAsFixed(6)}, ${log.longitude!.toStringAsFixed(6)}',
+                                    style: TextStyle(fontSize: 13, color: textColor),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        
+                        // 日志内容
                         SelectableText(
                           content.isNotEmpty ? content : '无内容',
                           style: TextStyle(
@@ -6937,6 +7325,81 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
                             height: 1.6,
                           ),
                         ),
+                        
+                        // 关联任务
+                        if (log.taskUpdates.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.purple.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.purple.shade200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.link, size: 18, color: Colors.purple.shade700),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '关联任务',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: textColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                ...log.taskUpdates.map((taskUpdate) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 6),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(Icons.task, size: 16, color: Colors.purple.shade600),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                taskUpdate.taskName ?? '未知任务',
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: textColor,
+                                                ),
+                                              ),
+                                              if (taskUpdate.progress_percentage != null) ...[
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  '进度: ${taskUpdate.progress_percentage}%',
+                                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                                ),
+                                              ],
+                                              if (taskUpdate.task_status != null) ...[
+                                                Text(
+                                                  '状态: ${taskUpdate.task_status}',
+                                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ],
+                            ),
+                          ),
+                        ],
+                        
+                        // 图片
                         if (log.images.isNotEmpty) ...[
                           const SizedBox(height: 16),
                           Text(
@@ -7072,6 +7535,106 @@ class _MonthlyLogsDialogState extends State<_MonthlyLogsDialog> {
       default:
         return category; // 如果无法识别，返回原值
     }
+  }
+
+  // 获取天气标签（中文）
+  String _getWeatherLabel(String weather) {
+    return _convertWeatherToLabel(weather);
+  }
+
+  // 转换天气为标签（辅助方法，可在闭包内使用）
+  String _convertWeatherToLabel(String weather) {
+    switch (weather.toLowerCase()) {
+      case 'sunny':
+        return '☀️ 晴天';
+      case 'cloudy':
+        return '⛅ 多云';
+      case 'light_rain':
+        return '🌧️ 小雨';
+      case 'heavy_rain':
+        return '⛈️ 大雨';
+      case 'snow':
+        return '❄️ 雪';
+      case 'storm':
+        return '⚡ 暴风雨';
+      case 'fog':
+        return '🌫️ 雾';
+      default:
+        return weather; // 如果无法识别，返回原值
+    }
+  }
+
+  // 构建日历图片
+  Widget _buildCalendarImage(String path, {double width = 120, double height = 90}) {
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildBrokenCalendarImage(width: width, height: height),
+      );
+    }
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+      );
+    }
+    return _buildBrokenCalendarImage(width: width, height: height);
+  }
+
+  Widget _buildBrokenCalendarImage({double width = 120, double height = 90}) {
+    return Container(
+      width: width,
+      height: height,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.broken_image, color: Colors.grey),
+    );
+  }
+
+  // 显示图片预览
+  Future<void> _showCalendarImagePreview(BuildContext context, String path) {
+    return showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(16),
+          child: Stack(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: InteractiveViewer(
+                  boundaryMargin: const EdgeInsets.all(32),
+                  minScale: 0.5,
+                  maxScale: 4.0,
+                  child: path.startsWith('http')
+                      ? Image.network(path, fit: BoxFit.contain)
+                      : Image.file(File(path), fit: BoxFit.contain),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -7270,25 +7833,27 @@ class _MonthlyTasksDialogState extends State<_MonthlyTasksDialog> {
                   final status = task.status?.toString() ?? '';
                   final isCompleted = status == 'completed' || status == 'done';
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isCompleted ? Colors.grey.shade300 : Colors.blue.shade200,
-                        width: 1,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.blue.withOpacity(0.05),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
+                  return GestureDetector(
+                    onTap: () => _showTaskDetailDialog(task),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isCompleted ? Colors.grey.shade300 : Colors.blue.shade200,
+                          width: 1,
                         ),
-                      ],
-                    ),
-                    child: Column(
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.blue.withOpacity(0.05),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
@@ -7400,7 +7965,8 @@ class _MonthlyTasksDialogState extends State<_MonthlyTasksDialog> {
                         ],
                       ],
                     ),
-                  );
+                  ),
+                );
                 },
               ),
             ),
@@ -7410,10 +7976,333 @@ class _MonthlyTasksDialogState extends State<_MonthlyTasksDialog> {
     );
   }
 
+  // 显示任务详情对话框
+  void _showTaskDetailDialog(CalendarTask task) {
+    final status = task.status?.toString() ?? '';
+    final isCompleted = status == 'completed' || status == 'done';
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.blue.shade50, Colors.white],
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 标题栏
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade100,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(Icons.assignment, color: Colors.blue.shade700, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            task.title ?? '无标题',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade900,
+                            ),
+                          ),
+                          if (task.assigneeName != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '负责人: ${task.assigneeName}',
+                              style: TextStyle(fontSize: 14, color: Colors.blue.shade700),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: Icon(Icons.close, color: Colors.blue.shade700),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 任务详情内容
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 状态和优先级
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isCompleted ? Colors.green.shade100 : Colors.orange.shade100,
+                              border: Border.all(
+                                color: isCompleted ? Colors.green.shade300 : Colors.orange.shade300,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              isCompleted ? '已完成' : '进行中',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isCompleted ? Colors.green.shade800 : Colors.orange.shade800,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: _priorityColor(task.priority).withOpacity(0.3),
+                              border: Border.all(color: _priorityColor(task.priority)),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              '优先级: ${(task.priority?.toString().toUpperCase() ?? 'P3')}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.blueGrey.shade800,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // 时间信息
+                      if ((task.startTime != null && task.endTime != null) || (task.isAllDay == true)) ...[
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Icon(Icons.access_time, size: 18, color: Colors.grey.shade600),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                task.isAllDay == true
+                                    ? '全天任务'
+                                    : '${DateFormat('yyyy-MM-dd HH:mm').format(_parseTaskTime(task.startTime!))} - ${DateFormat('HH:mm').format(_parseTaskTime(task.endTime!))}',
+                                style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // 截止时间
+                      if (task.deadline != null) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Icon(Icons.event, size: 18, color: Colors.grey.shade600),
+                            const SizedBox(width: 8),
+                            Text(
+                              '截止时间: ${DateFormat('yyyy-MM-dd HH:mm').format(_parseTaskTime(task.deadline!))}',
+                              style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // 任务描述
+                      if ((task.description?.toString().isNotEmpty ?? false)) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.description, size: 16, color: Colors.grey.shade600),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '任务内容',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              SelectableText(
+                                task.description ?? '',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade800,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      // 附件
+                      if (task.attachments.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          '附件',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 100,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: task.attachments.length,
+                            itemBuilder: (context, imgIndex) {
+                              final path = task.attachments[imgIndex];
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: GestureDetector(
+                                  onTap: () => _showCalendarImagePreview(context, path),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: _buildCalendarImage(
+                                      path,
+                                      width: 100,
+                                      height: 100,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // 解析任务时间并转换为系统本地时间
   DateTime _parseTaskTime(String timeStr) {
     final dateTime = DateTime.parse(timeStr);
-    return dateTime.toLocal();
+    // 调整为本地时间并减8小时（原先多出8小时）
+    return dateTime.toLocal().subtract(const Duration(hours: 8));
+  }
+
+  // 构建日历图片
+  Widget _buildCalendarImage(String path, {double width = 120, double height = 90}) {
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildBrokenCalendarImage(width: width, height: height),
+      );
+    }
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+      );
+    }
+    return _buildBrokenCalendarImage(width: width, height: height);
+  }
+
+  Widget _buildBrokenCalendarImage({double width = 120, double height = 90}) {
+    return Container(
+      width: width,
+      height: height,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.broken_image, color: Colors.grey),
+    );
+  }
+
+  // 显示图片预览
+  Future<void> _showCalendarImagePreview(BuildContext context, String path) {
+    return showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(16),
+          child: Stack(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: InteractiveViewer(
+                  boundaryMargin: const EdgeInsets.all(32),
+                  minScale: 0.5,
+                  maxScale: 4.0,
+                  child: path.startsWith('http')
+                      ? Image.network(path, fit: BoxFit.contain)
+                      : Image.file(File(path), fit: BoxFit.contain),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 

@@ -97,8 +97,8 @@ class Log {
 
   String? get locationName {
     final location = _extractLocation(metadata);
-    final name = location?['name'] ?? location?['location_name'];
-    return name?.toString();
+    final raw = location?['name'] ?? location?['location_name'];
+    return _sanitizeLocationString(raw);
   }
 
   double? get latitude {
@@ -157,6 +157,18 @@ Map<String, dynamic>? _extractLocation(Map<String, dynamic>? metadata) {
     'latitude': lat,
     'longitude': lng,
   };
+}
+
+String? _sanitizeLocationString(dynamic value) {
+  if (value == null) return null;
+  if (value is List) {
+    final joined = value.whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty).join('');
+    if (joined.isEmpty) return null;
+    return joined;
+  }
+  final s = value.toString().trim();
+  if (s.isEmpty || s == '[]') return null;
+  return s;
 }
 
 double? _toDouble(dynamic value) {
