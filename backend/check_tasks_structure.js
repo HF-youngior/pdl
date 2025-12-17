@@ -3,9 +3,9 @@ const mysql = require('mysql2/promise');
 async function checkTasksStructure() {
   try {
     const connection = await mysql.createConnection({
-      host: 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
-      user: 'pdl',
-      password: 'Pdl123456',
+      host: 'rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com',
+      user: 'pdl123',
+      password: 'Pdl1234567',
       database: 'enterprise_management',
       port: 3306,
       charset: 'utf8mb4'
@@ -49,6 +49,7 @@ async function checkTasksStructure() {
 }
 
 checkTasksStructure();
+
 
 
 

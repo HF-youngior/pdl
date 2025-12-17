@@ -15,7 +15,7 @@ $tempFile = [System.IO.Path]::GetTempFileName()
 [System.IO.File]::WriteAllText($tempFile, $sqlContent, [System.Text.Encoding]::UTF8)
 
 # 执行 SQL
-& mysql -h rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com -u pdl -pPdl123456 enterprise_management "--default-character-set=utf8mb4" -e "source $tempFile"
+& mysql -h rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com -u pdl123 -pPdl1234567 enterprise_management "--default-character-set=utf8mb4" -e "source $tempFile"
 
 # 删除临时文件
 Remove-Item $tempFile
@@ -37,4 +37,5 @@ if ($LASTEXITCODE -eq 0) {
 
 Write-Host "按任意键继续..."
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+
 

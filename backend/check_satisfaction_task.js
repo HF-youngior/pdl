@@ -2,9 +2,9 @@ const mysql = require('mysql2/promise');
 
 async function checkSatisfactionTask() {
   const connection = await mysql.createConnection({
-    host: 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
-    user: 'pdl',
-    password: 'Pdl123456',
+    host: 'rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com',
+    user: 'pdl123',
+    password: 'Pdl1234567',
     database: 'enterprise_management',
     timezone: '+08:00'
   });
@@ -65,4 +65,5 @@ function getWeekdayName(dayNum) {
 }
 
 checkSatisfactionTask().catch(console.error);
+
 

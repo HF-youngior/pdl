@@ -103,10 +103,10 @@ backend/load_all_data.bat
 
 默认连接参数（可在bat文件中修改）：
 ```
-DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
+DB_HOST=rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com
 DB_PORT=3306
-DB_USER=pdl
-DB_PASSWORD=Pdl123456
+DB_USER=pdl123
+DB_PASSWORD=Pdl1234567
 DB_NAME=enterprise_management
 ```
 
@@ -213,4 +213,5 @@ WHERE user_id = 'dept-head-001';
 
 **最后更新**: 2025年10月24日
 **维护者**: 开发团队
+
 

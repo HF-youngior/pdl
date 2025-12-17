@@ -48,11 +48,7 @@
 
 ## 重要说明
 
-<<<<<<< Updated upstream
-- **云数据库账号：** pdl / Pdl123456（rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com:3306）
-=======
-- **MySQL root 密码：** Zs462581379
->>>>>>> Stashed changes
+- **云数据库账号：** pdl123 / Pdl1234567（rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com:3306）
 - **所有应用用户密码：** 已按上表恢复
 - **数据库名：** enterprise_management
 - **后端端口：** 8080
@@ -70,3 +66,4 @@
 - **用户名：** founder1
 - **密码：** founder123
 - **权限：** 最高权限，可查看所有数据和功能
+

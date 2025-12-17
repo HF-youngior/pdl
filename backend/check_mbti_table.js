@@ -9,9 +9,9 @@ async function checkMbtiTable() {
     
     // 连接数据库
     connection = await mysql.createConnection({
-      host: process.env.DB_HOST || 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
-      user: process.env.DB_USER || 'pdl',
-      password: process.env.DB_PASSWORD || 'Pdl123456',
+      host: process.env.DB_HOST || 'rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com',
+      user: process.env.DB_USER || 'pdl123',
+      password: process.env.DB_PASSWORD || 'Pdl1234567',
       database: process.env.DB_NAME || 'enterprise_management'
     });
     
@@ -80,3 +80,4 @@ async function checkMbtiTable() {
 }
 
 checkMbtiTable();
+

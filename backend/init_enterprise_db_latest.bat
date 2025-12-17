@@ -10,15 +10,11 @@ setlocal ENABLEDELAYEDEXPANSION
 :: ================================================
 
 :: 可配置参数（如需修改请编辑下面几行）
-set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
+set DB_HOST=rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com
 set DB_PORT=3306
-set DB_USER=pdl
+set DB_USER=pdl123
 :: 从用户运行日志确认的密码（如需覆盖，可在运行前修改此变量）
-<<<<<<< Updated upstream
-set DB_PASSWORD=Pdl123456
-=======
-set DB_PASSWORD=Zs462581379
->>>>>>> Stashed changes
+set DB_PASSWORD=Pdl1234567
 
 :: MySQL 客户端命令（如未在 PATH 中，请写绝对路径，例如："C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysql.exe"）
 set MYSQL_CMD=mysql
@@ -92,3 +88,4 @@ echo      3) MySQL 服务器未启动
 exit /b 1
 
 endlocal
+
