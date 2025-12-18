@@ -12,6 +12,7 @@ import '../models/task.dart';
 import '../services/api_service.dart';
 import '../services/calendar_service.dart';
 import '../services/geocoding_service.dart';
+import '../services/task_service.dart';
 import '../utils/time_utils.dart';
 
 enum CalendarView { month, week, day }
@@ -3983,115 +3984,19 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     );
   }
 
-  // 显示编辑任务对话框
-  Future<void> _showEditTaskDialog(BuildContext context, CalendarTask task, DateTime day) async {
-    final titleController = TextEditingController(text: task.title);
-    final descriptionController = TextEditingController(text: task.description);
-    String? selectedPriority = task.priority;
-    String? selectedStatus = task.status;
-
-    final result = await showDialog<Map<String, String>>(
+  // 显示编辑任务对话框（高级版）
+  Future<void> _showEditTaskDialog(
+    BuildContext context,
+    CalendarTask task,
+    DateTime day,
+  ) async {
+    final result = await showDialog<_CalendarTaskEditResult>(
       context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('编辑任务'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('标题:'),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: titleController,
-                      decoration: const InputDecoration(
-                        hintText: '请输入任务标题',
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 1,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('内容:'),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: descriptionController,
-                      decoration: const InputDecoration(
-                        hintText: '请输入任务内容',
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('优先级:'),
-                    const SizedBox(height: 8),
-                    DropdownButton<String>(
-                      value: selectedPriority,
-                      isExpanded: true,
-                      items: const [
-                        DropdownMenuItem(value: 'p0', child: Text('重要且紧急')),
-                        DropdownMenuItem(value: 'p1', child: Text('重要不紧急')),
-                        DropdownMenuItem(value: 'p2', child: Text('不重要紧急')),
-                        DropdownMenuItem(value: 'p3', child: Text('不重要不紧急')),
-                      ],
-                      onChanged: (String? value) {
-                        setState(() {
-                          selectedPriority = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('完成状态:'),
-                    const SizedBox(height: 8),
-                    DropdownButton<String>(
-                      value: selectedStatus,
-                      isExpanded: true,
-                      items: const [
-                        DropdownMenuItem(value: 'pending', child: Text('待处理')),
-                        DropdownMenuItem(value: 'in_progress', child: Text('进行中')),
-                        DropdownMenuItem(value: 'completed', child: Text('已完成')),
-                        DropdownMenuItem(value: 'cancelled', child: Text('已取消')),
-                      ],
-                      onChanged: (String? value) {
-                        setState(() {
-                          selectedStatus = value;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text('取消'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (titleController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('标题不能为空'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                      return;
-                    }
-                    Navigator.of(context).pop({
-                      'title': titleController.text.trim(),
-                      'description': descriptionController.text.trim(),
-                      'priority': selectedPriority ?? 'p2',
-                      'status': selectedStatus ?? 'pending',
-                    });
-                  },
-                  child: const Text('保存'),
-                ),
-              ],
-            );
-          },
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return _CalendarTaskEditDialog(
+          task: task,
+          initialDate: day,
         );
       },
     );
@@ -4105,16 +4010,42 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   Future<void> _updateTask(
     BuildContext context,
     CalendarTask task,
-    Map<String, String> updates,
+    _CalendarTaskEditResult editResult,
     DateTime day,
   ) async {
     try {
+      // 先上传新选择的图片
+      List<String> uploadedImageUrls = [];
+      if (editResult.newImages.isNotEmpty) {
+        final snackBar = SnackBar(
+          content: const Text('正在上传图片...'),
+          duration: const Duration(seconds: 1),
+          backgroundColor: Colors.blue,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(snackBar);
+        uploadedImageUrls = await ApiService.uploadImages(editResult.newImages);
+      }
+
+      final allAttachments = [
+        ...editResult.persistedAttachments,
+        ...uploadedImageUrls,
+      ];
+
+      // 基础字段更新（标题、内容、优先级、状态、附件）
       await CalendarService.updateTask(
         task.id,
-        title: updates['title'],
-        description: updates['description'],
-        priority: updates['priority'],
-        status: updates['status'],
+        title: editResult.title,
+        description: editResult.description,
+        priority: editResult.priority,
+        status: editResult.status,
+        attachments: allAttachments,
+      );
+
+      // 完成度 & 状态联动（调用专门的状态接口，保持与任务详情一致）
+      await TaskService.updateTaskStatus(
+        task.id,
+        status: editResult.status,
+        progressPercentage: editResult.progressPercentage,
       );
 
       if (mounted) {
@@ -5900,6 +5831,26 @@ class _CalendarLogEditResult {
     this.locationName,
     this.latitude,
     this.longitude,
+  });
+}
+
+class _CalendarTaskEditResult {
+  final String title;
+  final String description;
+  final String priority;
+  final String status;
+  final int progressPercentage;
+  final List<String> persistedAttachments;
+  final List<File> newImages;
+
+  _CalendarTaskEditResult({
+    required this.title,
+    required this.description,
+    required this.priority,
+    required this.status,
+    required this.progressPercentage,
+    required this.persistedAttachments,
+    required this.newImages,
   });
 }
 
@@ -8314,4 +8265,523 @@ class _MonthlyTaskEntry {
     required this.task,
     required this.anchorDay,
   });
+}
+
+/// 月视图任务编辑对话框（美观版）
+class _CalendarTaskEditDialog extends StatefulWidget {
+  final CalendarTask task;
+  final DateTime initialDate;
+
+  const _CalendarTaskEditDialog({
+    required this.task,
+    required this.initialDate,
+  });
+
+  @override
+  State<_CalendarTaskEditDialog> createState() => _CalendarTaskEditDialogState();
+}
+
+class _CalendarTaskEditDialogState extends State<_CalendarTaskEditDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final ImagePicker _imagePicker = ImagePicker();
+
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+
+  String _selectedPriority = 'p2';
+  String _selectedStatus = 'pending';
+  double _progress = 0;
+
+  late List<String> _persistedAttachments;
+  final List<File> _newImages = [];
+
+  static const Map<String, String> _priorityLabels = {
+    'p0': '重要且紧急',
+    'p1': '重要不紧急',
+    'p2': '不重要紧急',
+    'p3': '不重要不紧急',
+  };
+
+  static const Map<String, String> _statusLabels = {
+    'pending': '待处理',
+    'in_progress': '进行中',
+    'completed': '已完成',
+    'cancelled': '已取消',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.task.title);
+    _descriptionController = TextEditingController(text: widget.task.description);
+    _selectedPriority = widget.task.priority;
+    _selectedStatus = widget.task.status;
+    _progress = widget.task is Task
+        ? (widget.task as Task).progressPercentage.toDouble()
+        : 0;
+    _persistedAttachments = List<String>.from(widget.task.attachments);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: min(MediaQuery.of(context).size.width * 0.9, 800),
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildHeader(),
+            const Divider(height: 1),
+            Expanded(
+              child: Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTitleAndStatusRow(),
+                      const SizedBox(height: 16),
+                      _buildDescriptionInput(),
+                      const SizedBox(height: 16),
+                      _buildImageSection(),
+                      const SizedBox(height: 16),
+                      _buildProgressSection(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            _buildFooter(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    final dateStr = DateFormat('yyyy年MM月dd日').format(widget.initialDate);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+        color: Theme.of(context).primaryColor.withOpacity(0.05),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '编辑任务',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  dateStr,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTitleAndStatusRow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: _titleController,
+          decoration: InputDecoration(
+            labelText: '标题',
+            hintText: '请输入任务标题',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          maxLines: 1,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return '标题不能为空';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildPriorityDropdown(),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildStatusDropdown(),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPriorityDropdown() {
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: '优先级',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedPriority,
+          isExpanded: true,
+          items: _priorityLabels.entries.map((e) {
+            return DropdownMenuItem<String>(
+              value: e.key,
+              child: Text(e.value),
+            );
+          }).toList(),
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() {
+              _selectedPriority = value;
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusDropdown() {
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: '状态',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedStatus,
+          isExpanded: true,
+          items: _statusLabels.entries.map((e) {
+            return DropdownMenuItem<String>(
+              value: e.key,
+              child: Text(e.value),
+            );
+          }).toList(),
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() {
+              _selectedStatus = value;
+              if (_selectedStatus == 'completed') {
+                _progress = 100;
+              } else if (_progress == 100) {
+                _progress = 90;
+              }
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDescriptionInput() {
+    return TextFormField(
+      controller: _descriptionController,
+      decoration: InputDecoration(
+        labelText: '内容',
+        hintText: '请输入任务内容（可选）',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      maxLines: 4,
+    );
+  }
+
+  Widget _buildImageSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '图片',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: () => _pickImage(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library, size: 18),
+                  label: const Text('相册'),
+                ),
+                const SizedBox(width: 4),
+                TextButton.icon(
+                  onPressed: () => _pickImage(ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt, size: 18),
+                  label: const Text('拍照'),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_persistedAttachments.isEmpty && _newImages.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.image_outlined, color: Colors.grey.shade400),
+                const SizedBox(height: 8),
+                Text(
+                  '暂无图片，点击上方按钮添加',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                ),
+              ],
+            ),
+          )
+        else
+          SizedBox(
+            height: 100,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                ..._persistedAttachments.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final path = entry.value;
+                  return _buildImageThumbnail(
+                    image: _buildPersistedAttachment(path),
+                    onRemove: () {
+                      setState(() {
+                        _persistedAttachments.removeAt(index);
+                      });
+                    },
+                  );
+                }),
+                ..._newImages.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final file = entry.value;
+                  return _buildImageThumbnail(
+                    image: Image.file(file, width: 100, height: 100, fit: BoxFit.cover),
+                    onRemove: () {
+                      setState(() {
+                        _newImages.removeAt(index);
+                      });
+                    },
+                  );
+                }),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPersistedAttachment(String path) {
+    const double thumbSize = 100;
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        width: thumbSize,
+        height: thumbSize,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) =>
+            _buildBrokenCalendarImage(width: thumbSize, height: thumbSize),
+      );
+    }
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: thumbSize,
+        height: thumbSize,
+        fit: BoxFit.cover,
+      );
+    }
+    return _buildBrokenCalendarImage(width: thumbSize, height: thumbSize);
+  }
+
+  Widget _buildImageThumbnail({required Widget image, required VoidCallback onRemove}) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: image,
+          ),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.close,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '完成度',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Slider(
+                value: _progress,
+                min: 0,
+                max: 100,
+                divisions: 100,
+                label: '${_progress.round()}%',
+                onChanged: (value) {
+                  setState(() {
+                    _progress = value;
+                    if (_progress == 100) {
+                      _selectedStatus = 'completed';
+                    } else if (_progress > 0 && _selectedStatus == 'pending') {
+                      _selectedStatus = 'in_progress';
+                    }
+                  });
+                },
+              ),
+            ),
+            Container(
+              width: 60,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '${_progress.round()}%',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).primaryColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFooter() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(20),
+          bottomRight: Radius.circular(20),
+        ),
+        color: Colors.grey.shade50,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: _onSave,
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            ),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(source: source, imageQuality: 80);
+      if (image != null) {
+        setState(() {
+          _newImages.add(File(image.path));
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('选择图片失败: $e')),
+      );
+    }
+  }
+
+  void _onSave() {
+    if (!_formKey.currentState!.validate()) return;
+
+    final result = _CalendarTaskEditResult(
+      title: _titleController.text.trim(),
+      description: _descriptionController.text.trim(),
+      priority: _selectedPriority,
+      status: _selectedStatus,
+      progressPercentage: _progress.round(),
+      persistedAttachments: List<String>.from(_persistedAttachments),
+      newImages: List<File>.from(_newImages),
+    );
+
+    Navigator.of(context).pop(result);
+  }
 }
