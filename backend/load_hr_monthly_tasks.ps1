@@ -8,10 +8,10 @@ Write-Host "========================================"
 Write-Host ""
 
 # 设置数据库连接参数
-$DB_HOST = "rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com"
+$DB_HOST = "rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com"
 $DB_PORT = "3306"
-$DB_USER = "pdl"
-$DB_PASS = "Pdl123456"
+$DB_USER = "pdl123"
+$DB_PASS = "Pdl1234567"
 $DB_NAME = "enterprise_management"
 
 Write-Host "正在读取 SQL 脚本..."
@@ -67,5 +67,6 @@ if ($process.ExitCode -eq 0) {
 
 Write-Host ""
 Read-Host "按 Enter 键退出"
+
 
 

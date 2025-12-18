@@ -81,9 +81,9 @@ const upload = multer({
 
 // 数据库连接 - 云数据库配置
 const dbConfig = {
-  host: process.env.DB_HOST || 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
-  user: process.env.DB_USER || 'pdl',
-  password: process.env.DB_PASSWORD || 'Pdl123456',
+  host: process.env.DB_HOST || 'rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com',
+  user: process.env.DB_USER || 'pdl123',
+  password: process.env.DB_PASSWORD || 'Pdl1234567',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
   charset: 'utf8mb4',
@@ -1326,6 +1326,42 @@ app.post('/api/user/focus-duration', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('更新专注时长错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 发送协同专注邀请通知
+app.post('/api/notify/invite-focus', authenticateToken, async (req, res) => {
+  try {
+    const { senderId, senderName, targetUserIds } = req.body || {};
+
+    // 参数验证
+    if (!senderId || !senderName || !targetUserIds || !Array.isArray(targetUserIds) || targetUserIds.length === 0) {
+      return res.status(400).json({ error: 'senderId、senderName 和 targetUserIds（非空数组）为必填项' });
+    }
+
+    // 验证发送者ID与token中的用户ID一致（防止伪造）
+    if (senderId !== req.user.id) {
+      return res.status(403).json({ error: '无权以其他用户身份发送通知' });
+    }
+
+    // 模拟发送通知：打印日志
+    const notificationMessage = `${senderName}要开始专注了，你还在摸鱼吗？`;
+    console.log('📱 [协同专注通知]');
+    console.log(`   发送者: ${senderName} (${senderId})`);
+    console.log(`   目标用户数: ${targetUserIds.length}`);
+    console.log(`   目标用户IDs: ${targetUserIds.join(', ')}`);
+    console.log(`   通知内容: "${notificationMessage}"`);
+    console.log(`   时间: ${new Date().toISOString()}`);
+
+    // 这里将来可以扩展为：
+    // 1. 调用推送服务（Firebase Cloud Messaging、极光推送等）
+    // 2. 写入数据库通知表
+    // 3. WebSocket实时推送
+
+    res.json({ success: true, message: '通知已发送' });
+  } catch (error) {
+    console.error('发送协同专注通知错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });

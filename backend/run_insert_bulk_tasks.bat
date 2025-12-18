@@ -3,10 +3,10 @@ setlocal ENABLEDELAYEDEXPANSION
 chcp 65001 >nul
 
 :: 批量插入 1000 条任务，用于后台“任务管理”演示
-set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
+set DB_HOST=rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com
 set DB_PORT=3306
-set DB_USER=pdl
-set DB_PASSWORD=Pdl123456
+set DB_USER=pdl123
+set DB_PASSWORD=Pdl1234567
 set SCRIPT_DIR=%~dp0
 set SQL_FILE=%SCRIPT_DIR%insert_bulk_tasks_500.sql
 
@@ -54,6 +54,7 @@ echo ================================================
 echo.
 pause
 exit /b 0
+
 
 
 

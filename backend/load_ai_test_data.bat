@@ -2,9 +2,9 @@
 echo 正在加载AI模块测试数据...
 
 REM 设置数据库连接参数
-set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
-set DB_USER=pdl
-set DB_PASSWORD=Pdl123456
+set DB_HOST=rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com
+set DB_USER=pdl123
+set DB_PASSWORD=Pdl1234567
 set DB_NAME=enterprise_management
 
 echo 连接数据库: %DB_NAME%
@@ -183,3 +183,4 @@ echo.
 echo 下一步: 启动服务器测试AI功能
 echo.
 pause
+

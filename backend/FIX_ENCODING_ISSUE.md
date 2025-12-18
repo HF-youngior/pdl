@@ -19,9 +19,9 @@ MySQL 数据库连接的字符集配置不正确：
 ```javascript
 // 数据库连接配置
 const dbConfig = {
-  host: process.env.DB_HOST || 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
-  user: process.env.DB_USER || 'pdl',
-  password: process.env.DB_PASSWORD || 'Pdl123456',
+  host: process.env.DB_HOST || 'rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com',
+  user: process.env.DB_USER || 'pdl123',
+  password: process.env.DB_PASSWORD || 'Pdl1234567',
   database: process.env.DB_NAME || 'enterprise_management',
   port: process.env.DB_PORT || 3306,
   charset: 'utf8mb4',  // 添加字符集配置
@@ -79,12 +79,12 @@ COLLATE utf8mb4_unicode_ci;
 
 ```powershell
 # 转换数据库
-mysql -h rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com -u pdl -pPdl123456 enterprise_management -e "ALTER DATABASE enterprise_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -h rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com -u pdl123 -pPdl1234567 enterprise_management -e "ALTER DATABASE enterprise_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 # 转换表
-mysql -h rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com -u pdl -pPdl123456 enterprise_management -e "ALTER TABLE personal_logs CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -h rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com -u pdl123 -pPdl1234567 enterprise_management -e "ALTER TABLE personal_logs CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-mysql -h rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com -u pdl -pPdl123456 enterprise_management -e "ALTER TABLE tasks CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -h rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com -u pdl123 -pPdl1234567 enterprise_management -e "ALTER TABLE tasks CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 ```
 
 ## 📋 验证修复
@@ -96,9 +96,9 @@ const mysql = require('mysql2/promise');
 
 async function test() {
   const db = await mysql.createConnection({
-    host: 'rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com',
-    user: 'pdl',
-    password: 'Pdl123456',
+    host: 'rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com',
+    user: 'pdl123',
+    password: 'Pdl1234567',
     database: 'enterprise_management',
     charset: 'utf8mb4'
   });
@@ -123,7 +123,7 @@ test().catch(console.error);
 ### 方法2: 检查 MySQL 字符集
 
 ```bash
-mysql -h rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com -u pdl -pPdl123456 -e "SHOW VARIABLES LIKE 'character_set%';"
+mysql -h rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com -u pdl123 -pPdl1234567 -e "SHOW VARIABLES LIKE 'character_set%';"
 ```
 
 期望看到：
@@ -198,6 +198,7 @@ Flutter 应用端不需要任何修改，因为：
 **影响范围**: 所有中文文本显示  
 **状态**: ✅ 已修复  
 **维护者**: PDL Team
+
 
 
 
