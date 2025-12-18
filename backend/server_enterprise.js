@@ -295,14 +295,14 @@ async function createTables() {
     // 任务通知表
     `CREATE TABLE IF NOT EXISTS task_notifications (
       id VARCHAR(36) PRIMARY KEY,
-      task_id VARCHAR(36) NOT NULL,
+      task_id VARCHAR(36) NULL,
       from_user_id VARCHAR(36) NOT NULL,
       to_user_id VARCHAR(36) NOT NULL,
-      notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes', 'deadline_warning') NOT NULL,
+      notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes', 'deadline_warning', 'focus_invite') NOT NULL,
       message TEXT NOT NULL,
       is_read BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES tasks(id),
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
       FOREIGN KEY (from_user_id) REFERENCES users(id),
       FOREIGN KEY (to_user_id) REFERENCES users(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
@@ -507,7 +507,8 @@ async function ensureSchemaCompatibility() {
         'task_completed',
         'task_cancelled',
         'special_notes',
-        'deadline_warning'
+        'deadline_warning',
+        'focus_invite'
       ) NOT NULL`);
     } catch (_) {}
     await db.execute(`CREATE TABLE IF NOT EXISTS log_task_linkage (
@@ -1330,41 +1331,7 @@ app.post('/api/user/focus-duration', authenticateToken, async (req, res) => {
   }
 });
 
-// 发送协同专注邀请通知
-app.post('/api/notify/invite-focus', authenticateToken, async (req, res) => {
-  try {
-    const { senderId, senderName, targetUserIds } = req.body || {};
-
-    // 参数验证
-    if (!senderId || !senderName || !targetUserIds || !Array.isArray(targetUserIds) || targetUserIds.length === 0) {
-      return res.status(400).json({ error: 'senderId、senderName 和 targetUserIds（非空数组）为必填项' });
-    }
-
-    // 验证发送者ID与token中的用户ID一致（防止伪造）
-    if (senderId !== req.user.id) {
-      return res.status(403).json({ error: '无权以其他用户身份发送通知' });
-    }
-
-    // 模拟发送通知：打印日志
-    const notificationMessage = `${senderName}要开始专注了，你还在摸鱼吗？`;
-    console.log('📱 [协同专注通知]');
-    console.log(`   发送者: ${senderName} (${senderId})`);
-    console.log(`   目标用户数: ${targetUserIds.length}`);
-    console.log(`   目标用户IDs: ${targetUserIds.join(', ')}`);
-    console.log(`   通知内容: "${notificationMessage}"`);
-    console.log(`   时间: ${new Date().toISOString()}`);
-
-    // 这里将来可以扩展为：
-    // 1. 调用推送服务（Firebase Cloud Messaging、极光推送等）
-    // 2. 写入数据库通知表
-    // 3. WebSocket实时推送
-
-    res.json({ success: true, message: '通知已发送' });
-  } catch (error) {
-    console.error('发送协同专注通知错误:', error);
-    res.status(500).json({ error: '服务器内部错误' });
-  }
-});
+// 注意：旧的接口已删除，真正的协同专注通知接口在下方（第5648行）
 
 // 获取部门列表
 app.get('/api/departments', async (req, res) => {
@@ -3092,6 +3059,9 @@ app.put('/api/tasks/:id/request-response', authenticateToken, async (req, res) =
 // 获取任务通知
 app.get('/api/notifications', authenticateToken, async (req, res) => {
   try {
+    const userId = req.user.id;
+    console.log(`[获取通知] 用户ID: ${userId}`);
+    
     const [rows] = await db.execute(
       `SELECT tn.*, t.title as task_title, t.deadline as task_deadline, u.name as from_user_name
        FROM task_notifications tn
@@ -3099,9 +3069,11 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
        LEFT JOIN users u ON tn.from_user_id = u.id
        WHERE tn.to_user_id = ?
        ORDER BY tn.created_at DESC`,
-      [req.user.id]
+      [userId]
     );
 
+    console.log(`[获取通知] 找到 ${rows.length} 条通知`);
+    
     // 将时间字段转换为北京时间格式
     const formattedRows = rows.map(row => {
       const formatted = { ...row };
@@ -3111,6 +3083,12 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
       if (row.task_deadline) {
         formatted.task_deadline = formatDateTimeForBeijing(row.task_deadline);
       }
+      
+      // 调试日志：打印 focus_invite 类型的通知
+      if (row.notification_type === 'focus_invite') {
+        console.log(`[获取通知] focus_invite 通知: id=${row.id}, message="${row.message}", is_read=${row.is_read}`);
+      }
+      
       return formatted;
     });
 
@@ -4131,13 +4109,22 @@ async function updateParentTaskProgress(parentTaskId) {
 async function createNotification(taskId, fromUserId, toUserId, type, message) {
   try {
     const notificationId = require('crypto').randomUUID();
+    // 对于 focus_invite 类型，task_id 可以为 null
+    const finalTaskId = (type === 'focus_invite' || !taskId) ? null : taskId;
+    
+    console.log(`   [createNotification] 创建通知: type=${type}, fromUserId=${fromUserId}, toUserId=${toUserId}, taskId=${finalTaskId}`);
+    
     await db.execute(
       'INSERT INTO task_notifications (id, task_id, from_user_id, to_user_id, notification_type, message) VALUES (?, ?, ?, ?, ?, ?)',
-      [notificationId, taskId, fromUserId, toUserId, type, message]
+      [notificationId, finalTaskId, fromUserId, toUserId, type, message]
     );
+    
+    console.log(`   [createNotification] ✅ 通知已插入数据库: ${notificationId}`);
     return notificationId;
   } catch (error) {
     console.error('创建通知失败:', error);
+    console.error('错误详情:', error.message);
+    console.error('错误堆栈:', error.stack);
     return null;
   }
 }
@@ -5637,6 +5624,128 @@ app.post('/api/admin/tracking', authenticateToken, async (req, res) => {
     res.json({ success: true, logId });
   } catch (error) {
     console.error('数据埋点错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 协同专注：发送“陪我专注”邀请通知
+app.post('/api/notify/invite-focus', authenticateToken, async (req, res) => {
+  try {
+    const { senderId, senderName, targetUserIds } = req.body || {};
+    const currentUserId = req.user.id;
+
+    if (!Array.isArray(targetUserIds) || targetUserIds.length === 0) {
+      return res.status(400).json({ error: 'targetUserIds 不能为空' });
+    }
+
+    // 防止伪造 senderId，必须与当前登录用户一致（或者未传则使用当前用户）
+    if (senderId && senderId !== currentUserId) {
+      return res.status(403).json({ error: '无权以其它用户身份发送邀请' });
+    }
+
+    const safeSenderName = senderName || req.user.name || req.user.username || '一位小伙伴';
+
+    // 只给真实存在且处于激活状态的用户发送
+    const [targets] = await db.execute(
+      `SELECT id, name, username 
+       FROM users 
+       WHERE id IN (${targetUserIds.map(() => '?').join(',')})
+         AND is_active = TRUE`,
+      targetUserIds
+    );
+
+    if (!targets || targets.length === 0) {
+      return res.status(400).json({ error: '未找到可邀请的目标用户' });
+    }
+
+    const clientIp =
+      (req.headers['x-forwarded-for'] &&
+        String(req.headers['x-forwarded-for']).split(',')[0].trim()) ||
+      req.ip ||
+      null;
+
+    const metaBase = {
+      senderId: currentUserId,
+      senderName: safeSenderName,
+      targetUserIds,
+      clientIp,
+      source: 'pomodoro_focus_collaboration',
+    };
+
+    let successCount = 0;
+    // 为每个目标用户创建通知（使用 createNotification 函数，写入 task_notifications 表）
+    console.log('📱 [协同专注通知]');
+    console.log(`   发送者: ${safeSenderName} (${currentUserId})`);
+    console.log(`   目标用户数: ${targets.length}`);
+    console.log(`   目标用户IDs: ${targets.map(t => t.id).join(', ')}`);
+    
+    const notificationMessage = `${safeSenderName}要开始专注了，你还在摸鱼吗？`;
+    // 兼容旧代码中可能使用的 message 变量，避免 ReferenceError
+    const message = notificationMessage;
+    console.log(`   通知内容: "${notificationMessage}"`);
+    console.log(`   时间: ${new Date().toISOString()}`);
+    
+    for (const target of targets) {
+      const targetName = target.name || target.username || '未知用户';
+      const targetId = target.id;
+      
+      console.log(`   正在为用户 ${targetName} (${targetId}) 创建通知...`);
+
+      // 1）去重：同一发送者 -> 同一接收者 的协同专注邀请，只保留一条“最新”通知
+      //    删除该组合下历史上所有 focus_invite 通知（无论已读/未读），避免叠加多条
+      await db.execute(
+        `DELETE FROM task_notifications
+         WHERE from_user_id = ?
+           AND to_user_id = ?
+         AND notification_type = 'focus_invite'`,
+        [currentUserId, targetId]
+      );
+      
+      // 2）真正创建新的通知（focus_invite 类型，task_id 为 null）
+      const notificationId = await createNotification(
+        null, // task_id 为 null（focus_invite 类型不需要任务关联）
+        currentUserId,
+        targetId,
+        'focus_invite',
+        notificationMessage
+      );
+
+      if (notificationId) {
+        successCount++;
+        console.log(`   ✅ 通知创建成功: ${notificationId} (用户: ${targetName})`);
+      } else {
+        console.error(`   ❌ 通知创建失败 (用户: ${targetName})`);
+      }
+
+      // 3）同时写入系统日志，便于后续在“通知/日志”中展示
+      const logId = require('crypto').randomUUID();
+      await db.execute(
+        `INSERT INTO system_logs (id, user_id, user_name, action, description, category, metadata, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          logId,
+          // 日志归属目标用户，方便其在自己的日志列表中查看
+          targetId,
+          targetName,
+          'invite_focus',
+          notificationMessage,
+          'focus_invite',
+          JSON.stringify({
+            ...metaBase,
+            targetId,
+            targetName,
+            notificationId, // 关联的通知ID
+          }),
+        ]
+      );
+    }
+
+    res.json({
+      success: true,
+      sent: successCount,
+    });
+  } catch (error) {
+    console.error('发送协同专注邀请错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
