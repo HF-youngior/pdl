@@ -1,0 +1,265 @@
+
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>JMeter Performance Test Report</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 20px;
+                background-color: #f5f5f5;
+            }
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                background-color: white;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }
+            h1 {
+                color: #333;
+                text-align: center;
+                margin-bottom: 30px;
+            }
+            h2 {
+                color: #444;
+                border-bottom: 2px solid #eee;
+                padding-bottom: 10px;
+            }
+            .dashboard {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 20px;
+                margin-bottom: 30px;
+            }
+            .dashboard-item {
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                text-align: center;
+            }
+            .dashboard-item h3 {
+                margin: 0 0 10px 0;
+                color: #555;
+            }
+            .dashboard-item p {
+                font-size: 24px;
+                font-weight: bold;
+                margin: 0;
+                color: #2c3e50;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 30px;
+            }
+            th, td {
+                border: 1px solid #ddd;
+                padding: 12px;
+                text-align: left;
+            }
+            th {
+                background-color: #f2f2f2;
+            }
+            tr:nth-child(even) {
+                background-color: #f9f9f9;
+            }
+            .chart-container {
+                height: 400px;
+                margin-bottom: 30px;
+            }
+            .error {
+                color: #e74c3c;
+            }
+            .success {
+                color: #2ecc71;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>JMeter Performance Test Report</h1>
+            
+            <h2>Overall Summary</h2>
+            <div class="dashboard">
+                <div class="dashboard-item">
+                    <h3>Total Requests</h3>
+                    <p>30</p>
+                </div>
+                <div class="dashboard-item">
+                    <h3>Success Rate</h3>
+                    <p>0.0%</p>
+                </div>
+                <div class="dashboard-item">
+                    <h3>Average Response Time</h3>
+                    <p>7689.43ms</p>
+                </div>
+                <div class="dashboard-item">
+                    <h3>Min Response Time</h3>
+                    <p>822ms</p>
+                </div>
+                <div class="dashboard-item">
+                    <h3>Max Response Time</h3>
+                    <p>10300ms</p>
+                </div>
+                <div class="dashboard-item">
+                    <h3>90% Response Time</h3>
+                    <p>10038ms</p>
+                </div>
+                <div class="dashboard-item">
+                    <h3>95% Response Time</h3>
+                    <p>10040ms</p>
+                </div>
+                <div class="dashboard-item">
+                    <h3>Total Bytes</h3>
+                    <p>33390</p>
+                </div>
+            </div>
+            
+            <h2>Response Time Distribution</h2>
+            <div class="chart-container">
+                <canvas id="responseTimeChart"></canvas>
+            </div>
+            
+            <h2>Request Success Rate</h2>
+            <div class="chart-container">
+                <canvas id="successRateChart"></canvas>
+            </div>
+            
+            <h2>Detailed Statistics</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Request Name</th>
+                        <th>Count</th>
+                        <th>Success Rate</th>
+                        <th>Avg Response Time (ms)</th>
+                        <th>Min Response Time (ms)</th>
+                        <th>Max Response Time (ms)</th>
+                        <th>90% Response Time (ms)</th>
+                        <th>95% Response Time (ms)</th>
+                        <th>Error Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+    
+                    <tr>
+                        <td>用户登录</td>
+                        <td>10</td>
+                        <td class="error">0.0%</td>
+                        <td>10052.2</td>
+                        <td>10017</td>
+                        <td>10300</td>
+                        <td>10300</td>
+                        <td>10300</td>
+                        <td class="error">10</td>
+                    </tr>
+        
+                    <tr>
+                        <td>获取重要事项列表</td>
+                        <td>10</td>
+                        <td class="error">0.0%</td>
+                        <td>10020.9</td>
+                        <td>10010</td>
+                        <td>10040</td>
+                        <td>10040</td>
+                        <td>10040</td>
+                        <td class="error">10</td>
+                    </tr>
+        
+                    <tr>
+                        <td>获取公司重要事项</td>
+                        <td>10</td>
+                        <td class="error">0.0%</td>
+                        <td>2995.2</td>
+                        <td>822</td>
+                        <td>4741</td>
+                        <td>4741</td>
+                        <td>4741</td>
+                        <td class="error">10</td>
+                    </tr>
+        
+                </tbody>
+            </table>
+        </div>
+        
+        <script>
+            // Prepare chart data
+            const labels = ['用户登录', '获取重要事项列表', '获取公司重要事项'];
+            
+            // Response time distribution chart
+            const responseTimeCtx = document.getElementById('responseTimeChart').getContext('2d');
+            const responseTimeChart = new Chart(responseTimeCtx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Average Response Time',
+                            data: [10052.2, 10020.9, 2995.2],
+                            backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: '90% Response Time',
+                            data: [10300, 10040, 4741],
+                            backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Response Time (ms)'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Request success rate chart
+            const successRateCtx = document.getElementById('successRateChart').getContext('2d');
+            const successRateChart = new Chart(successRateCtx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Success Rate (%)',
+                        data: [0.0, 0.0, 0.0],
+                        backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Success Rate (%)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+    </body>
+    </html>
+    
