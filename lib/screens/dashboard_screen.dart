@@ -175,8 +175,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final notifications = await NotificationService.getNotifications();
       if (!mounted) return;
 
+      debugPrint('[通知检查] 获取到 ${notifications.length} 条通知');
+      
+      // 调试：打印 focus_invite 类型的通知
+      final focusInviteNotifications = notifications.where((n) => n.notificationType == 'focus_invite').toList();
+      if (focusInviteNotifications.isNotEmpty) {
+        debugPrint('[通知检查] 找到 ${focusInviteNotifications.length} 条 focus_invite 通知:');
+        for (final n in focusInviteNotifications) {
+          debugPrint('  - id=${n.id}, message="${n.message}", isRead=${n.isRead}');
+        }
+      }
+
       // 更新未读通知数量（必须在筛选之前更新，确保数量准确）
       final unreadCount = notifications.where((n) => !n.isRead).length;
+      debugPrint('[通知检查] 未读通知数量: $unreadCount');
+      
       if (mounted) {
         setState(() {
           _unreadNotificationCount = unreadCount;
@@ -188,6 +201,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .where((n) => !n.isRead && !_displayedNotificationIds.contains(n.id))
           .toList();
 
+      debugPrint('[通知检查] 新通知数量: ${newNotifications.length}');
+      if (newNotifications.isNotEmpty) {
+        debugPrint('[通知检查] 新通知列表:');
+        for (final n in newNotifications) {
+          debugPrint('  - id=${n.id}, type=${n.notificationType}, message="${n.message}"');
+        }
+      }
+
       if (newNotifications.isNotEmpty) {
         // 记录已显示的通知ID（只记录一次，避免重复弹窗）
         for (final notification in newNotifications) {
@@ -196,6 +217,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         // 显示通知弹窗（可以关闭，关闭后通知仍在通知栏中）
         if (mounted) {
+          debugPrint('[通知检查] 准备显示通知弹窗');
           await _showNotificationDialog(newNotifications);
         }
       }
@@ -451,6 +473,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return '任务取消';
       case 'special_notes':
         return '特殊备注';
+      case 'focus_invite':
+        return '协同专注邀请';
       default:
         return '通知';
     }

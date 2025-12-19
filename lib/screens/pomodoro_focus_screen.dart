@@ -831,17 +831,6 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildPrimaryButton('开始专注', const Color(0xFFFF6A88), _startTimer),
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: _showInviteDialog,
-              child: const Text(
-                '邀请伙伴陪我专注',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF7A7CFF),
-                ),
-              ),
-            ),
           ],
         );
       case _PomodoroState.running:
@@ -1376,15 +1365,24 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
     try {
       final users = await ApiService.getUsers();
       final currentUser = widget.user;
-      final currentUserRank = _roleRank(currentUser.role);
+      final currentUserRole = currentUser.role;
+      final currentUserRank = _roleRank(currentUserRole);
 
-      // 筛选同级或下级用户
+      // admin 和 founder 可以看到所有用户（后端已按权限返回，这里只排除自己）
+      final bool isAdminOrFounder = currentUserRole == 'admin' || currentUserRole == 'founder';
+
       final filteredUsers = users.where((user) {
         // 排除自己
         if (user.id == currentUser.id) {
           return false;
         }
-        
+
+        // admin 和 founder 可以看到所有用户（后端已按权限过滤）
+        if (isAdminOrFounder) {
+          return true;
+        }
+
+        // 其他角色：筛选同级或下级用户
         // 同级：parent_id 相同且不为 null
         final isPeer = currentUser.parentId != null && 
                        user.parentId == currentUser.parentId;
@@ -1471,9 +1469,9 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
                           ],
                         ),
                         const SizedBox(height: 6),
-                        const Text(
-                          '发送通知：xxx要开始专注了，你还在摸鱼吗？',
-                          style: TextStyle(color: Colors.grey),
+                        Text(
+                          '发送通知：${widget.user.name} 要开始专注了，你还在摸鱼吗？',
+                          style: const TextStyle(color: Colors.grey),
                         ),
                         const SizedBox(height: 8),
                         const Divider(height: 1),
