@@ -15,7 +15,7 @@ set DB_PORT=3306
 set DB_USER=pdl
 :: 从用户运行日志确认的密码（如需覆盖，可在运行前修改此变量）
 <<<<<<< Updated upstream
-set DB_PASSWORD=Pdl123456
+set DB_PASSWORD=Pdl1234567
 =======
 set DB_PASSWORD=Zs462581379
 >>>>>>> Stashed changes

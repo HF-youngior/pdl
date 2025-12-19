@@ -49,7 +49,7 @@
 ## 重要说明
 
 <<<<<<< Updated upstream
-- **云数据库账号：** pdl / Pdl123456（rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com:3306）
+- **云数据库账号：** pdl123 / Pdl1234567（rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com:3306）
 =======
 - **MySQL root 密码：** Zs462581379
 >>>>>>> Stashed changes

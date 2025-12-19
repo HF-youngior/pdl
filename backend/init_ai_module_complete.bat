@@ -12,7 +12,7 @@ echo.
 REM 设置数据库连接参数
 set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
 set DB_USER=pdl
-set DB_PASSWORD=Pdl123456
+set DB_PASSWORD=Pdl1234567
 set DB_NAME=enterprise_management
 
 echo 连接数据库: %DB_NAME%

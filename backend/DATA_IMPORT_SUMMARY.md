@@ -161,7 +161,7 @@ curl http://localhost:8080/api/month-view/dept-head-001/2025/11
 
 ```bash
 # Windows PowerShell
-Get-Content D:\pdl\backend\add_more_test_data_fixed.sql -Encoding UTF8 | mysql -h rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com -u pdl -pPdl123456 enterprise_management
+Get-Content D:\pdl\backend\add_more_test_data_fixed.sql -Encoding UTF8 | mysql -h rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com -u pdl123 -pPdl1234567 enterprise_management
 ```
 
 脚本会自动清理旧数据并导入新数据。

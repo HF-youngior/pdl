@@ -286,12 +286,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       case 'completed':
         return Colors.green;
       case 'cancelled':
-        return Colors.red;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   // 获取状态文本
   String _getStatusText(String status) {
     switch (status) {
@@ -302,12 +302,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       case 'completed':
         return '已完成';
       case 'cancelled':
-        return '已取消';
+        return '已完成';
       default:
         return status;
     }
   }
-
+  
   // 格式化日期时间，带本地时区标签，便于与管理端对照
   String _formatDateTime(DateTime dateTime, {bool includeSeconds = false}) {
     return TimeUtils.formatDateTimeWithZone(

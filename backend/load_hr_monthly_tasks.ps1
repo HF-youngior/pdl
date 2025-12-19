@@ -11,7 +11,7 @@ Write-Host ""
 $DB_HOST = "rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com"
 $DB_PORT = "3306"
 $DB_USER = "pdl"
-$DB_PASS = "Pdl123456"
+$DB_PASS = "Pdl1234567"
 $DB_NAME = "enterprise_management"
 
 Write-Host "正在读取 SQL 脚本..."

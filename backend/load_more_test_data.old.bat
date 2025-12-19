@@ -14,7 +14,7 @@ echo 正在导入数据...
 echo.
 
 <<<<<<< Updated upstream:backend/load_more_test_data.old.bat
-mysql -h rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com -u pdl -pPdl123456 enterprise_management < add_more_test_data.sql
+mysql -h rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com -u pdl123 -pPdl1234567 enterprise_management < add_more_test_data.sql
 =======
 mysql -h localhost -u root -pZs462581379 enterprise_management < add_more_test_data.sql
 >>>>>>> Stashed changes:backend/load_more_test_data.bat

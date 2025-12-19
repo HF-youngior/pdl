@@ -3641,12 +3641,12 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       case 'completed':
         return '已完成';
       case 'cancelled':
-        return '已取消';
+        return '已完成';
       default:
         return '待处理';
     }
   }
-
+  
   // 获取优先级文本
   String _getPriorityText(String priority) {
     switch (priority) {
@@ -3705,12 +3705,12 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       case 'completed':
         return Colors.green;
       case 'cancelled':
-        return Colors.grey;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   // 获取优先级颜色
   Color _getPriorityColor(String priority) {
     switch (priority) {
@@ -3753,8 +3753,8 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     final titleController = TextEditingController(text: task.title);
     final descriptionController = TextEditingController(text: task.description);
     String? selectedPriority = task.priority;
-    String? selectedStatus = task.status;
-
+    String? selectedStatus = task.status == 'cancelled' ? 'completed' : task.status;
+    
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (BuildContext context) {
@@ -3816,7 +3816,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                         DropdownMenuItem(value: 'pending', child: Text('待处理')),
                         DropdownMenuItem(value: 'in_progress', child: Text('进行中')),
                         DropdownMenuItem(value: 'completed', child: Text('已完成')),
-                        DropdownMenuItem(value: 'cancelled', child: Text('已取消')),
+                        
                       ],
                       onChanged: (String? value) {
                         setState(() {
@@ -5638,7 +5638,7 @@ class _CalendarLogEditDialogState extends State<_CalendarLogEditDialog> {
     'pending': '待处理',
     'in_progress': '进行中',
     'completed': '已完成',
-    'cancelled': '已取消',
+    'cancelled': '已完成',
   };
 
   @override

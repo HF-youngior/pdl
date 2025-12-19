@@ -12,7 +12,7 @@ chcp 65001 >nul
 set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
 set DB_PORT=3306
 set DB_USER=pdl
-set DB_PASSWORD=Pdl123456
+set DB_PASSWORD=Pdl1234567
 set SCRIPT_DIR=%~dp0
 
 :: 连接字符串

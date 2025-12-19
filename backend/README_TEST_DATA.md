@@ -91,13 +91,13 @@
 **Windows**:
 ```bash
 cd D:\pdl\backend
-mysql -h rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com -u pdl -pPdl123456 enterprise_management < create_rich_test_data.sql
+mysql -h rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com -u pdl123 -pPdl1234567 enterprise_management < create_rich_test_data.sql
 ```
 
 **Linux/Mac**:
 ```bash
 cd backend
-mysql -h rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com -u pdl -pPdl123456 enterprise_management < create_rich_test_data.sql
+mysql -h rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com -u pdl123 -pPdl1234567 enterprise_management < create_rich_test_data.sql
 ```
 
 ### 方法2: MySQL Workbench导入

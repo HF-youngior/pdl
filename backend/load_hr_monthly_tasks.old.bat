@@ -8,7 +8,7 @@ REM 设置数据库连接参数
 set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
 set DB_PORT=3306
 set DB_USER=pdl
-set DB_PASS=Pdl123456
+set DB_PASS=Pdl1234567
 set DB_NAME=enterprise_management
 
 echo 正在执行 SQL 脚本...
