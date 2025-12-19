@@ -281,12 +281,12 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
       case 'completed':
         return '已完成';
       case 'cancelled':
-        return '已取消';
+        return '已完成';
       default:
         return status;
     }
   }
-
+  
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending':
@@ -296,12 +296,12 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
       case 'completed':
         return Colors.green;
       case 'cancelled':
-        return Colors.red;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   double _calculateProgress(Task task) {
     // 使用任务的真实进度
     return task.progressPercentage / 100.0;
