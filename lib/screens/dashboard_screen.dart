@@ -21,7 +21,6 @@ import '../models/personal_info.dart';
 import '../models/personal_log.dart';
 import '../models/mbti_test_result.dart';
 import 'pomodoro_focus_screen.dart';
-import '../widgets/pomodoro_floating_button.dart';
 import '../models/deadline_reminder.dart';
 import '../models/notification.dart' show TaskNotification;
 import '../utils/time_utils.dart';
@@ -175,21 +174,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final notifications = await NotificationService.getNotifications();
       if (!mounted) return;
 
-      debugPrint('[通知检查] 获取到 ${notifications.length} 条通知');
-      
-      // 调试：打印 focus_invite 类型的通知
-      final focusInviteNotifications = notifications.where((n) => n.notificationType == 'focus_invite').toList();
-      if (focusInviteNotifications.isNotEmpty) {
-        debugPrint('[通知检查] 找到 ${focusInviteNotifications.length} 条 focus_invite 通知:');
-        for (final n in focusInviteNotifications) {
-          debugPrint('  - id=${n.id}, message="${n.message}", isRead=${n.isRead}');
-        }
-      }
-
       // 更新未读通知数量（必须在筛选之前更新，确保数量准确）
       final unreadCount = notifications.where((n) => !n.isRead).length;
-      debugPrint('[通知检查] 未读通知数量: $unreadCount');
-      
       if (mounted) {
         setState(() {
           _unreadNotificationCount = unreadCount;
@@ -201,14 +187,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .where((n) => !n.isRead && !_displayedNotificationIds.contains(n.id))
           .toList();
 
-      debugPrint('[通知检查] 新通知数量: ${newNotifications.length}');
-      if (newNotifications.isNotEmpty) {
-        debugPrint('[通知检查] 新通知列表:');
-        for (final n in newNotifications) {
-          debugPrint('  - id=${n.id}, type=${n.notificationType}, message="${n.message}"');
-        }
-      }
-
       if (newNotifications.isNotEmpty) {
         // 记录已显示的通知ID（只记录一次，避免重复弹窗）
         for (final notification in newNotifications) {
@@ -217,7 +195,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         // 显示通知弹窗（可以关闭，关闭后通知仍在通知栏中）
         if (mounted) {
-          debugPrint('[通知检查] 准备显示通知弹窗');
           await _showNotificationDialog(newNotifications);
         }
       }
@@ -473,8 +450,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return '任务取消';
       case 'special_notes':
         return '特殊备注';
-      case 'focus_invite':
-        return '协同专注邀请';
       default:
         return '通知';
     }
@@ -754,13 +729,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       constraints: const BoxConstraints(minWidth: 18),
                       child: Text(
-                        _unreadNotificationCount > 99
-                            ? '99+'
-                            : _unreadNotificationCount.toString(),
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold),
+                        _unreadNotificationCount > 99 ? '99+' : _unreadNotificationCount.toString(),
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -772,207 +742,251 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       body: Stack(
         children: [
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Theme.of(context).primaryColor.withOpacity(0.1),
-                    Colors.white,
-                  ],
-                ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Theme.of(context).primaryColor.withOpacity(0.1),
+                  Colors.white,
+                ],
               ),
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      // 用户信息卡片 + Loopy 装扮展示
-                      Card(
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              CircleAvatar(
-                                radius: 30,
-                                backgroundColor: Theme.of(context).primaryColor,
-                                child: Text(
-                                  widget.user.name.isNotEmpty
-                                      ? widget.user.name[0]
-                                      : 'U',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    // 用户信息卡片 + Loopy 装扮展示
+                    Card(
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 30,
+                              backgroundColor: Theme.of(context).primaryColor,
+                              child: Text(
+                                widget.user.name.isNotEmpty ? widget.user.name[0] : 'U',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      widget.user.name,
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.user.name,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      widget.user.position,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey[600],
-                                      ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    widget.user.position,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey[600],
                                     ),
-                                    Text(
-                                      widget.user.department,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey[600],
-                                      ),
+                                  ),
+                                  Text(
+                                    widget.user.department,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_settings.equippedLoopyAssetPath != null)
+                              Container(
+                                width: 80,
+                                height: 80,
+                                margin: const EdgeInsets.only(left: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.pinkAccent.withOpacity(0.25),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
                                     ),
                                   ],
                                 ),
-                              ),
-                              // Loopy 图像显示逻辑
-                              if (_settings.equippedLoopyAssetPath != null)
-                                Container(
-                                  width: 80,
-                                  height: 80,
-                                  margin: const EdgeInsets.only(left: 8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.pinkAccent.withOpacity(0.25),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: Image.asset(
-                                    _settings.equippedLoopyAssetPath!,
-                                    fit: BoxFit.cover,
-                                  ),
+                                clipBehavior: Clip.antiAlias,
+                                child: Image.asset(
+                                  _settings.equippedLoopyAssetPath!,
+                                  fit: BoxFit.cover,
                                 ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // 四个象限布局 (GridView)
-                      Expanded(
-                        child: GridView.count(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                          children: [
-                            // 左上：公司重要展示
-                            QuadrantWidget(
-                              title: '公司重要展示',
-                              subtitle: '10大重要事项',
-                              icon: Icons.business_center,
-                              color: Colors.blue,
-                              previewItems: _isLoadingPreview
-                                  ? null
-                                  : _companyImportantItems,
-                              onTap: () {
-                                Navigator.of(context)
-                                    .push(
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        CompanyImportantScreen(
-                                            user: widget.user),
-                                  ),
-                                )
-                                    .then((_) => _loadPreviewData()); // 返回时刷新数据
-                              },
-                            ),
-                            // 右上：公司派发任务
-                            QuadrantWidget(
-                              title: '公司派发任务',
-                              subtitle: '10大任务',
-                              icon: Icons.assignment,
-                              color: Colors.green,
-                              previewItems:
-                              _isLoadingPreview ? null : _companyTasks,
-                              onTap: () {
-                                Navigator.of(context)
-                                    .push(
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        CompanyTasksEnhancedScreen(
-                                            user: widget.user),
-                                  ),
-                                )
-                                    .then((_) => _loadPreviewData()); // 返回时刷新数据
-                              },
-                            ),
-                            // 左下：个人重要展示
-                            QuadrantWidget(
-                              title: '个人重要展示',
-                              subtitle: '10大重要事项',
-                              icon: Icons.person_pin,
-                              color: Colors.orange,
-                              previewItems: _isLoadingPreview
-                                  ? null
-                                  : (_personalPreviewItems.isNotEmpty
-                                  ? _personalPreviewItems
-                                  : _personalImportantItems),
-                              onTap: () {
-                                Navigator.of(context)
-                                    .push(
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        PersonalResumeScreen(
-                                            user: widget.user),
-                                  ),
-                                )
-                                    .then((_) => _loadPreviewData()); // 返回时刷新数据
-                              },
-                            ),
-                            // 右下：个人日志
-                            QuadrantWidget(
-                              title: '个人日志',
-                              icon: Icons.description,
-                              color: Colors.purple,
-                              previewItems:
-                              _isLoadingPreview ? null : _personalLogs,
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        LogEnhancedScreen(user: widget.user),
-                                  ),
-                                );
-                              },
-                            ),
+                              ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 四个象限布局
+                    Expanded(
+                      child: GridView.count(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        children: [
+                          // 左上：公司重要展示
+                          QuadrantWidget(
+                            title: '公司重要展示',
+                            subtitle: '10大重要事项',
+                            icon: Icons.business_center,
+                            color: Colors.blue,
+                            previewItems: _isLoadingPreview ? null : _companyImportantItems,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => CompanyImportantScreen(user: widget.user),
+                                ),
+                              ).then((_) => _loadPreviewData()); // 返回时刷新数据
+                            },
+                          ),
+                          // 右上：公司派发任务
+                          QuadrantWidget(
+                            title: '公司派发任务',
+                            subtitle: '10大任务',
+                            icon: Icons.assignment,
+                            color: Colors.green,
+                            previewItems: _isLoadingPreview ? null : _companyTasks,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => CompanyTasksEnhancedScreen(user: widget.user),
+                                ),
+                              ).then((_) => _loadPreviewData()); // 返回时刷新数据
+                            },
+                          ),
+                          // 左下：个人重要展示
+                          QuadrantWidget(
+                            title: '个人重要展示',
+                            subtitle: '10大重要事项',
+                            icon: Icons.person_pin,
+                            color: Colors.orange,
+                            previewItems: _isLoadingPreview
+                                ? null
+                                : (_personalPreviewItems.isNotEmpty
+                                    ? _personalPreviewItems
+                                    : _personalImportantItems),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => PersonalResumeScreen(user: widget.user),
+                                ),
+                              ).then((_) => _loadPreviewData()); // 返回时刷新数据
+                            },
+                          ),
+                          // 右下：个人日志
+                          QuadrantWidget(
+                            title: '个人日志',
+                            icon: Icons.description,
+                            color: Colors.purple,
+                            previewItems: _isLoadingPreview ? null : _personalLogs,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => LogEnhancedScreen(user: widget.user),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
 
-          // 悬浮番茄球
-          PomodoroFloatingButton(
-            onTap: _openPomodoroScreen,
+
+
+
+          Positioned(
+            right: 24,
+            bottom: 32,
+            child: GestureDetector(
+              onTap: _openPomodoroScreen,
+              child: Container(
+                width: 116,
+                height: 132,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: const Color(0xFFFF7A7A), width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.redAccent.withOpacity(0.18),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 64,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            width: 62,
+                            height: 62,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFFFFEBEC),
+                              border: Border.all(color: const Color(0xFFFFA8B4), width: 2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.redAccent.withOpacity(0.15),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.alarm_rounded,
+                            size: 32,
+                            color: Color(0xFFFF6A88),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      '番茄专注',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF3C3C3C),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),

@@ -688,11 +688,13 @@
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="taskAssignee" class="form-label">责任人 <span class="text-danger">*</span></label>
-                                    <select class="form-select" id="taskAssignee" required>
-                                        <option value="">选择责任人</option>
-                                        <!-- 用户列表将通过JavaScript动态加载 -->
-                                    </select>
+                                    <label class="form-label">责任人 <span class="text-danger">*</span></label>
+                                    <div id="taskAssigneeList" class="border rounded p-2" style="max-height: 220px; overflow-y: auto;">
+                                        <!-- 员工复选框列表通过JavaScript动态加载 -->
+                                    </div>
+                                    <small class="text-muted">
+                                        勾选一名或多名员工作为负责人
+                                    </small>
                                 </div>
                             </div>
                             <div class="col-md-6">

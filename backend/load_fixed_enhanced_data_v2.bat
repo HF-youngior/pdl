@@ -5,8 +5,8 @@ echo.
 
 REM Set database connection parameters
 <<<<<<< Updated upstream
-set DB_HOST=rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com
-set DB_USER=pdl123
+set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
+set DB_USER=pdl
 set DB_PASSWORD=Pdl1234567
 =======
 set DB_HOST=localhost
@@ -35,4 +35,3 @@ echo - 更新了任务进度（使用UPDATE语句）
 echo - 使用INSERT IGNORE避免重复键错误
 echo.
 pause
-

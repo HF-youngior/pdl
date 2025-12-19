@@ -799,11 +799,11 @@ class _LoopyRewardCard extends StatelessWidget {
               ),
               clipBehavior: Clip.antiAlias,
               child: Center(
-              child: Image.asset(
-                reward.assetPath,
+                child: Image.asset(
+                  reward.assetPath,
                   fit: BoxFit.contain,
-                width: double.infinity,
-                height: double.infinity,
+                  width: double.infinity,
+                  height: double.infinity,
                 ),
               ),
             ),

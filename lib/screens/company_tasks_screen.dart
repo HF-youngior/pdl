@@ -305,12 +305,12 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
       case 'completed':
         return '已完成';
       case 'cancelled':
-        return '已取消';
+        return '已完成';
       default:
         return status;
     }
   }
-
+  
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending':
@@ -320,12 +320,12 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
       case 'completed':
         return Colors.green;
       case 'cancelled':
-        return Colors.red;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -378,7 +378,7 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
                         const SizedBox(width: 8),
                         _buildFilterChip('completed', '已完成'),
                         const SizedBox(width: 8),
-                        _buildFilterChip('cancelled', '已取消'),
+                        _buildFilterChip('cancelled', '已完成')
                       ],
                     ),
                   ),

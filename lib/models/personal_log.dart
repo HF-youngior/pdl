@@ -75,7 +75,7 @@ class PersonalLog {
           .toList(),
       logDate: _tryParseDateTime(json['log_date']?.toString()),
       images: _parseStringList(json['images']),
-      locationName: _sanitizeLocationString(json['location_name'] ?? json['locationName']),
+      locationName: json['location_name'] ?? json['locationName'],
       latitude: _toDouble(json['location_latitude'] ?? json['locationLatitude']),
       longitude: _toDouble(json['location_longitude'] ?? json['locationLongitude']),
     );
@@ -141,18 +141,6 @@ double? _toDouble(dynamic value) {
     return double.tryParse(value);
   }
   return null;
-}
-
-String? _sanitizeLocationString(dynamic value) {
-  if (value == null) return null;
-  if (value is List) {
-    final joined = value.whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty).join('');
-    if (joined.isEmpty) return null;
-    return joined;
-  }
-  final s = value.toString().trim();
-  if (s.isEmpty || s == '[]') return null;
-  return s;
 }
 
 // 兼容增强视图使用的旧结构（linkages）

@@ -47,6 +47,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
   List<User> _availableUsers = [];
   User? _selectedAssignee;
   bool _isLoadingUsers = false;
+  bool _multiAssignEnabled = false;
+  final Set<String> _selectedAssigneeIds = {};
   
   // 图片相关
   final List<File> _selectedImages = [];
@@ -66,9 +68,8 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
     {'value': 'pending', 'label': '待处理'},
     {'value': 'in_progress', 'label': '进行中'},
     {'value': 'completed', 'label': '已完成'},
-    {'value': 'cancelled', 'label': '已取消'},
   ];
-
+  
   @override
   void initState() {
     super.initState();
@@ -125,6 +126,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
             (u) => u.id == widget.task!.assigneeId,
             orElse: () => _availableUsers.isNotEmpty ? _availableUsers.first : users.first,
           );
+          _selectedAssigneeIds
+            ..clear()
+            ..add(widget.task!.assigneeId);
         } else {
           // 创建新任务时，默认选择当前用户（如果有权限派发）
           if (widget.currentUser.role != 'employee') {
@@ -132,8 +136,18 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
               (u) => u.id == widget.currentUser.id,
               orElse: () => _availableUsers.isNotEmpty ? _availableUsers.first : null!,
             );
+            if (_selectedAssignee != null) {
+              _selectedAssigneeIds
+                ..clear()
+                ..add(_selectedAssignee!.id);
+            }
           } else {
             _selectedAssignee = _availableUsers.isNotEmpty ? _availableUsers.first : null;
+            if (_selectedAssignee != null) {
+              _selectedAssigneeIds
+                ..clear()
+                ..add(_selectedAssignee!.id);
+            }
           }
         }
         _isLoadingUsers = false;
@@ -161,7 +175,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       _descriptionController.text = _stripImageTag(widget.task!.description);
       _progressPercentage = (widget.task!.progressPercentage).toDouble();
       _priority = widget.task!.priority;
-      _status = widget.task!.status;
+      _status = widget.task!.status == 'cancelled' ? 'completed' : widget.task!.status;
       _deadline = widget.task!.deadline;
       _startTime = widget.task!.startTime;
       _endTime = widget.task!.endTime;
@@ -271,6 +285,68 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       return;
     }
 
+    // 校验负责人选择（新建任务必须至少选择一名负责人）
+    if (widget.task == null && _selectedAssigneeIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请至少选择一名负责人'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
+    // 新建任务时，在保存前弹出确认负责人弹窗
+    if (widget.task == null && widget.task?.isRequest != true) {
+      final selectedUsers = _availableUsers
+          .where((u) => _selectedAssigneeIds.contains(u.id))
+          .toList();
+    
+      if (selectedUsers.isEmpty) {
+        // 理论上不会走到这里，上面的校验已经处理
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('请至少选择一名负责人'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    
+      final isSingle = selectedUsers.length == 1;
+      final titleWord = isSingle ? '这名' : '这些';
+      final namesText = selectedUsers
+          .map((u) {
+            final dept = (u.department?.isNotEmpty == true)
+                ? u.department
+                : '未分配部门';
+            return '${u.name}（$dept）';
+          })
+          .join('\n');
+    
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('确认负责人'),
+          content: Text('确认选择$titleWord员工为负责人？\n\n$namesText'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('确认'),
+            ),
+          ],
+        ),
+      );
+    
+      if (confirmed != true) {
+        return;
+      }
+    }
+    
     setState(() {
       _isLoading = true;
     });
@@ -280,7 +356,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       List<String> uploadedImageUrls = [];
       if (_selectedImages.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('正在上传图片...'), duration: Duration(seconds: 1)),
+          const SnackBar(content: Text('正在上传图片...'), duration: Duration(seconds: 1)),
         );
         
         final urls = await ApiService.uploadImages(_selectedImages);
@@ -298,6 +374,72 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
 
       final now = DateTime.now();
       
+      // 判断是否为邀约任务（邀约任务不支持多选派发）
+      final isRequest = widget.task?.isRequest ?? false;
+      
+      // 如果是新建任务且启用多选且选择了多名员工，则一次为多名员工创建任务
+      if (!isRequest &&
+          widget.task == null &&
+          _selectedAssigneeIds.length > 1) {
+        final createdTasks = <Task>[];
+
+        for (final user in _availableUsers.where((u) => _selectedAssigneeIds.contains(u.id))) {
+          // 获取责任人的 department_id（优先使用departmentId，如果没有则使用department作为后备）
+          String? departmentId = user.departmentId;
+          
+          if (departmentId == null || departmentId.isEmpty) {
+            departmentId = user.department;
+          }
+          
+          if (departmentId == null || departmentId.isEmpty) {
+            throw Exception('用户 \'${user.name}\' 缺少部门信息，无法创建任务。');
+          }
+
+          final task = Task(
+            id: const Uuid().v4(),
+            title: _titleController.text.trim(),
+            description: _descriptionController.text.trim(),
+            assigneeId: user.id,
+            assigneeName: user.name,
+            department: departmentId,
+            priority: _priority,
+            status: _status,
+            createdAt: now,
+            deadline: _deadline ?? _endTime,
+            createdBy: widget.currentUser.id,
+            startTime: _startTime ?? now,
+            endTime: _endTime ?? now.add(const Duration(hours: 1)),
+            progressPercentage: _progressPercentage.round(),
+            isAllDay: _isAllDay,
+            parentTaskId: widget.parentTaskId,
+            isRequest: false,
+            requestType: null,
+            requestResponse: null,
+            specialNotes: null,
+            attachments: allAttachmentUrls,
+          );
+
+          final saved = await TaskService.createTask(task);
+          createdTasks.add(saved);
+        }
+
+        if (createdTasks.isNotEmpty) {
+          widget.onSave?.call(createdTasks.first);
+        }
+        
+        if (mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('已为 ${_selectedAssigneeIds.length} 名员工创建任务'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return;
+      }
+      
+      // 单任务保存逻辑（兼容邀约/编辑等场景）
       // 确定责任人
       final assignee = _selectedAssignee ?? (widget.task?.assigneeId != null 
           ? _availableUsers.firstWhere(
@@ -309,8 +451,6 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       // 获取责任人的 department_id（优先使用departmentId，如果没有则使用department作为后备）
       String? departmentId = assignee.departmentId;
       
-      // 如果departmentId为空或无效，尝试使用department字段（可能是部门名称）
-      // 但这通常不应该发生，因为后端应该总是返回department_id
       if (departmentId == null || departmentId.isEmpty) {
         departmentId = assignee.department;
       }
@@ -321,26 +461,26 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       }
       
       // 如果是邀约任务，只更新描述，其他字段保持不变
-      final isRequest = widget.task?.isRequest ?? false;
+      final taskIsRequest = widget.task?.isRequest ?? false;
       
       final task = Task(
         id: widget.task?.id ?? const Uuid().v4(),
-        title: isRequest ? (widget.task?.title ?? _titleController.text.trim()) : _titleController.text.trim(),
+        title: taskIsRequest ? (widget.task?.title ?? _titleController.text.trim()) : _titleController.text.trim(),
         description: _descriptionController.text.trim(),
-        assigneeId: isRequest ? (widget.task?.assigneeId ?? assignee.id) : assignee.id,
-        assigneeName: isRequest ? (widget.task?.assigneeName ?? assignee.name) : assignee.name,
-        department: isRequest ? (widget.task?.department ?? departmentId) : departmentId,
-        priority: isRequest ? (widget.task?.priority ?? 'p0') : _priority,
-        status: isRequest ? (widget.task?.status ?? 'pending') : _status,
+        assigneeId: taskIsRequest ? (widget.task?.assigneeId ?? assignee.id) : assignee.id,
+        assigneeName: taskIsRequest ? (widget.task?.assigneeName ?? assignee.name) : assignee.name,
+        department: taskIsRequest ? (widget.task?.department ?? departmentId) : departmentId,
+        priority: taskIsRequest ? (widget.task?.priority ?? 'p0') : _priority,
+        status: taskIsRequest ? (widget.task?.status ?? 'pending') : _status,
         createdAt: widget.task?.createdAt ?? now,
-        deadline: isRequest ? widget.task?.deadline : (_deadline ?? _endTime),
+        deadline: taskIsRequest ? widget.task?.deadline : (_deadline ?? _endTime),
         createdBy: widget.task?.createdBy ?? widget.currentUser.id,
-        startTime: isRequest ? (widget.task?.startTime ?? now) : (_startTime ?? now),
-        endTime: isRequest ? (widget.task?.endTime ?? now.add(const Duration(hours: 1))) : (_endTime ?? now.add(const Duration(hours: 1))),
-        progressPercentage: isRequest ? (widget.task?.progressPercentage ?? 0) : _progressPercentage.round(),
-        isAllDay: isRequest ? (widget.task?.isAllDay ?? false) : _isAllDay,
+        startTime: taskIsRequest ? (widget.task?.startTime ?? now) : (_startTime ?? now),
+        endTime: taskIsRequest ? (widget.task?.endTime ?? now.add(const Duration(hours: 1))) : (_endTime ?? now.add(const Duration(hours: 1))),
+        progressPercentage: taskIsRequest ? (widget.task?.progressPercentage ?? 0) : _progressPercentage.round(),
+        isAllDay: taskIsRequest ? (widget.task?.isAllDay ?? false) : _isAllDay,
         parentTaskId: widget.task?.parentTaskId ?? widget.parentTaskId, // 使用传入的父任务ID或保持原有
-        isRequest: isRequest,
+        isRequest: taskIsRequest,
         requestType: widget.task?.requestType,
         requestResponse: widget.task?.requestResponse,
         specialNotes: widget.task?.specialNotes,
@@ -748,6 +888,14 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                         onChanged: (value) {
                           setState(() {
                             _status = value!;
+                            // 状态变更时自动同步进度
+                            if (_status == 'pending') {
+                              _progressPercentage = 0;
+                            } else if (_status == 'in_progress') {
+                              _progressPercentage = 50;
+                            } else if (_status == 'completed') {
+                              _progressPercentage = 100;
+                            }
                           });
                         },
                       ),
@@ -1010,12 +1158,13 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
                   setState(() {
                     _progressPercentage = value;
                     // 自动联动：进度变动自动修正状态
-                    if (_progressPercentage == 100) {
+                    if (_progressPercentage == 0) {
+                      _status = 'pending';
+                    } else if (_progressPercentage == 100) {
                       _status = 'completed';
                     } else if (_progressPercentage >= 1 && _progressPercentage < 100) {
                       _status = 'in_progress';
                     }
-                    // 0%时不主动动状态
                   });
                 },
               ),
@@ -1180,7 +1329,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         ),
       );
     }
-
+  
     if (_availableUsers.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(16.0),
@@ -1194,7 +1343,29 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         ),
       );
     }
-
+  
+    final isNewTask = widget.task == null;
+  
+    // 新建任务：直接使用可勾选的多选列表
+    if (isNewTask) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '可勾选一名或多名员工作为负责人，保存时会为每名员工各创建一条任务。',
+            style: TextStyle(fontSize: 13, color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          _buildMultiAssigneeList(),
+        ],
+      );
+    }
+  
+    // 编辑任务：保持单选下拉的形式
+    return _buildSingleAssigneeDropdown();
+  }
+  
+  Widget _buildSingleAssigneeDropdown() {
     return DropdownButtonFormField<User>(
       value: _selectedAssignee,
       decoration: InputDecoration(
@@ -1206,11 +1377,9 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         fillColor: Colors.grey.shade50,
       ),
       isExpanded: true,
-      // 允许下拉项自适应高度，避免多行内容溢出产生黄黑提示
       isDense: true,
       itemHeight: null,
       icon: const Icon(Icons.arrow_drop_down),
-      // 选中时仅展示单行内容，避免在输入框区域内出现两行导致溢出
       selectedItemBuilder: (context) {
         return _availableUsers.map((user) {
           return Row(
@@ -1240,28 +1409,7 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
         }).toList();
       },
       items: _availableUsers.map((user) {
-        // 根据用户角色显示不同的标签
-        String roleLabel = '';
-        switch (user.role) {
-          case 'admin':
-            roleLabel = '管理员';
-            break;
-          case 'founder':
-            roleLabel = '创始人';
-            break;
-          case 'department_head':
-            roleLabel = '部门老总';
-            break;
-          case 'team_leader':
-            roleLabel = '团队长';
-            break;
-          case 'employee':
-            roleLabel = '员工';
-            break;
-          default:
-            roleLabel = user.role;
-        }
-        
+        final roleLabel = _getRoleLabel(user);
         return DropdownMenuItem<User>(
           value: user,
           child: Row(
@@ -1305,15 +1453,142 @@ class _TaskEditScreenState extends State<TaskEditScreen> {
       onChanged: (user) {
         setState(() {
           _selectedAssignee = user;
+          _selectedAssigneeIds.clear();
+          if (user != null) {
+            _selectedAssigneeIds.add(user.id);
+          }
         });
       },
       validator: (value) {
-        if (value == null) {
+        if (!_multiAssignEnabled && value == null) {
           return '请选择负责人';
         }
         return null;
       },
     );
+  }
+
+  Widget _buildMultiAssigneeList() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      constraints: const BoxConstraints(maxHeight: 260),
+      child: Scrollbar(
+        child: ListView.separated(
+          shrinkWrap: true,
+          itemCount: _availableUsers.length,
+          separatorBuilder: (context, index) => Divider(
+            height: 1,
+            color: Colors.grey.shade200,
+          ),
+          itemBuilder: (context, index) {
+            final user = _availableUsers[index];
+            final isSelected = _selectedAssigneeIds.contains(user.id);
+            final roleLabel = _getRoleLabel(user);
+            return InkWell(
+              onTap: () {
+                setState(() {
+                  if (isSelected) {
+                    _selectedAssigneeIds.remove(user.id);
+                  } else {
+                    _selectedAssigneeIds.add(user.id);
+                  }
+                });
+              },
+              child: Container(
+                color: isSelected
+                    ? Theme.of(context).primaryColor.withOpacity(0.08)
+                    : Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 32,
+                      color: isSelected
+                          ? Theme.of(context).primaryColor
+                          : Colors.transparent,
+                    ),
+                    const SizedBox(width: 8),
+                    CircleAvatar(
+                      radius: 14,
+                      backgroundColor:
+                          Theme.of(context).primaryColor.withOpacity(0.2),
+                      child: Text(
+                        user.name.isNotEmpty ? user.name[0] : 'U',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).primaryColor,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            user.name,
+                            style: TextStyle(
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            '$roleLabel · ${user.department}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isSelected
+                                  ? Theme.of(context).primaryColor
+                                  : Colors.grey[600],
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: (value) {
+                        setState(() {
+                          if (value == true) {
+                            _selectedAssigneeIds.add(user.id);
+                          } else {
+                            _selectedAssigneeIds.remove(user.id);
+                          }
+                        });
+                      },
+                      activeColor: Theme.of(context).primaryColor,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  String _getRoleLabel(User user) {
+    switch (user.role) {
+      case 'admin':
+        return '管理员';
+      case 'founder':
+        return '创始人';
+      case 'department_head':
+        return '部门老总';
+      case 'team_leader':
+        return '团队长';
+      case 'employee':
+        return '员工';
+      default:
+        return user.role;
+    }
   }
 
   // 选择图片

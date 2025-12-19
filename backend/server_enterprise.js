@@ -295,14 +295,14 @@ async function createTables() {
     // 任务通知表
     `CREATE TABLE IF NOT EXISTS task_notifications (
       id VARCHAR(36) PRIMARY KEY,
-      task_id VARCHAR(36) NULL,
+      task_id VARCHAR(36) NOT NULL,
       from_user_id VARCHAR(36) NOT NULL,
       to_user_id VARCHAR(36) NOT NULL,
-      notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes', 'deadline_warning', 'focus_invite') NOT NULL,
+      notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes', 'deadline_warning') NOT NULL,
       message TEXT NOT NULL,
       is_read BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
+      FOREIGN KEY (task_id) REFERENCES tasks(id),
       FOREIGN KEY (from_user_id) REFERENCES users(id),
       FOREIGN KEY (to_user_id) REFERENCES users(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
@@ -507,8 +507,7 @@ async function ensureSchemaCompatibility() {
         'task_completed',
         'task_cancelled',
         'special_notes',
-        'deadline_warning',
-        'focus_invite'
+        'deadline_warning'
       ) NOT NULL`);
     } catch (_) {}
     await db.execute(`CREATE TABLE IF NOT EXISTS log_task_linkage (
@@ -1331,8 +1330,6 @@ app.post('/api/user/focus-duration', authenticateToken, async (req, res) => {
   }
 });
 
-// 注意：旧的接口已删除，真正的协同专注通知接口在下方（第5648行）
-
 // 获取部门列表
 app.get('/api/departments', async (req, res) => {
   try {
@@ -1965,7 +1962,6 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       title,
       description,
       assignee_id,
-      assignees,
       department_id,
       priority,
       deadline,
@@ -1983,69 +1979,59 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
     if (!title || !title.trim()) {
       return res.status(400).json({ error: '任务名称不能为空' });
     }
-
-    // 汇总被分配人：支持 assignees（数组）或单个 assignee_id
-    let assigneeList = Array.isArray(assignees)
-      ? assignees.filter(id => typeof id === 'string' && id.trim().length > 0)
-      : [];
-    if (assigneeList.length === 0 && assignee_id) {
-      assigneeList = [assignee_id];
+    if (!assignee_id) {
+      return res.status(400).json({ error: '必须指定责任人' });
     }
-    assigneeList = Array.from(new Set(assigneeList)); // 去重
-
-    if (assigneeList.length === 0) {
-      return res.status(400).json({ error: '必须至少指定一位责任人（assignees 或 assignee_id）' });
-    }
+    // department_id 可以为空，将从被分配人信息中获取
 
     // 权限检查
     if (req.user.role === 'employee') {
       return res.status(403).json({ error: '员工无权创建任务' });
     }
 
-    // 读取所有被分配人信息
-    const placeholders = assigneeList.map(() => '?').join(',');
+    // 获取被分配人信息（包括部门ID）
     const [assigneeRows] = await db.execute(
-      `SELECT id, name, department_id FROM users WHERE id IN (${placeholders})`,
-      assigneeList
+      'SELECT name, department_id FROM users WHERE id = ?',
+      [assignee_id]
     );
-    if (assigneeRows.length !== assigneeList.length) {
-      return res.status(400).json({ error: '部分被分配人不存在，请检查 assignees / assignee_id' });
-    }
-    const assigneeMap = new Map(assigneeRows.map(row => [row.id, row]));
 
-    // 工具：清理值
+    if (assigneeRows.length === 0) {
+      return res.status(400).json({ error: '被分配人不存在' });
+    }
+
+    const assignee_name = assigneeRows[0].name;
+    // 如果前端没有传递 department_id，从用户信息中获取
+    const final_department_id = department_id || assigneeRows[0].department_id;
+
+    if (!final_department_id) {
+      return res.status(400).json({ error: '无法确定任务部门，请确保用户有部门信息' });
+    }
+
+    const taskId = require('crypto').randomUUID();
+
+    // 将 undefined 和空字符串转换为 null，确保数据库参数有效
     const cleanValue = (value) => {
       if (value === undefined || value === '') return null;
       return value;
     };
 
-    // 主负责人（用于父任务）
-    const primaryAssigneeId = assigneeList[0];
-    const primaryAssignee = assigneeMap.get(primaryAssigneeId);
-    const final_department_id = department_id || primaryAssignee.department_id;
-    if (!final_department_id) {
-      return res.status(400).json({ error: '无法确定任务部门，请确保责任人有部门信息' });
-    }
-
     // 获取进度百分比和状态（如果前端传递了）
     const progress_percentage = req.body.progress_percentage !== undefined ? req.body.progress_percentage : 0;
     const status = req.body.status || 'pending';
 
-    // 创建父任务
-    const parentId = require('crypto').randomUUID();
     await db.execute(
       `INSERT INTO tasks (
-        id, title, description, parent_task_id, assignee_id, assignee_name,
-        department_id, priority, deadline, created_by, start_time, end_time,
+        id, title, description, parent_task_id, assignee_id, assignee_name, 
+        department_id, priority, deadline, created_by, start_time, end_time, 
         location, is_all_day, progress_percentage, status, attachments
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        parentId,
+        taskId,
         title,
         cleanValue(description),
         cleanValue(parent_task_id),
-        primaryAssigneeId,
-        primaryAssignee.name,
+        assignee_id,
+        assignee_name,
         final_department_id,
         priority || 'p1',
         cleanValue(deadline),
@@ -2060,58 +2046,20 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       ]
     );
 
-    // 通知主负责人
-    await createNotification(parentId, req.user.id, primaryAssigneeId, 'task_assigned', `您收到了新任务：${title}`);
+    // 创建任务分配通知
+    await createNotification(taskId, req.user.id, assignee_id, 'task_assigned', `您收到了新任务：${title}`);
 
-    // 如果有多位责任人，则为每位创建子任务（包含主负责人，让进度聚合基于子任务）
-    if (assigneeList.length > 1) {
-      for (const subAssigneeId of assigneeList) {
-        const info = assigneeMap.get(subAssigneeId);
-        const subDept = info.department_id || final_department_id;
-        const subTaskId = require('crypto').randomUUID();
-        await db.execute(
-          `INSERT INTO tasks (
-            id, title, description, parent_task_id, assignee_id, assignee_name,
-            department_id, priority, deadline, created_by, start_time, end_time,
-            location, is_all_day, progress_percentage, status, attachments
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            subTaskId,
-            title,
-            cleanValue(description),
-            parentId,
-            subAssigneeId,
-            info.name,
-            subDept,
-            priority || 'p1',
-            cleanValue(deadline),
-            req.user.id,
-            cleanValue(start_time),
-            cleanValue(end_time),
-            cleanValue(location),
-            is_all_day || false,
-            0,
-            'pending',
-            attachments.length ? JSON.stringify(attachments) : JSON.stringify([])
-          ]
-        );
-        await createNotification(subTaskId, req.user.id, subAssigneeId, 'task_assigned', `您收到了新任务：${title}`);
-      }
-      // 创建完子任务后，刷新父任务进度
-      await updateParentTaskProgress(parentId);
-    }
-
-    // 创建任务时，如果截止时间在24小时内，立刻发送截止时间通知（父任务）
+    // 创建任务时，如果截止时间在24小时内，立刻发送截止时间通知
     if (cleanValue(deadline)) {
-      await checkAndSendDeadlineNotification(parentId, primaryAssigneeId, cleanValue(deadline));
+      await checkAndSendDeadlineNotification(taskId, assignee_id, cleanValue(deadline));
     }
 
-    // 如果外层还有父任务，更新进度
+    // 如果是子任务，需要更新父任务进度
     if (cleanValue(parent_task_id)) {
       await updateParentTaskProgress(parent_task_id);
     }
 
-    res.status(201).json({ message: '任务创建成功', id: parentId, assignees: assigneeList });
+    res.status(201).json({ message: '任务创建成功', id: taskId });
   } catch (error) {
     console.error('创建任务错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
@@ -3108,9 +3056,6 @@ app.put('/api/tasks/:id/request-response', authenticateToken, async (req, res) =
 // 获取任务通知
 app.get('/api/notifications', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    console.log(`[获取通知] 用户ID: ${userId}`);
-    
     const [rows] = await db.execute(
       `SELECT tn.*, t.title as task_title, t.deadline as task_deadline, u.name as from_user_name
        FROM task_notifications tn
@@ -3118,11 +3063,9 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
        LEFT JOIN users u ON tn.from_user_id = u.id
        WHERE tn.to_user_id = ?
        ORDER BY tn.created_at DESC`,
-      [userId]
+      [req.user.id]
     );
 
-    console.log(`[获取通知] 找到 ${rows.length} 条通知`);
-    
     // 将时间字段转换为北京时间格式
     const formattedRows = rows.map(row => {
       const formatted = { ...row };
@@ -3132,12 +3075,6 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
       if (row.task_deadline) {
         formatted.task_deadline = formatDateTimeForBeijing(row.task_deadline);
       }
-      
-      // 调试日志：打印 focus_invite 类型的通知
-      if (row.notification_type === 'focus_invite') {
-        console.log(`[获取通知] focus_invite 通知: id=${row.id}, message="${row.message}", is_read=${row.is_read}`);
-      }
-      
       return formatted;
     });
 
@@ -4158,22 +4095,13 @@ async function updateParentTaskProgress(parentTaskId) {
 async function createNotification(taskId, fromUserId, toUserId, type, message) {
   try {
     const notificationId = require('crypto').randomUUID();
-    // 对于 focus_invite 类型，task_id 可以为 null
-    const finalTaskId = (type === 'focus_invite' || !taskId) ? null : taskId;
-    
-    console.log(`   [createNotification] 创建通知: type=${type}, fromUserId=${fromUserId}, toUserId=${toUserId}, taskId=${finalTaskId}`);
-    
     await db.execute(
       'INSERT INTO task_notifications (id, task_id, from_user_id, to_user_id, notification_type, message) VALUES (?, ?, ?, ?, ?, ?)',
-      [notificationId, finalTaskId, fromUserId, toUserId, type, message]
+      [notificationId, taskId, fromUserId, toUserId, type, message]
     );
-    
-    console.log(`   [createNotification] ✅ 通知已插入数据库: ${notificationId}`);
     return notificationId;
   } catch (error) {
     console.error('创建通知失败:', error);
-    console.error('错误详情:', error.message);
-    console.error('错误堆栈:', error.stack);
     return null;
   }
 }
@@ -5673,128 +5601,6 @@ app.post('/api/admin/tracking', authenticateToken, async (req, res) => {
     res.json({ success: true, logId });
   } catch (error) {
     console.error('数据埋点错误:', error);
-    res.status(500).json({ error: '服务器内部错误' });
-  }
-});
-
-// 协同专注：发送“陪我专注”邀请通知
-app.post('/api/notify/invite-focus', authenticateToken, async (req, res) => {
-  try {
-    const { senderId, senderName, targetUserIds } = req.body || {};
-    const currentUserId = req.user.id;
-
-    if (!Array.isArray(targetUserIds) || targetUserIds.length === 0) {
-      return res.status(400).json({ error: 'targetUserIds 不能为空' });
-    }
-
-    // 防止伪造 senderId，必须与当前登录用户一致（或者未传则使用当前用户）
-    if (senderId && senderId !== currentUserId) {
-      return res.status(403).json({ error: '无权以其它用户身份发送邀请' });
-    }
-
-    const safeSenderName = senderName || req.user.name || req.user.username || '一位小伙伴';
-
-    // 只给真实存在且处于激活状态的用户发送
-    const [targets] = await db.execute(
-      `SELECT id, name, username 
-       FROM users 
-       WHERE id IN (${targetUserIds.map(() => '?').join(',')})
-         AND is_active = TRUE`,
-      targetUserIds
-    );
-
-    if (!targets || targets.length === 0) {
-      return res.status(400).json({ error: '未找到可邀请的目标用户' });
-    }
-
-    const clientIp =
-      (req.headers['x-forwarded-for'] &&
-        String(req.headers['x-forwarded-for']).split(',')[0].trim()) ||
-      req.ip ||
-      null;
-
-    const metaBase = {
-      senderId: currentUserId,
-      senderName: safeSenderName,
-      targetUserIds,
-      clientIp,
-      source: 'pomodoro_focus_collaboration',
-    };
-
-    let successCount = 0;
-    // 为每个目标用户创建通知（使用 createNotification 函数，写入 task_notifications 表）
-    console.log('📱 [协同专注通知]');
-    console.log(`   发送者: ${safeSenderName} (${currentUserId})`);
-    console.log(`   目标用户数: ${targets.length}`);
-    console.log(`   目标用户IDs: ${targets.map(t => t.id).join(', ')}`);
-    
-    const notificationMessage = `${safeSenderName}要开始专注了，你还在摸鱼吗？`;
-    // 兼容旧代码中可能使用的 message 变量，避免 ReferenceError
-    const message = notificationMessage;
-    console.log(`   通知内容: "${notificationMessage}"`);
-    console.log(`   时间: ${new Date().toISOString()}`);
-    
-    for (const target of targets) {
-      const targetName = target.name || target.username || '未知用户';
-      const targetId = target.id;
-      
-      console.log(`   正在为用户 ${targetName} (${targetId}) 创建通知...`);
-
-      // 1）去重：同一发送者 -> 同一接收者 的协同专注邀请，只保留一条“最新”通知
-      //    删除该组合下历史上所有 focus_invite 通知（无论已读/未读），避免叠加多条
-      await db.execute(
-        `DELETE FROM task_notifications
-         WHERE from_user_id = ?
-           AND to_user_id = ?
-         AND notification_type = 'focus_invite'`,
-        [currentUserId, targetId]
-      );
-      
-      // 2）真正创建新的通知（focus_invite 类型，task_id 为 null）
-      const notificationId = await createNotification(
-        null, // task_id 为 null（focus_invite 类型不需要任务关联）
-        currentUserId,
-        targetId,
-        'focus_invite',
-        notificationMessage
-      );
-
-      if (notificationId) {
-        successCount++;
-        console.log(`   ✅ 通知创建成功: ${notificationId} (用户: ${targetName})`);
-      } else {
-        console.error(`   ❌ 通知创建失败 (用户: ${targetName})`);
-      }
-
-      // 3）同时写入系统日志，便于后续在“通知/日志”中展示
-      const logId = require('crypto').randomUUID();
-      await db.execute(
-        `INSERT INTO system_logs (id, user_id, user_name, action, description, category, metadata, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [
-          logId,
-          // 日志归属目标用户，方便其在自己的日志列表中查看
-          targetId,
-          targetName,
-          'invite_focus',
-          notificationMessage,
-          'focus_invite',
-          JSON.stringify({
-            ...metaBase,
-            targetId,
-            targetName,
-            notificationId, // 关联的通知ID
-          }),
-        ]
-      );
-    }
-
-    res.json({
-      success: true,
-      sent: successCount,
-    });
-  } catch (error) {
-    console.error('发送协同专注邀请错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });

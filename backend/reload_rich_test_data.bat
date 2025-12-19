@@ -6,7 +6,11 @@ echo ========================================
 echo.
 
 echo [1/2] 正在加载数据到数据库...
+<<<<<<< Updated upstream
 mysql -h rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com -u pdl123 -pPdl1234567 < create_rich_test_data.sql
+=======
+mysql -h localhost -u root -pZs462581379 < create_rich_test_data.sql
+>>>>>>> Stashed changes
 
 if %ERRORLEVEL% EQU 0 (
     echo ✓ 数据加载成功！
@@ -26,7 +30,6 @@ if %ERRORLEVEL% EQU 0 (
 )
 
 pause
-
 
 
 
