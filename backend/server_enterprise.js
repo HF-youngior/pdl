@@ -2004,6 +2004,7 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       title,
       description,
       assignee_id,
+      assignees,
       department_id,
       priority,
       deadline,
@@ -2021,59 +2022,69 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
     if (!title || !title.trim()) {
       return res.status(400).json({ error: '任务名称不能为空' });
     }
-    if (!assignee_id) {
-      return res.status(400).json({ error: '必须指定责任人' });
+
+    // 汇总被分配人：支持 assignees（数组）或单个 assignee_id
+    let assigneeList = Array.isArray(assignees)
+      ? assignees.filter(id => typeof id === 'string' && id.trim().length > 0)
+      : [];
+    if (assigneeList.length === 0 && assignee_id) {
+      assigneeList = [assignee_id];
     }
-    // department_id 可以为空，将从被分配人信息中获取
+    assigneeList = Array.from(new Set(assigneeList)); // 去重
+
+    if (assigneeList.length === 0) {
+      return res.status(400).json({ error: '必须至少指定一位责任人（assignees 或 assignee_id）' });
+    }
 
     // 权限检查
     if (req.user.role === 'employee') {
       return res.status(403).json({ error: '员工无权创建任务' });
     }
 
-    // 获取被分配人信息（包括部门ID）
+    // 读取所有被分配人信息
+    const placeholders = assigneeList.map(() => '?').join(',');
     const [assigneeRows] = await db.execute(
-      'SELECT name, department_id FROM users WHERE id = ?',
-      [assignee_id]
+      `SELECT id, name, department_id FROM users WHERE id IN (${placeholders})`,
+      assigneeList
     );
-
-    if (assigneeRows.length === 0) {
-      return res.status(400).json({ error: '被分配人不存在' });
+    if (assigneeRows.length !== assigneeList.length) {
+      return res.status(400).json({ error: '部分被分配人不存在，请检查 assignees / assignee_id' });
     }
+    const assigneeMap = new Map(assigneeRows.map(row => [row.id, row]));
 
-    const assignee_name = assigneeRows[0].name;
-    // 如果前端没有传递 department_id，从用户信息中获取
-    const final_department_id = department_id || assigneeRows[0].department_id;
-
-    if (!final_department_id) {
-      return res.status(400).json({ error: '无法确定任务部门，请确保用户有部门信息' });
-    }
-
-    const taskId = require('crypto').randomUUID();
-
-    // 将 undefined 和空字符串转换为 null，确保数据库参数有效
+    // 工具：清理值
     const cleanValue = (value) => {
       if (value === undefined || value === '') return null;
       return value;
     };
 
+    // 主负责人（用于父任务）
+    const primaryAssigneeId = assigneeList[0];
+    const primaryAssignee = assigneeMap.get(primaryAssigneeId);
+    const final_department_id = department_id || primaryAssignee.department_id;
+    if (!final_department_id) {
+      return res.status(400).json({ error: '无法确定任务部门，请确保责任人有部门信息' });
+    }
+
     // 获取进度百分比和状态（如果前端传递了）
     const progress_percentage = req.body.progress_percentage !== undefined ? req.body.progress_percentage : 0;
     const status = req.body.status || 'pending';
 
+    // 创建父任务
+    const parentId = require('crypto').randomUUID();
     await db.execute(
       `INSERT INTO tasks (
-        id, title, description, parent_task_id, assignee_id, assignee_name, 
-        department_id, priority, deadline, created_by, start_time, end_time, 
+        id, title, description, parent_task_id, assignee_id, assignee_name,
+        department_id, priority, deadline, created_by, start_time, end_time,
         location, is_all_day, progress_percentage, status, attachments
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        taskId,
+        parentId,
         title,
         cleanValue(description),
         cleanValue(parent_task_id),
-        assignee_id,
-        assignee_name,
+        primaryAssigneeId,
+        primaryAssignee.name,
         final_department_id,
         priority || 'p1',
         cleanValue(deadline),
@@ -2088,20 +2099,58 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       ]
     );
 
-    // 创建任务分配通知
-    await createNotification(taskId, req.user.id, assignee_id, 'task_assigned', `您收到了新任务：${title}`);
+    // 通知主负责人
+    await createNotification(parentId, req.user.id, primaryAssigneeId, 'task_assigned', `您收到了新任务：${title}`);
 
-    // 创建任务时，如果截止时间在24小时内，立刻发送截止时间通知
-    if (cleanValue(deadline)) {
-      await checkAndSendDeadlineNotification(taskId, assignee_id, cleanValue(deadline));
+    // 如果有多位责任人，则为每位创建子任务（包含主负责人，让进度聚合基于子任务）
+    if (assigneeList.length > 1) {
+      for (const subAssigneeId of assigneeList) {
+        const info = assigneeMap.get(subAssigneeId);
+        const subDept = info.department_id || final_department_id;
+        const subTaskId = require('crypto').randomUUID();
+        await db.execute(
+          `INSERT INTO tasks (
+            id, title, description, parent_task_id, assignee_id, assignee_name,
+            department_id, priority, deadline, created_by, start_time, end_time,
+            location, is_all_day, progress_percentage, status, attachments
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            subTaskId,
+            title,
+            cleanValue(description),
+            parentId,
+            subAssigneeId,
+            info.name,
+            subDept,
+            priority || 'p1',
+            cleanValue(deadline),
+            req.user.id,
+            cleanValue(start_time),
+            cleanValue(end_time),
+            cleanValue(location),
+            is_all_day || false,
+            0,
+            'pending',
+            attachments.length ? JSON.stringify(attachments) : JSON.stringify([])
+          ]
+        );
+        await createNotification(subTaskId, req.user.id, subAssigneeId, 'task_assigned', `您收到了新任务：${title}`);
+      }
+      // 创建完子任务后，刷新父任务进度
+      await updateParentTaskProgress(parentId);
     }
 
-    // 如果是子任务，需要更新父任务进度
+    // 创建任务时，如果截止时间在24小时内，立刻发送截止时间通知（父任务）
+    if (cleanValue(deadline)) {
+      await checkAndSendDeadlineNotification(parentId, primaryAssigneeId, cleanValue(deadline));
+    }
+
+    // 如果外层还有父任务，更新进度
     if (cleanValue(parent_task_id)) {
       await updateParentTaskProgress(parent_task_id);
     }
 
-    res.status(201).json({ message: '任务创建成功', id: taskId });
+    res.status(201).json({ message: '任务创建成功', id: parentId, assignees: assigneeList });
   } catch (error) {
     console.error('创建任务错误:', error);
     res.status(500).json({ error: '服务器内部错误' });

@@ -7,7 +7,7 @@
     "start": "node server_enterprise.js",
     "dev": "nodemon server_enterprise.js",
     "init-db": "node -e \"require('./server_enterprise.js')\"",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest --config=jest.config.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
@@ -35,9 +35,12 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@types/jest": "^30.0.0",
     "eslint": "^9.39.1",
     "globals": "^16.5.0",
-    "nodemon": "^3.0.1"
+    "jest": "^30.2.0",
+    "nodemon": "^3.0.1",
+    "supertest": "^7.1.4"
   },
   "engines": {
     "node": ">=14.0.0"
