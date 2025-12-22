@@ -24,6 +24,20 @@ const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.c
 app.use(cors());
 app.use(express.json());
 
+// 全局CSP配置：允许内联样式和脚本，解决页面格式错误问题
+app.use((req, res, next) => {
+  // 设置宽松的CSP策略以允许内联样式和脚本
+  res.setHeader('Content-Security-Policy', 
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; " +
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; " +
+    "img-src 'self' data: https: http:; " +
+    "font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com data:; " +
+    "connect-src 'self' https: http:;"
+  );
+  next();
+});
+
 // 静态文件服务 - 提供Web管理端
 app.use('/web_admin', express.static('../web_admin'));
 
@@ -36,7 +50,32 @@ app.use('/', express.static(publicDir));
 
 // Swagger UI 文档（基于 OpenAPI）
 // 访问地址示例：http://localhost:8080/swagger
-app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// 配置Swagger UI选项，允许内联样式
+const swaggerOptions = {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: '企业管理系统 API 文档',
+  customfavIcon: '/favicon.ico',
+  swaggerOptions: {
+    persistAuthorization: true,
+    displayRequestDuration: true
+  }
+};
+
+// 中间件：移除或放宽CSP策略以允许内联样式
+app.use('/swagger', (req, res, next) => {
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self' https://cdn.jsdelivr.net;");
+  next();
+});
+
+app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerDocument, swaggerOptions));
+
+// 提供Swagger JSON文件下载端点
+app.get('/swagger.json', (req, res) => {
+  const swaggerJsonPath = path.join(__dirname, 'swagger.json');
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', 'attachment; filename="swagger.json"');
+  res.sendFile(swaggerJsonPath);
+});
 
 // 确保uploads目录存在
 const uploadsDir = path.join(publicDir, 'uploads');

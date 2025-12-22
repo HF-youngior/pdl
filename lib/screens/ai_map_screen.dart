@@ -497,7 +497,11 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('• ', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                    Builder(
+                      builder: (context) {
+                        return Text('• ', style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold));
+                      },
+                    ),
                     Expanded(child: Text(career.toString(), style: const TextStyle(color: Color(0xFF6B7280)))),
                   ],
                 ),
@@ -513,12 +517,16 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           icon: Icons.work_outline,
           children: careers.map((career) => Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('• ', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
-                Expanded(child: Text(career, style: const TextStyle(color: Color(0xFF6B7280)))),
-              ],
+            child: Builder(
+              builder: (context) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('• ', style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold)),
+                    Expanded(child: Text(career, style: const TextStyle(color: Color(0xFF6B7280)))),
+                  ],
+                );
+              },
             ),
           )).toList(),
         ));
@@ -601,15 +609,19 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         widgets.add(_buildSuggestionSection(
           key,
           value is List ? null : value.toString(),
-          children: value is List ? (value as List).map((item) => Padding(
-            padding: const EdgeInsets.only(left: 8, bottom: 4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('• ', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
-                Expanded(child: Text(item.toString(), style: const TextStyle(color: Color(0xFF6B7280)))),
-              ],
-            ),
+          children: value is List ? (value as List).map((item) => Builder(
+            builder: (context) {
+              return Padding(
+                padding: const EdgeInsets.only(left: 8, bottom: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('• ', style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold)),
+                    Expanded(child: Text(item.toString(), style: const TextStyle(color: Color(0xFF6B7280)))),
+                  ],
+                ),
+              );
+            },
           )).toList() : null,
         ));
       }
@@ -627,7 +639,11 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           Row(
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 20, color: const Color(0xFF3B82F6)),
+                Builder(
+                  builder: (context) {
+                    return Icon(icon, size: 20, color: Theme.of(context).primaryColor);
+                  },
+                ),
                 const SizedBox(width: 8),
               ],
               Expanded(
@@ -1215,10 +1231,11 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   }
   @override
   Widget build(BuildContext context) {
+    final themeColor = Theme.of(context).primaryColor;
     return Scaffold(
       appBar: AppBar(
         title: const Text('AI地图'),
-        backgroundColor: const Color(0xFF1E3A8A), // 深蓝色
+        backgroundColor: themeColor, // 使用主题颜色
         foregroundColor: Colors.white,
         elevation: 0,
         bottom: TabBar(
@@ -1260,6 +1277,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   Widget _buildRangeOption(String value, String label, IconData icon) {
     final isSelected = _selectedRange == value;
     final isTodayOption = value == 'today';
+    final themeColor = Theme.of(context).primaryColor;
     const double optionHeight = 130;
     return GestureDetector(
       onTap: () {
@@ -1271,12 +1289,12 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
         decoration: BoxDecoration(
           color: isSelected
-              ? const Color(0xFF3B82F6).withOpacity(0.08)
+              ? themeColor.withOpacity(0.08)
               : Colors.grey[50],
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFF3B82F6)
+                ? themeColor
                 : Colors.grey[300]!,
             width: isSelected ? 2 : 1,
           ),
@@ -1292,13 +1310,14 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   }
 
   Widget _buildDefaultRangeContent(bool isSelected, String label, IconData icon) {
+    final themeColor = Theme.of(context).primaryColor;
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Icon(
           icon,
           color: isSelected
-              ? const Color(0xFF3B82F6)
+              ? themeColor
               : Colors.grey[600],
           size: 26,
         ),
@@ -1309,7 +1328,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
             fontSize: 13,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
             color: isSelected
-                ? const Color(0xFF1E3A8A)
+                ? themeColor
                 : Colors.grey[700],
           ),
         ),
@@ -1319,7 +1338,8 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
 
   Widget _buildTodayRangeContent(bool isSelected, IconData icon) {
     final bool isToday = _isSameDate(_selectedLogDate, DateTime.now());
-    final themeColor = isSelected ? const Color(0xFF1E3A8A) : const Color(0xFF374151);
+    final themeColor = Theme.of(context).primaryColor;
+    final textColor = isSelected ? themeColor : const Color(0xFF374151);
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -1327,7 +1347,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         Icon(
           icon,
           size: 28,
-          color: isSelected ? const Color(0xFF3B82F6) : Colors.grey[600],
+          color: isSelected ? themeColor : Colors.grey[600],
         ),
         const SizedBox(height: 8),
         Text(
@@ -1335,7 +1355,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: themeColor,
+            color: textColor,
           ),
         ),
         const SizedBox(height: 12),
@@ -1344,6 +1364,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   }
 
   Widget _buildDateSelectorOverlay() {
+    final themeColor = Theme.of(context).primaryColor;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1364,7 +1385,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.75),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.35)),
+            border: Border.all(color: themeColor.withOpacity(0.35)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.035),
@@ -1378,7 +1399,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               Icon(
                 Icons.calendar_month,
                 size: 20,
-                color: const Color(0xFF3B82F6).withOpacity(0.95),
+                color: themeColor.withOpacity(0.95),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -1443,12 +1464,12 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     '选择分析范围',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF1E3A8A),
+                      color: Theme.of(context).primaryColor,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1488,51 +1509,56 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
             const SizedBox(height: 20),
             
             // 一键分析按钮 - 优化样式
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF3B82F6), Color(0xFF1E40AF)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF3B82F6).withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: ElevatedButton.icon(
-                onPressed: _loading
-                    ? null
-                    : () {
-                        if (_selectedRange == 'today') {
-                          _analyzeAndSave(targetDate: _selectedLogDate);
-                        } else {
-                          _analyzeAndSave();
-                        }
-                      },
-                icon: const Icon(Icons.analytics, color: Colors.white),
-                label: Text(
-                  _loading ? '分析中...' : _getAnalyzeButtonText(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
+            Builder(
+              builder: (context) {
+                final themeColor = Theme.of(context).primaryColor;
+                return Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [themeColor, themeColor.withOpacity(0.8)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                     borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: themeColor.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                ),
-              ),
+                  child: ElevatedButton.icon(
+                    onPressed: _loading
+                        ? null
+                        : () {
+                            if (_selectedRange == 'today') {
+                              _analyzeAndSave(targetDate: _selectedLogDate);
+                            } else {
+                              _analyzeAndSave();
+                            }
+                          },
+                    icon: const Icon(Icons.analytics, color: Colors.white),
+                    label: Text(
+                      _loading ? '分析中...' : _getAnalyzeButtonText(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 20),
             
@@ -1654,29 +1680,32 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       '日志关键词',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
                     ),
                     const SizedBox(height: 12),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                      children: _keywords.map((k) => Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF3B82F6).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.3)),
-                        ),
-                        child: Text(
-                          k['word'],
-                          style: const TextStyle(
-                            color: Color(0xFF1E40AF),
-                            fontWeight: FontWeight.w500,
+                      children: _keywords.map((k) {
+                        final themeColor = Theme.of(context).primaryColor;
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: themeColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: themeColor.withOpacity(0.3)),
                           ),
-                        ),
-                      )).toList(),
+                          child: Text(
+                            k['word'],
+                            style: TextStyle(
+                              color: themeColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ],
                 ),
@@ -1701,9 +1730,9 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       '词云图',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
                     ),
                     const SizedBox(height: 12),
                     EnhancedWordCloud(words: _wordFreq),
@@ -1725,43 +1754,48 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // MBTI测试按钮
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF3B82F6).withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: ElevatedButton.icon(
-                onPressed: _startMbtiTest,
-                icon: const Icon(Icons.quiz, color: Colors.white),
-                label: Text(
-                  _getMbtiTestButtonText(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
+            Builder(
+              builder: (context) {
+                final themeColor = Theme.of(context).primaryColor;
+                return Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [themeColor, themeColor.withOpacity(0.8)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                     borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: themeColor.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                ),
-              ),
+                  child: ElevatedButton.icon(
+                    onPressed: _startMbtiTest,
+                    icon: const Icon(Icons.quiz, color: Colors.white),
+                    label: Text(
+                      _getMbtiTestButtonText(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 16),
             
@@ -1864,56 +1898,59 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
             if (_currentPersonalityAnalysis != null) ...[
               // AI分析结果展示（小方块）
               if (_currentPersonalityAnalysis!.aiAnalysisText != null && _currentPersonalityAnalysis!.aiAnalysisText!.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0F9FF),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.3)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: (_currentPersonalityAnalysis!.isDeepSeek == true 
-                                ? const Color(0xFF10B981) 
-                                : const Color(0xFF3B82F6)).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              _currentPersonalityAnalysis!.isDeepSeek == true 
-                                ? Icons.psychology 
-                                : Icons.auto_awesome,
-                              color: _currentPersonalityAnalysis!.isDeepSeek == true 
-                                ? const Color(0xFF10B981) 
-                                : const Color(0xFF3B82F6),
-                              size: 20,
-                            ),
+                Builder(
+                  builder: (context) {
+                    final themeColor = Theme.of(context).primaryColor;
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: themeColor.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: themeColor.withOpacity(0.3)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: (_currentPersonalityAnalysis!.isDeepSeek == true 
+                                    ? const Color(0xFF10B981) 
+                                    : themeColor).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
                                   _currentPersonalityAnalysis!.isDeepSeek == true 
-                                    ? 'DeepSeek AI 分析结果' 
+                                    ? Icons.psychology 
+                                    : Icons.auto_awesome,
+                                  color: _currentPersonalityAnalysis!.isDeepSeek == true 
+                                    ? const Color(0xFF10B981) 
+                                    : themeColor,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _currentPersonalityAnalysis!.isDeepSeek == true 
+                                        ? 'DeepSeek AI 分析结果' 
                                     : '本地算法分析结果',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1E3A8A),
+                                    color: themeColor,
                                   ),
                                 ),
                                 if (_currentPersonalityAnalysis!.isDeepSeek == true)
@@ -1988,6 +2025,8 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                       ),
                     ],
                   ),
+                );
+                  },
                 ),
               
               const SizedBox(height: 20),
@@ -2029,9 +2068,9 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       '工作建议',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
                     ),
                     const SizedBox(height: 12),
                     ..._buildWorkSuggestionsWidget(_currentPersonalityAnalysis!.workSuggestions),
@@ -2047,10 +2086,11 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
 
   // 历史记录标签页（包含嵌套的TabBar）
   Widget _buildHistoryTab() {
+    final themeColor = Theme.of(context).primaryColor;
     return Column(
       children: [
         Container(
-          color: const Color(0xFF1E3A8A),
+          color: themeColor,
           child: TabBar(
             controller: _historyTabController,
             indicatorColor: Colors.white,
@@ -2686,23 +2726,36 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                       ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.all(16),
-                        leading: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF3B82F6).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.cloud, color: Color(0xFF3B82F6)),
+                        leading: Builder(
+                          builder: (context) {
+                            final themeColor = Theme.of(context).primaryColor;
+                            return Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: themeColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(Icons.cloud, color: themeColor),
+                            );
+                          },
                         ),
-                        title: Text(
-                          analysis.description ?? '词云分析',
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                        title: Builder(
+                          builder: (context) {
+                            return Text(
+                              analysis.description ?? '词云分析',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
+                            );
+                          },
                         ),
                         subtitle: Text(
                           '分析日期: ${DateFormat('yyyy-MM-dd').format(analysis.analysisDate.toLocal())}',
                           style: const TextStyle(color: Color(0xFF6B7280)),
                         ),
-                        trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF3B82F6)),
+                        trailing: Builder(
+                          builder: (context) {
+                            return Icon(Icons.arrow_forward_ios, color: Theme.of(context).primaryColor);
+                          },
+                        ),
                         onTap: () => _showWordCloudDetail(analysis),
                       ),
                     );
@@ -2982,10 +3035,10 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                                   children: [
                                     Text(
                                       '${analysis.mbtiType} 性格分析',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1E3A8A),
+                                        color: Theme.of(context).primaryColor,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -3221,7 +3274,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               analysis.isDeepSeek == true ? Icons.psychology : Icons.auto_awesome,
               color: analysis.isDeepSeek == true 
                 ? const Color(0xFF10B981) 
-                : const Color(0xFF3B82F6),
+                : Theme.of(context).primaryColor,
               size: 24,
             ),
             const SizedBox(width: 8),
@@ -3258,20 +3311,25 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                         ),
                       )
                     else
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF3B82F6).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          '本地算法',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF3B82F6),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
+                      Builder(
+                        builder: (context) {
+                          final themeColor = Theme.of(context).primaryColor;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: themeColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '本地算法',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: themeColor,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                   ],
                 ),
@@ -3285,7 +3343,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                       border: Border.all(
                         color: (analysis.isDeepSeek == true 
                           ? const Color(0xFF10B981) 
-                          : const Color(0xFF3B82F6)).withOpacity(0.3),
+                          : Theme.of(context).primaryColor).withOpacity(0.3),
                       ),
                     ),
                     child: SelectableText(
@@ -3351,29 +3409,34 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
             ),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF3B82F6).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.today,
-                    color: Color(0xFF3B82F6),
-                    size: 20,
-                  ),
+                Builder(
+                  builder: (context) {
+                    final themeColor = Theme.of(context).primaryColor;
+                    return Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: themeColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.today,
+                        color: themeColor,
+                        size: 20,
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         '日志',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E3A8A),
+                          color: Theme.of(context).primaryColor,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -3396,7 +3459,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 else
                   IconButton(
                     onPressed: () => _loadTodayLogs(),
-                    icon: const Icon(Icons.refresh, color: Color(0xFF3B82F6)),
+                    icon: Icon(Icons.refresh, color: Theme.of(context).primaryColor),
                     tooltip: '刷新日志',
                   ),
               ],
@@ -3459,22 +3522,22 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
           Container(
             width: double.infinity,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF3B82F6), Color(0xFF1E40AF)],
+              gradient: LinearGradient(
+                colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withOpacity(0.8)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF3B82F6).withOpacity(0.3),
+                  color: Theme.of(context).primaryColor.withOpacity(0.3),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
               ],
             ),
-            child: ElevatedButton.icon(
-              onPressed: () => _navigateToAddLog(),
+              child: ElevatedButton.icon(
+                onPressed: () => _navigateToAddLog(),
               icon: const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
               label: const Text(
                 '去添加日志',
@@ -3548,37 +3611,37 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFF5F8FF),
+          color: Theme.of(context).primaryColor.withOpacity(0.05),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.2)),
+          border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.auto_stories_outlined, color: Color(0xFF3B82F6)),
+                Icon(Icons.auto_stories_outlined, color: Theme.of(context).primaryColor),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   '日志速览',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E3A8A),
+                    color: Theme.of(context).primaryColor,
                   ),
                 ),
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3B82F6).withOpacity(0.1),
+                    color: Theme.of(context).primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     '${_todayLogs.length} 条',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: Color(0xFF1E3A8A),
+                      color: Theme.of(context).primaryColor,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -3596,7 +3659,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                         height: 6,
                         margin: const EdgeInsets.only(top: 6, right: 8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF3B82F6),
+                          color: Theme.of(context).primaryColor,
                           borderRadius: BorderRadius.circular(3),
                         ),
                       ),
@@ -3678,10 +3741,10 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
               Expanded(
                 child: Text(
                   log.logTitle,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E3A8A),
+                    color: Theme.of(context).primaryColor,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
