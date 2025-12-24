@@ -796,7 +796,7 @@
                             </div>
                             
                             <!-- 进度条 -->
-                            <div class="card mb-4">
+                            <div class="card mb-4" id="progressCard">
                                 <div class="card-header">
                                     <h6 class="mb-0">任务进度</h6>
                                 </div>
@@ -920,6 +920,15 @@
                         <div class="mb-3">
                             <label for="requestDescription" class="form-label">请求详情 <span class="text-danger">*</span></label>
                             <textarea class="form-control" id="requestDescription" rows="5" placeholder="请详细描述您的请求内容..." required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="requestStartTime" class="form-label">邀约时间 <span class="text-danger">*</span></label>
+                            <input type="datetime-local" class="form-control" id="requestStartTime" required>
+                            <small class="text-muted">请选择邀约的具体时间范围</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="requestEndTime" class="form-label">结束时间 <span class="text-danger">*</span></label>
+                            <input type="datetime-local" class="form-control" id="requestEndTime" required>
                         </div>
                         <div class="mb-3">
                             <label for="requestDeadline" class="form-label">期望回复时间（可选）</label>

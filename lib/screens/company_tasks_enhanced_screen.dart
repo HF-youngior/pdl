@@ -735,6 +735,30 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
                 ),
               ],
             ),
+            const SizedBox(height: 4),
+            
+            // 邀约时间信息（仅对邀约任务显示）
+            if (task.isRequest && task.requestStartTime != null && task.requestEndTime != null) ...[
+              Row(
+                children: [
+                  Icon(
+                    Icons.access_time,
+                    size: 16,
+                    color: Colors.grey[600],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '邀约时间: ${_formatDateTime(task.requestStartTime!)} 至 ${_formatDateTime(task.requestEndTime!)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+            ],
+            
             const SizedBox(height: 8),
             
             // 进度条

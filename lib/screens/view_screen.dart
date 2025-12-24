@@ -46,6 +46,8 @@ class _ViewScreenState extends State<ViewScreen> {
           duration: Duration(seconds: 2),
         ),
       );
+      // 刷新日历视图，确保甘特图也更新
+      _refreshCalendar?.call();
     }
   }
 
@@ -70,6 +72,8 @@ class _ViewScreenState extends State<ViewScreen> {
           duration: Duration(seconds: 2),
         ),
       );
+      // 刷新日历视图，确保甘特图也更新
+      _refreshCalendar?.call();
     }
   }
 
@@ -92,6 +96,8 @@ class _ViewScreenState extends State<ViewScreen> {
           duration: Duration(seconds: 2),
         ),
       );
+      // 刷新日历视图，确保甘特图也更新
+      _refreshCalendar?.call();
     }
   }
 

@@ -3889,9 +3889,11 @@ class _CalendarWidgetState extends State<CalendarWidget> {
             backgroundColor: Colors.green,
           ),
         );
-        // 重新加载日期详情
+        // 重新加载日期详情和周视图数据，确保甘特图也刷新
         Navigator.of(context).pop();
         _showDayDetail(day);
+        // 刷新周视图数据，确保甘特图中的任务状态也更新
+        await _loadWeekViewData();
       }
     } catch (e) {
       if (mounted) {
@@ -3945,9 +3947,11 @@ class _CalendarWidgetState extends State<CalendarWidget> {
               backgroundColor: Colors.green,
             ),
           );
-          // 重新加载日期详情
+          // 重新加载日期详情和周视图数据，确保甘特图也刷新
           Navigator.of(context).pop();
           _showDayDetail(day);
+          // 刷新周视图数据，确保甘特图中的任务也被移除
+          await _loadWeekViewData();
         }
       } catch (e) {
         if (mounted) {

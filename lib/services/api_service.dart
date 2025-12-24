@@ -466,6 +466,8 @@ class ApiService {
     required String description,
     String? deadline,
     String? relatedTaskId,
+    String? requestStartTime,
+    String? requestEndTime,
   }) async {
     try {
       final response = await httpClient.post(
@@ -477,6 +479,8 @@ class ApiService {
           'description': description,
           'deadline': deadline,
           'related_task_id': relatedTaskId,
+          'request_start_time': requestStartTime,
+          'request_end_time': requestEndTime,
         }),
       );
       return response.statusCode == 201;
@@ -516,6 +520,8 @@ class ApiService {
     required String description,
     String? deadline,
     String? relatedTaskId,
+    String? requestStartTime,
+    String? requestEndTime,
   }) async {
     try {
       final response = await httpClient.put(
@@ -527,6 +533,8 @@ class ApiService {
           'description': description,
           'deadline': deadline,
           'related_task_id': relatedTaskId,
+          'request_start_time': requestStartTime,
+          'request_end_time': requestEndTime,
         }),
       );
       return response.statusCode == 200;

@@ -1790,6 +1790,15 @@ function showRequestModal() {
     
     // 重置表单
     document.getElementById('requestForm').reset();
+    
+    // 设置默认邀约时间为明天上午9点到下午5点
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const defaultStartTime = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 9, 0);
+    const defaultEndTime = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 17, 0);
+    
+    document.getElementById('requestStartTime').value = defaultStartTime.toISOString().slice(0, 16);
+    document.getElementById('requestEndTime').value = defaultEndTime.toISOString().slice(0, 16);
     document.getElementById('requestDeadline').value = defaultDeadline.toISOString().slice(0, 16);
     
     const modal = new bootstrap.Modal(document.getElementById('requestModal'));
@@ -1809,11 +1818,19 @@ async function createRequest() {
     const requestType = document.getElementById('requestType').value;
     const assigneeId = document.getElementById('requestAssignee').value;
     const description = document.getElementById('requestDescription').value.trim();
+    const startTime = document.getElementById('requestStartTime').value;
+    const endTime = document.getElementById('requestEndTime').value;
     const deadline = document.getElementById('requestDeadline').value;
     const relatedTaskId = document.getElementById('requestRelatedTask').value;
     
-    if (!requestType || !assigneeId || !description) {
+    if (!requestType || !assigneeId || !description || !startTime || !endTime) {
         showAlert('请填写所有必填项', 'warning');
+        return;
+    }
+    
+    // 验证结束时间不能早于开始时间
+    if (new Date(endTime) < new Date(startTime)) {
+        showAlert('结束时间不能早于开始时间', 'warning');
         return;
     }
     
@@ -1824,17 +1841,22 @@ async function createRequest() {
         return;
     }
     
-    // 格式化deadline
+    // 格式化时间字段
     let formattedDeadline = null;
     if (deadline) {
         formattedDeadline = deadline.replace('T', ' ') + ':00';
     }
+    
+    const formattedStartTime = startTime.replace('T', ' ') + ':00';
+    const formattedEndTime = endTime.replace('T', ' ') + ':00';
     
     const requestData = {
         request_type: requestType,
         assignee_id: assigneeId,
         description: description,
         deadline: formattedDeadline,
+        request_start_time: formattedStartTime,
+        request_end_time: formattedEndTime,
         related_task_id: relatedTaskId || null
     };
     
@@ -1988,13 +2010,25 @@ async function viewTaskDetail(taskId) {
         const progress = calculateTaskProgress(currentTask);
         const progressBar = document.getElementById('taskProgressBar');
         const progressText = document.getElementById('taskProgressText');
-        progressBar.style.width = `${progress}%`;
-        progressBar.className = `progress-bar ${getProgressBarColor(progress)}`;
-        progressText.textContent = `${progress}%`;
-        const progressInput = document.getElementById('detailProgressInput');
-        if (progressInput) {
-            progressInput.value = progress;
-            progressInput.disabled = false;
+        
+        // 对于已处理的邀约任务，隐藏进度条
+        const progressCard = document.getElementById('progressCard');
+        if (currentTask.is_request && currentTask.request_response) {
+            if (progressCard) {
+                progressCard.style.display = 'none';
+            }
+        } else {
+            if (progressCard) {
+                progressCard.style.display = 'block';
+            }
+            progressBar.style.width = `${progress}%`;
+            progressBar.className = `progress-bar ${getProgressBarColor(progress)}`;
+            progressText.textContent = `${progress}%`;
+            const progressInput = document.getElementById('detailProgressInput');
+            if (progressInput) {
+                progressInput.value = progress;
+                progressInput.disabled = false;
+            }
         }
         
         // 判断是否为邀约任务
@@ -2076,6 +2110,26 @@ async function viewTaskDetail(taskId) {
             if (createBtn) {
                 createBtn.style.display = 'inline-block';
             }
+        }
+        
+        // 隐藏/显示操作按钮，对于已处理的邀约任务只显示编辑和删除按钮
+        const editTaskBtn = document.querySelector('#taskDetailModal .btn-primary[onclick="editTask()"]');
+        const saveProgressBtn = document.querySelector('#taskDetailModal .btn-warning[onclick="saveDetailProgress()"]');
+        const completeTaskBtn = document.querySelector('#taskDetailModal .btn-success[onclick="completeTask()"]');
+        const deleteTaskBtn = document.querySelector('#taskDetailModal .btn-danger[onclick="deleteTask()"]');
+        
+        if (isRequestTask && currentTask.request_response) {
+            // 已处理的邀约任务：只显示编辑和删除按钮
+            if (editTaskBtn) editTaskBtn.style.display = 'block';
+            if (saveProgressBtn) saveProgressBtn.style.display = 'none';
+            if (completeTaskBtn) completeTaskBtn.style.display = 'none';
+            if (deleteTaskBtn) deleteTaskBtn.style.display = 'block';
+        } else {
+            // 普通任务或未处理的邀约任务：显示所有按钮
+            if (editTaskBtn) editTaskBtn.style.display = 'block';
+            if (saveProgressBtn) saveProgressBtn.style.display = 'block';
+            if (completeTaskBtn) completeTaskBtn.style.display = 'block';
+            if (deleteTaskBtn) deleteTaskBtn.style.display = 'block';
         }
         
         // 显示模态框
