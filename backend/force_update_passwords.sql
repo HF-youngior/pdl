@@ -15,19 +15,18 @@ UPDATE users SET password = 'finance123' WHERE username = 'finance_head';
 UPDATE users SET password = 'marketing123' WHERE username = 'marketing_head';
 
 -- 更新团队长密码
-UPDATE users SET password = 'hrteam123' WHERE username IN ('hr_team1', 'hr_team2');
-UPDATE users SET password = 'financeteam123' WHERE username IN ('finance_team1', 'finance_team2');
-UPDATE users SET password = 'marketingteam123' WHERE username IN ('marketing_team1', 'marketing_team2');
+UPDATE users SET password = 'hrteam123' WHERE username = 'hr_team1';
+UPDATE users SET password = 'financeteam123' WHERE username = 'finance_team1';
+UPDATE users SET password = 'marketingteam123' WHERE username = 'marketing_team1';
 
 -- 更新员工密码
-UPDATE users SET password = 'hremp123' WHERE username IN ('hr_emp1', 'hr_emp2', 'hr_emp3', 'hr_emp4');
-UPDATE users SET password = 'financeemp123' WHERE username IN ('finance_emp1', 'finance_emp2', 'finance_emp3', 'finance_emp4');
-UPDATE users SET password = 'marketingemp123' WHERE username IN ('marketing_emp1', 'marketing_emp2', 'marketing_emp3', 'marketing_emp4');
+UPDATE users SET password = 'hremp123' WHERE username = 'hr_emp1';
+UPDATE users SET password = 'financeemp123' WHERE username = 'finance_emp1';
+UPDATE users SET password = 'marketingemp123' WHERE username = 'marketing_emp1';
 
 -- 更新旧版本数据库中的用户密码（如果存在）
 UPDATE users SET password = 'admin123' WHERE username = 'admin';
-UPDATE users SET password = 'manager123' WHERE username = 'manager';
-UPDATE users SET password = 'employee123' WHERE username = 'employee1';
+-- 移除无关账户的重置
 
 -- 显示更新结果
 SELECT 

@@ -26,11 +26,12 @@ class JPushService {
         if (!status.isGranted) {
           final result = await Permission.notification.request();
           if (!result.isGranted) {
-            await openAppSettings();
             return;
           }
         }
       }
+      await Future.delayed(const Duration(milliseconds: 600));
+      currentUser ??= ApiService.getCurrentUser();
       jpush.addEventHandler(
         onReceiveNotification: (Map<String, dynamic> message) async {
           print("Flutter 接收到推送: $message");
@@ -79,6 +80,14 @@ class JPushService {
       jpush.getRegistrationID().then((rid) {
         print("极光推送 Registration ID: $rid");
         registrationId = rid;
+        final user = ApiService.getCurrentUser();
+        final token = ApiService.getToken();
+        if (user != null && token != null && rid.isNotEmpty) {
+          ApiService.registerPushDevice(rid, platform: Platform.isAndroid ? 'android' : 'ios')
+              .then((ok) => print('推送设备注册结果: $ok'))
+              .catchError((e) => print('注册推送设备失败: $e'));
+          currentUser ??= user;
+        }
       });
       _initialized = true;
     } on PlatformException catch (e) {
