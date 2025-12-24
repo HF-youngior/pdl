@@ -3609,8 +3609,8 @@ app.get('/api/checkin/consecutive', authenticateToken, async (req, res) => {
   }
 });
 
-// 每日签到
-app.post('/api/checkin', authenticateToken, async (req, res) => {
+// 每日签到（支持带/不带/api前缀）
+app.post(['/api/checkin', '/checkin'], authenticateToken, async (req, res) => {
   try {
     const userId = req.body.userId || req.user.id;
     

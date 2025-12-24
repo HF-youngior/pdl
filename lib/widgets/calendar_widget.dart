@@ -1095,12 +1095,31 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   }
 
   // 解析任务时间并转换为系统本地时间
-  // 统一规则：所有视图（月/周/日）都使用与日视图相同的时间计算逻辑，
+  // 统一规则：所有视图（月/周/日）都使用相同的时间计算逻辑，
   // 这样同一个任务在月视图、周视图、日视图中的时间显示完全一致。
+  // 
+  // 注意：后端返回的时间字符串格式为 YYYY-MM-DD HH:MM:SS（没有时区信息），
+  // 这代表的是创建任务时设定的本地时间，因此直接解析为本地时间，不做时区转换。
   DateTime _parseTaskTime(String timeStr) {
-    final dateTime = DateTime.parse(timeStr).toLocal();
-    // 与日视图保持一致：统一加 8 小时
-    return dateTime.add(const Duration(hours: 8));
+    // 如果字符串包含时区信息（Z或+/-），按标准方式解析
+    if (timeStr.endsWith('Z') || (timeStr.contains('+') || timeStr.contains('-')) && timeStr.length > 19) {
+      final dateTime = DateTime.parse(timeStr);
+      // 如果解析后是UTC时间，转换为本地时间
+      if (dateTime.isUtc) {
+        return dateTime.toLocal();
+      }
+      return dateTime;
+    } else {
+      // 没有时区信息，假设是本地时间字符串（后端返回的格式）
+      // 直接解析为本地时间，不做时区转换
+      var normalized = timeStr.trim();
+      if (!normalized.contains('T') && normalized.contains(' ')) {
+        normalized = normalized.replaceFirst(' ', 'T');
+      }
+      final dateTime = DateTime.parse(normalized);
+      // 如果解析后是UTC时间，转换为本地时间；否则直接返回
+      return dateTime.isUtc ? dateTime.toLocal() : dateTime;
+    }
   }
 
   // 解析日志时间并转换为系统本地时间
@@ -1270,7 +1289,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
           
           // 4. 无时间段区域
           if (tasksWithoutTime.isNotEmpty || logsWithoutTime.isNotEmpty) ...[
-            _buildSectionTitle('无具体时间段'),
+            _buildSectionTitle('无具体时间段任务|日志'),
             const SizedBox(height: 12),
             _buildNoTimeSection(tasksWithoutTime, logsWithoutTime),
           ],
@@ -1717,15 +1736,22 @@ class _CalendarWidgetState extends State<CalendarWidget> {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                const baseVisibleColumns = 3; // 正常情况下最多显示3列，不滚动
-                // 计算需要的列宽放大倍数，最多放大到 4 倍，避免无限宽
-                final widthFactor = max(1.0, min(maxConcurrentTasks / baseVisibleColumns, 4.0));
-                final contentWidth = constraints.maxWidth * widthFactor;
+                const baseVisibleColumns = 2.5; // 正常情况下最多显示2.5列，给任务更多空间
+                // 计算需要的列宽放大倍数，最多放大到 5 倍，给任务更多横向空间
+                final widthFactor = max(1.0, min(maxConcurrentTasks / baseVisibleColumns, 5.0));
+                // 增加基础宽度，让任务组件更宽，显示更多内容
+                final baseWidth = constraints.maxWidth * 1.2; // 基础宽度增加20%
+                final contentWidth = baseWidth * widthFactor;
 
+                // 确保内容宽度至少比容器宽度大一点，才能触发滚动
+                // 如果任务数量少，也至少保证可以轻微滚动（用于测试和用户体验）
+                final finalContentWidth = max(contentWidth, constraints.maxWidth * 1.1);
+                
                 return SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
+                  physics: const AlwaysScrollableScrollPhysics(), // 强制启用滚动，确保真机上也能滚动
                   child: SizedBox(
-                    width: contentWidth,
+                    width: finalContentWidth,
                     child: Stack(
                       children: [
                         // 时间网格背景
@@ -1879,7 +1905,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     // 按开始时间排序
     taskInfos.sort((a, b) => a['startHour'].compareTo(b['startHour']));
     
-    // 分配列（避免重叠）
+    // 分配列（避免重叠，优化间距）
     for (int i = 0; i < taskInfos.length; i++) {
       final currentTask = taskInfos[i];
       int column = 0;
@@ -1888,9 +1914,10 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       for (int j = 0; j < i; j++) {
         final previousTask = taskInfos[j];
         
-        // 如果时间重叠
-        if (currentTask['startHour'] < previousTask['endHour']) {
-          // 尝试下一列
+        // 如果时间重叠（允许小的时间间隔，避免任务太挤）
+        final timeGap = currentTask['startHour'] - previousTask['endHour'];
+        if (currentTask['startHour'] < previousTask['endHour'] || timeGap < 0.1) {
+          // 如果当前列已被占用，尝试下一列
           if (previousTask['column'] == column) {
             column++;
           }
@@ -1906,9 +1933,23 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         if (i != j && 
             currentTask['startHour'] < otherTask['endHour'] && 
             currentTask['endHour'] > otherTask['startHour']) {
-          otherTask['maxColumns'] = maxColumns > otherTask['maxColumns'] ? maxColumns : otherTask['maxColumns'];
+          final otherMaxColumns = otherTask['maxColumns'] as int;
+          maxColumns = maxColumns > otherMaxColumns ? maxColumns : otherMaxColumns;
+        }
+      }
+      // 更新所有相关任务的最大列数
+      for (int j = 0; j < taskInfos.length; j++) {
+        final otherTask = taskInfos[j];
+        if (i != j && 
+            currentTask['startHour'] < otherTask['endHour'] && 
+            currentTask['endHour'] > otherTask['startHour']) {
+          otherTask['maxColumns'] = maxColumns;
           currentTask['maxColumns'] = maxColumns;
         }
+      }
+      // 确保当前任务也有正确的maxColumns
+      if (currentTask['maxColumns'] < maxColumns) {
+        currentTask['maxColumns'] = maxColumns;
       }
     }
     
@@ -1979,27 +2020,50 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       // 计算精确的高度（像素），确保严格对应时间轴
       final heightInPixels = duration * 60.0;
       // 最小高度限制，避免过小
-      final minHeight = 30.0;
+      final minHeight = 28.0;
       final actualHeight = heightInPixels < minHeight ? minHeight : heightInPixels;
 
-      // 根据高度动态调整padding和内容
+      // 判断是否为超短任务（高度小于40像素）
+      final isVeryShortTask = actualHeight < 40;
+      // 判断是否为短任务（高度小于50像素）
       final isShortTask = actualHeight < 50;
-      final horizontalPadding = isShortTask ? 6.0 : 8.0;
-      final verticalPadding = isShortTask ? 3.0 : 6.0;
-      final iconSize = isShortTask ? 12.0 : 14.0;
-      final titleFontSize = isShortTask ? 12.0 : 14.0;
-      final timeFontSize = isShortTask ? 10.0 : 12.0;
+      
+      // 当任务时间段太短时，增加横向宽度以显示更多内容
+      // 基础宽度因子，短任务时增加宽度
+      final baseWidthFactor = isVeryShortTask ? 1.4 : (isShortTask ? 1.2 : 1.0);
+      // 任务之间的间距（列间距），多列时增加间距让任务分散开
+      final columnSpacing = maxColumns > 1 ? 0.12 : 0.0;
+      // 计算每列的宽度因子，考虑间距和基础宽度
+      // 基础宽度 = 1.0 / maxColumns，然后乘以基础宽度因子，再减去间距
+      final columnWidthFactor = (1.0 / maxColumns) * baseWidthFactor;
+      final widthFactor = (columnWidthFactor * 0.88) - (columnSpacing / maxColumns);
+      // 确保宽度不会太小，也不会超过单列
+      final finalWidthFactor = widthFactor.clamp(0.25, 0.95);
+
+      // 根据高度动态调整padding和内容
+      final horizontalPadding = isShortTask ? 8.0 : 10.0;
+      final verticalPadding = isShortTask ? 4.0 : 6.0;
+      final iconSize = isShortTask ? 13.0 : 15.0;
+      final titleFontSize = isShortTask ? 13.0 : 15.0;
+      final timeFontSize = isShortTask ? 11.0 : 12.0;
 
       // 使用 Align 和 FractionallySizedBox 来处理相对宽度和位置
+      // 计算列的位置偏移，增加列之间的间距，让任务分散开
+      final baseOffset = (column / maxColumns) * 2 - 1 + (1.0 / maxColumns);
+      final spacingOffset = maxColumns > 1 
+          ? (column - (maxColumns - 1) / 2.0) * columnSpacing * 0.6
+          : 0.0;
+      final columnOffset = (baseOffset + spacingOffset).clamp(-1.0, 1.0);
+      
       return Positioned(
         top: startHour * 60.0, // 精确到分钟和秒
         left: 0,
         right: 0,
         height: actualHeight, // 使用精确计算的高度
         child: Align(
-          alignment: Alignment((column / maxColumns) * 2 - 1 + (1.0 / maxColumns), 0),
+          alignment: Alignment(columnOffset.clamp(-1.0, 1.0), 0),
           child: FractionallySizedBox(
-            widthFactor: (1.0 / maxColumns) * 0.95,
+            widthFactor: finalWidthFactor,
             child: GestureDetector(
               onTap: () {
                 _showTaskDetail(task, _currentDate);
@@ -2036,56 +2100,62 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                       padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
                       child: SizedBox(
                         height: actualHeight - (verticalPadding * 2), // 确保内容高度不超过容器
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min, // 防止溢出
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                          // 标题行
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(), // 禁用滚动，防止溢出
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min, // 防止溢出
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.start,
                             children: [
-                              Icon(
-                                task.status == 'completed' 
-                                    ? Icons.check_circle_rounded
-                                    : Icons.circle_outlined,
-                                size: iconSize,
-                                color: Colors.blue.shade900,
-                              ),
-                              SizedBox(width: isShortTask ? 4 : 6),
-                              Expanded(
-                                child: Text(
-                                  task.title,
-                                  style: TextStyle(
-                                    color: Colors.blue.shade900,
-                                    fontSize: titleFontSize,
-                                    fontWeight: FontWeight.w600,
-                                    decoration: task.status == 'completed' 
-                                        ? TextDecoration.lineThrough 
-                                        : null,
-                                  ),
-                                  maxLines: heightInPixels > 40 ? 2 : 1,
-                                  overflow: TextOverflow.ellipsis,
+                            // 标题行 - 使用Flexible确保不会溢出
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  task.status == 'completed' 
+                                      ? Icons.check_circle_rounded
+                                      : Icons.circle_outlined,
+                                  size: iconSize,
+                                  color: Colors.blue.shade900,
                                 ),
-                              ),
-                              // 如果是跨天任务，显示标记（只在有足够空间时显示）
-                              if (isMultiDay && heightInPixels > 35)
-                                Container(
-                                  padding: EdgeInsets.symmetric(horizontal: isShortTask ? 4 : 6, vertical: isShortTask ? 1 : 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.shade100.withOpacity(0.5),
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(
-                                      color: Colors.blue.shade300,
-                                      width: 1,
-                                    ),
-                                  ),
+                                SizedBox(width: isShortTask ? 5 : 7),
+                                Flexible(
                                   child: Text(
-                                    '跨天',
+                                    task.title,
                                     style: TextStyle(
                                       color: Colors.blue.shade900,
-                                      fontSize: isShortTask ? 8 : 9,
-                                      fontWeight: FontWeight.bold,
+                                      fontSize: titleFontSize,
+                                      fontWeight: FontWeight.w600,
+                                      decoration: task.status == 'completed' 
+                                          ? TextDecoration.lineThrough 
+                                          : null,
+                                    ),
+                                    maxLines: isVeryShortTask ? 1 : (actualHeight > 40 ? 2 : 1),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              // 如果是跨天任务，显示标记（只在有足够空间时显示）
+                              if (isMultiDay && actualHeight > 35)
+                                Padding(
+                                  padding: EdgeInsets.only(left: isShortTask ? 4 : 6),
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(horizontal: isShortTask ? 4 : 6, vertical: isShortTask ? 1 : 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade100.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: Colors.blue.shade300,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '跨天',
+                                      style: TextStyle(
+                                        color: Colors.blue.shade900,
+                                        fontSize: isShortTask ? 8 : 9,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -2114,6 +2184,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                         fontWeight: FontWeight.w500,
                                       ),
                                       overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
                                     ),
                                   ),
                                 ],
@@ -2130,6 +2201,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                                   fontSize: isShortTask ? 9 : 10,
                                 ),
                                 overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
                               ),
                             ),
                           // 描述（如果有足够高度）
@@ -2151,6 +2223,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                             ),
                           ],
                         ), // Column
+                      ), // SingleChildScrollView
                       ), // SizedBox
                     ), // Padding
                   ), // Container
@@ -2345,9 +2418,8 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   // 显示当前时间线
   Widget _buildCurrentTimeLine() {
     final now = TimeUtils.getSystemTime();
-    // 日视图时间红线需要加8小时
-    final adjustedNow = now.add(const Duration(hours: 8));
-    final currentHour = TimeUtils.getHourWithMinutes(adjustedNow);
+    // 使用系统当前时间，不做时区转换（与任务时间显示保持一致）
+    final currentHour = TimeUtils.getHourWithMinutes(now);
     final topPosition = (currentHour * 60).clamp(0.0, 60.0 * 24 - 1.0);
     
     return Positioned(
@@ -2376,7 +2448,7 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                   ],
                 ),
                 child: Text(
-                  '${adjustedNow.hour.toString().padLeft(2, '0')}:${adjustedNow.minute.toString().padLeft(2, '0')}',
+                  '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 10,
@@ -3283,17 +3355,12 @@ class _CalendarWidgetState extends State<CalendarWidget> {
     if (value == null || value.isEmpty) {
       return null;
     }
-    var normalized = value.trim();
-    if (!normalized.contains('T') && normalized.contains(' ')) {
-      normalized = normalized.replaceFirst(' ', 'T');
+    // 统一使用 _parseTaskTime 解析，确保所有视图时间一致
+    try {
+      return _parseTaskTime(value);
+    } catch (e) {
+      return null;
     }
-    final parsed = DateTime.tryParse(normalized)?.toLocal();
-    if (parsed == null) return null;
-    // 月视图时间点显示需-8小时（修复时间快了8小时的问题）
-    if (_currentView == CalendarView.month) {
-      return parsed.subtract(const Duration(hours: 8));
-    }
-    return parsed;
   }
 
   bool _isSameCalendarDay(DateTime a, DateTime b) {
@@ -7700,14 +7767,28 @@ class _MonthlyTasksDialogState extends State<_MonthlyTasksDialog> {
   int _currentDayIndex = 0;
   bool _isInitialized = false;
 
-  /// 仅用于“本月任务”对话框内部的时间解析
-  /// 需求：这里显示的时间与日视图/任务筛选中的时间完全一致。
-  /// 日视图当前对任务时间的处理是：本地时间基础上 +8 小时，
-  /// 因此这里也统一采用「本地时间 +8 小时」的规则。
+  /// 仅用于"本月任务"对话框内部的时间解析
+  /// 统一使用与主视图相同的时间解析逻辑，确保与所有视图时间一致
   DateTime _parseTaskTimeForMonthlyDialog(String timeStr) {
-    // 原始时间转本地时间后，再加 8 小时（与日视图保持一致）
-    final dateTime = DateTime.parse(timeStr).toLocal();
-    return dateTime.add(const Duration(hours: 8));
+    // 如果字符串包含时区信息（Z或+/-），按标准方式解析
+    if (timeStr.endsWith('Z') || (timeStr.contains('+') || timeStr.contains('-')) && timeStr.length > 19) {
+      final dateTime = DateTime.parse(timeStr);
+      // 如果解析后是UTC时间，转换为本地时间
+      if (dateTime.isUtc) {
+        return dateTime.toLocal();
+      }
+      return dateTime;
+    } else {
+      // 没有时区信息，假设是本地时间字符串（后端返回的格式）
+      // 直接解析为本地时间，不做时区转换
+      var normalized = timeStr.trim();
+      if (!normalized.contains('T') && normalized.contains(' ')) {
+        normalized = normalized.replaceFirst(' ', 'T');
+      }
+      final dateTime = DateTime.parse(normalized);
+      // 如果解析后是UTC时间，转换为本地时间；否则直接返回
+      return dateTime.isUtc ? dateTime.toLocal() : dateTime;
+    }
   }
 
   /// 构造本月任务对话框中“开始-结束”时间段文案
@@ -8291,13 +8372,6 @@ class _MonthlyTasksDialogState extends State<_MonthlyTasksDialog> {
         ),
       ),
     );
-  }
-
-  // 解析任务时间并转换为系统本地时间
-  DateTime _parseTaskTime(String timeStr) {
-    final dateTime = DateTime.parse(timeStr);
-    // 调整为本地时间并减8小时（原先多出8小时）
-    return dateTime.toLocal().subtract(const Duration(hours: 8));
   }
 
   // 构建日历图片

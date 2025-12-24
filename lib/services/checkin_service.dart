@@ -196,8 +196,15 @@ class CheckinService {
   // 每日签到
   static Future<Map<String, dynamic>> checkin(String userId) async {
     try {
-      final url = Uri.parse('$baseUrl/checkin');
+      // 确保 baseUrl 已初始化
+      final baseUrlValue = baseUrl;
+      if (baseUrlValue.isEmpty || !baseUrlValue.contains('http')) {
+        throw Exception('服务器地址未配置，请在设置中配置服务器地址');
+      }
+      
+      final url = Uri.parse('$baseUrlValue/checkin');
       print('签到请求: $url, userId: $userId'); // 调试信息
+      print('认证头: ${ApiService.getAuthHeaders()}'); // 调试信息
       
       final response = await http.post(
         url,
@@ -206,9 +213,15 @@ class CheckinService {
           'Content-Type': 'application/json',
         },
         body: json.encode({'userId': userId}),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('请求超时，请检查网络连接');
+        },
       );
 
       print('签到响应状态: ${response.statusCode}'); // 调试信息
+      print('签到响应头: ${response.headers}'); // 调试信息
 
       // 先检查状态码
       if (response.statusCode == 401 || response.statusCode == 403) {
@@ -264,13 +277,33 @@ class CheckinService {
     } catch (e) {
       print('签到异常: $e');
       // 重新抛出异常，但提供更友好的错误信息
-      if (e.toString().contains('FormatException')) {
+      final errorStr = e.toString();
+      
+      // 网络连接错误
+      if (errorStr.contains('SocketException') || 
+          errorStr.contains('Failed host lookup') ||
+          errorStr.contains('Connection refused') ||
+          errorStr.contains('Network is unreachable')) {
+        throw Exception('网络连接失败，请检查网络连接和服务器地址配置');
+      }
+      
+      // 超时错误
+      if (errorStr.contains('TimeoutException') || errorStr.contains('请求超时')) {
+        throw Exception('请求超时，请检查网络连接和服务器是否正常运行');
+      }
+      
+      // 格式错误
+      if (errorStr.contains('FormatException')) {
         throw Exception('服务器响应格式错误，可能是认证失败或路由错误。请检查服务器配置和认证token');
       }
-      if (e is Exception) {
+      
+      // 如果已经是友好的错误消息，直接抛出
+      if (e is Exception && !errorStr.contains('Exception: Exception:')) {
         rethrow;
       }
-      throw Exception('签到失败: $e');
+      
+      // 其他错误，提供通用错误信息
+      throw Exception('签到失败: ${errorStr.replaceAll('Exception: ', '')}');
     }
   }
 
