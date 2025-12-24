@@ -13,6 +13,7 @@ class PersonalLog {
   final DateTime? logDate;
   final List<String> images;
   final String? locationName;
+  final String? locationAddress; // 后端转换的地址
   final double? latitude;
   final double? longitude;
   // 兼容增强视图所需的可选字段
@@ -48,6 +49,7 @@ class PersonalLog {
     this.logDate,
     List<String>? images,
     this.locationName,
+    this.locationAddress,
     this.latitude,
     this.longitude,
   })  : keywords = keywords ?? const [],
@@ -75,7 +77,9 @@ class PersonalLog {
           .toList(),
       logDate: _tryParseDateTime(json['log_date']?.toString()),
       images: _parseStringList(json['images']),
+      // 优先使用后端转换好的地址，如果没有则使用原始的location_name
       locationName: _sanitizeLocationString(json['location_name'] ?? json['locationName']),
+      locationAddress: _sanitizeLocationString(json['location_address']),
       latitude: _toDouble(json['location_latitude'] ?? json['locationLatitude']),
       longitude: _toDouble(json['location_longitude'] ?? json['locationLongitude']),
     );

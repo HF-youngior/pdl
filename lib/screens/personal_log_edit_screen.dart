@@ -82,7 +82,7 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
       _currentTaskUpdates = widget.logToEdit!.taskUpdates.map((upd) => upd.copyWith()).toList();
       _currentKeywords = List.of(widget.logToEdit!.keywords);
       _persistedImages.addAll(widget.logToEdit!.images);
-      _locationName = widget.logToEdit!.locationName;
+      _locationName = widget.logToEdit!.locationAddress ?? widget.logToEdit!.locationName;
       _latitude = widget.logToEdit!.latitude;
       _longitude = widget.logToEdit!.longitude;
     } else {
