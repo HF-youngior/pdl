@@ -48,6 +48,25 @@ class NotificationService {
     }
   }
 
+  /// 批量或全部标记为已读
+  static Future<bool> markAllRead({List<String>? ids}) async {
+    try {
+      final client = ApiService.httpClient;
+      final body = ids != null && ids.isNotEmpty
+          ? jsonEncode({'notification_ids': ids})
+          : jsonEncode({});
+      final response = await client.put(
+        Uri.parse('${ApiService.baseUrl}/notifications/mark-all-read'),
+        headers: ApiService.getAuthHeaders(),
+        body: body,
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('批量/全部标记已读失败: $e');
+      return false;
+    }
+  }
+
   /// 标记通知为已读
   static Future<bool> markAsRead(String notificationId) async {
     try {
@@ -76,6 +95,40 @@ class NotificationService {
       return response.statusCode == 200;
     } catch (e) {
       print('删除通知失败: $e');
+      return false;
+    }
+  }
+
+  /// 标记通知为未读
+  static Future<bool> markAsUnread(String notificationId) async {
+    try {
+      final client = ApiService.httpClient;
+      final response = await client.put(
+        Uri.parse('${ApiService.baseUrl}/notifications/$notificationId/unread'),
+        headers: ApiService.getAuthHeaders(),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('标记通知为未读失败: $e');
+      return false;
+    }
+  }
+
+  /// 批量/全部标记未读
+  static Future<bool> markAllUnread({List<String>? ids}) async {
+    try {
+      final client = ApiService.httpClient;
+      final body = ids != null && ids.isNotEmpty
+          ? jsonEncode({'notification_ids': ids})
+          : jsonEncode({});
+      final response = await client.put(
+        Uri.parse('${ApiService.baseUrl}/notifications/mark-all-unread'),
+        headers: ApiService.getAuthHeaders(),
+        body: body,
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('批量/全部标记未读失败: $e');
       return false;
     }
   }
