@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/task_service.dart';
 import '../services/server_config_service.dart';
+import '../services/jpush_service.dart';
 import '../models/user.dart';
 import 'home_screen.dart';
 
@@ -43,6 +44,13 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (user != null) {
+        JPushService.currentUser = user;
+        final rid = JPushService.registrationId;
+        if (rid != null && rid.isNotEmpty) {
+          try {
+            await ApiService.registerPushDevice(rid, platform: 'android');
+          } catch (_) {}
+        }
         if (mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
@@ -97,6 +105,8 @@ class _LoginScreenState extends State<LoginScreen> {
         builder: (context) => HomeScreen(user: guestUser),
       ),
     );
+    ApiService.setCurrentUser(guestUser);
+    JPushService.currentUser = guestUser;
   }
 
   void _showServerConfigDialog() async {

@@ -12,6 +12,7 @@ const swaggerDocument = require('./swagger.json');
 require('dotenv').config();
 // const { useDefault, Segment } = require('segmentit');
 // const segmenter = useDefault(new Segment());
+const { sendPush } = require('./push_jiguang');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -444,7 +445,19 @@ async function createTables() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       INDEX idx_points_user_created (user_id, created_at),
       INDEX idx_points_type (type)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='积分流水表（获取/消耗记录）';`
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='积分流水表（获取/消耗记录）';`,
+    
+    `CREATE TABLE IF NOT EXISTS user_devices (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      registration_id VARCHAR(128) NOT NULL,
+      platform VARCHAR(20) DEFAULT 'android',
+      last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_registration (registration_id),
+      INDEX idx_user_id (user_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='极光推送设备注册表';`
   ];
 
   for (const table of tables) {
@@ -1272,6 +1285,53 @@ app.post('/api/auth/login', async (req, res) => {
     });
   } catch (error) {
     console.error('登录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+app.post('/api/push/register', authenticateToken, async (req, res) => {
+  try {
+    const { registrationId, platform } = req.body || {};
+    if (!registrationId || typeof registrationId !== 'string') {
+      return res.status(400).json({ error: 'registrationId 必填' });
+    }
+    await db.execute(
+      `INSERT INTO user_devices (user_id, registration_id, platform, last_seen)
+       VALUES (?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE user_id = VALUES(user_id),
+                               platform = VALUES(platform),
+                               last_seen = NOW()`,
+      [req.user.id, registrationId.trim(), (platform || 'android').trim()]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('注册推送设备失败:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+app.post('/api/push/broadcast-logout', authenticateToken, async (req, res) => {
+  try {
+    const { excludeRegistrationId } = req.body || {};
+    const [rows] = await db.execute(
+      'SELECT registration_id FROM user_devices WHERE user_id = ?',
+      [req.user.id]
+    );
+    let sent = 0;
+    for (const row of rows) {
+      const regId = row.registration_id;
+      if (excludeRegistrationId && regId === excludeRegistrationId) continue;
+      const ok = await sendPush(
+        regId,
+        '账号通知',
+        '该账号在另一设备退出登录',
+        { type: 'account_logout', userId: String(req.user.id) }
+      );
+      if (ok) sent++;
+    }
+    res.json({ ok: true, sent });
+  } catch (error) {
+    console.error('广播登出通知失败:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
@@ -4169,6 +4229,40 @@ async function createNotification(taskId, fromUserId, toUserId, type, message) {
     );
     
     console.log(`   [createNotification] ✅ 通知已插入数据库: ${notificationId}`);
+
+    // 通过极光推送发送到接收者的所有设备（后台/锁屏可见）
+    try {
+      const [devices] = await db.execute(
+        'SELECT registration_id FROM user_devices WHERE user_id = ?',
+        [toUserId]
+      );
+      const titleMap = {
+        task_assigned: '新任务分配',
+        task_completed: '任务完成',
+        task_progress_update: '任务进度更新',
+        task_cancelled: '任务取消',
+        special_notes: '特别备注',
+        deadline_warning: '截止时间提醒',
+        focus_invite: '专注邀约'
+      };
+      const title = titleMap[type] || '通知';
+      let sentCount = 0;
+      for (const row of devices) {
+        const regId = row.registration_id;
+        if (!regId) continue;
+        const ok = await sendPush(regId, title, message, {
+          type,
+          notificationId,
+          taskId: finalTaskId || '',
+          toUserId: String(toUserId)
+        });
+        if (ok) sentCount++;
+      }
+      console.log(`   [createNotification] 已通过极光推送发送到设备: ${sentCount}/${devices.length}`);
+    } catch (pushErr) {
+      console.error('   [createNotification] 极光推送发送失败:', pushErr?.message || pushErr);
+    }
+
     return notificationId;
   } catch (error) {
     console.error('创建通知失败:', error);
