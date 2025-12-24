@@ -14,6 +14,84 @@ require('dotenv').config();
 // const segmenter = useDefault(new Segment());
 const { sendPush } = require('./push_jiguang');
 
+// 高德地图API配置 - 用于经纬度转地址
+const AMAP_API_KEY = process.env.AMAP_API_KEY || 'your_amap_api_key_here';
+const AMAP_GEOCODE_URL = 'https://restapi.amap.com/v3/geocode/regeo';
+
+// 经纬度转中文地址函数
+async function convertToAddress(latitude, longitude) {
+  if (!latitude || !longitude) return null;
+  
+  try {
+    const response = await axios.get(AMAP_GEOCODE_URL, {
+      params: {
+        key: AMAP_API_KEY,
+        location: `${longitude},${latitude}`, // 注意：高德API使用经度,纬度的顺序
+        poitype: '',
+        radius: 1000,
+        extensions: 'all',
+        batch: 'false',
+        roadlevel: 0
+      }
+    });
+    
+    if (response.data.status === '1' && response.data.regeocode) {
+      const addressComponent = response.data.regeocode.addressComponent;
+      const formattedAddress = response.data.regeocode.formatted_address;
+      
+      // 构建详细地址信息
+      const addressInfo = {
+        formatted_address: formattedAddress,
+        country: addressComponent.country || '',
+        province: addressComponent.province || '',
+        city: addressComponent.city || addressComponent.district || '',
+        district: addressComponent.district || '',
+        township: addressComponent.township || '',
+        street: addressComponent.streetNumber?.street || '',
+        street_number: addressComponent.streetNumber?.number || ''
+      };
+      
+      return addressInfo;
+    } else {
+      console.warn('经纬度转地址失败:', response.data.info);
+      // 如果是API Key平台不匹配的错误，返回原始坐标信息
+      if (response.data.infocode === '10009') {
+        console.warn('API Key平台不匹配，请在高德地图控制台添加Web服务API Key');
+        return {
+          formatted_address: `纬度: ${latitude}, 经度: ${longitude}`,
+          country: '',
+          province: '',
+          city: '',
+          district: '',
+          township: '',
+          street: '',
+          street_number: '',
+          note: 'API Key平台不匹配，显示原始坐标'
+        };
+      }
+      return null;
+    }
+  } catch (error) {
+    console.error('经纬度转地址异常:', error.message);
+    // 如果是API Key平台不匹配的错误，返回原始坐标信息
+    if (error.response && error.response.data && error.response.data.infocode === '10009') {
+      console.warn('API Key平台不匹配，请在高德地图控制台添加Web服务API Key');
+      return {
+        formatted_address: `纬度: ${latitude}, 经度: ${longitude}`,
+        country: '',
+        province: '',
+        city: '',
+        district: '',
+        township: '',
+        street: '',
+        street_number: '',
+        note: 'API Key平台不匹配，显示原始坐标'
+      };
+    }
+    return null;
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -80,7 +158,7 @@ const upload = multer({
   }
 });
 
-// 数据库连接 - 云数据库配置
+// 数据库连接配置
 const dbConfig = {
   host: process.env.DB_HOST || 'rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com',
   user: process.env.DB_USER || 'pdl123',
@@ -3814,13 +3892,23 @@ app.post('/api/upload-images', authenticateToken, upload.array('images', 10), as
 });
 
 // 创建个人日志
-function convertPersonalLogForResponse(log, taskUpdates = []) {
+async function convertPersonalLogForResponse(log, taskUpdates = []) {
   if (!log) return null;
+  
+  // 如果有经纬度信息，转换为中文地址
+  let locationAddress = null;
+  if (log.location_latitude && log.location_longitude) {
+    const addressInfo = await convertToAddress(log.location_latitude, log.location_longitude);
+    // 提取格式化地址作为字符串，同时保留完整信息供前端使用
+    locationAddress = addressInfo ? addressInfo.formatted_address : null;
+  }
+  
   return {
     ...log,
     created_at: formatDateTimeForBeijing(log.created_at),
     updated_at: formatDateTimeForBeijing(log.updated_at),
     log_date: log.log_date ? formatDateOnlyForBeijing(log.log_date) : null,
+    location_address: locationAddress,
     taskUpdates
   };
 }
@@ -3936,7 +4024,8 @@ app.post('/api/personal-logs', authenticateToken, async (req, res) => {
     }));
 
     const logRecord = rows[0];
-    return res.status(201).json(convertPersonalLogForResponse(logRecord, taskUpdates));
+    const response = await convertPersonalLogForResponse(logRecord, taskUpdates);
+    return res.status(201).json(response);
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('创建个人日志错误:', error);
@@ -3964,7 +4053,7 @@ app.get('/api/personal-logs', authenticateToken, async (req, res) => {
         [log.id]
       );
 
-      return convertPersonalLogForResponse(log, links.map(link => ({
+      return await convertPersonalLogForResponse(log, links.map(link => ({
         taskId: link.task_id,
         taskName: link.task_name,
         progress_percentage: link.progress_percentage,
@@ -4122,7 +4211,7 @@ app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
       progress_percentage: link.progress_percentage,
       task_status: link.task_status
     }));
-    return res.status(200).json(convertPersonalLogForResponse(newLogRows[0], finalLinks));
+    return res.status(200).json(await convertPersonalLogForResponse(newLogRows[0], finalLinks));
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('更新个人日志错误:', error);
@@ -4541,7 +4630,16 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
     });
     
     // 填充日志数据
-    logs.forEach(log => {
+    const processedLogs = await Promise.all(logs.map(async log => {
+      // 如果有经纬度信息，转换为中文地址
+      let locationAddress = null;
+      if (log.location_latitude && log.location_longitude) {
+        locationAddress = await convertToAddress(log.location_latitude, log.location_longitude);
+      }
+      return { ...log, location_address: locationAddress };
+    }));
+    
+    processedLogs.forEach(log => {
       if (log.log_date) {
         const dateKey = log.log_date;
         console.log(`  日志 "${log.title}" 的日期: ${dateKey}, 日历中是否存在: ${!!calendar[dateKey]}`);
@@ -4562,7 +4660,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
             images,
             location_name: log.location_name,
             location_latitude: log.location_latitude,
-            location_longitude: log.location_longitude
+            location_longitude: log.location_longitude,
+            location_address: log.location_address
           });
           calendar[dateKey].hasData = true;
         }
@@ -4696,11 +4795,15 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
     const pendingTasks = tasks.filter(t => t.status === 'pending').length;
     const completedLogs = logs.filter(l => l.is_completed === 1).length;
     
-    // 返回简化的数据格式
-    res.json({
-      month: `${year}-${String(month).padStart(2, '0')}`,
-      userId: userId,
-      logs: logs.map(log => ({
+    // 处理日志数据，添加地址转换
+    const processedLogs = await Promise.all(logs.map(async log => {
+      // 如果有经纬度信息，转换为中文地址
+      let locationAddress = null;
+      if (log.location_latitude && log.location_longitude) {
+        locationAddress = await convertToAddress(log.location_latitude, log.location_longitude);
+      }
+      
+      return {
         id: log.id,
         title: log.title,
         content: log.content,
@@ -4714,8 +4817,16 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         images: safeParseJSON(log.images) || [],
         location_name: log.location_name,
         location_latitude: log.location_latitude,
-        location_longitude: log.location_longitude
-      })),
+        location_longitude: log.location_longitude,
+        location_address: locationAddress
+      };
+    }));
+    
+    // 返回简化的数据格式
+    res.json({
+      month: `${year}-${String(month).padStart(2, '0')}`,
+      userId: userId,
+      logs: processedLogs,
       tasks: tasks.map(task => ({
         id: task.id,
         title: task.title,
@@ -4838,6 +4949,37 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
       date
     ]);
     
+    // 处理日志数据，添加地址转换
+    const processedLogs = await Promise.all(logs.map(async l => {
+      // 如果有经纬度信息，转换为中文地址
+      let locationAddress = null;
+      if (l.location_latitude && l.location_longitude) {
+        locationAddress = await convertToAddress(l.location_latitude, l.location_longitude);
+      }
+      
+      const images = safeParseJSON(l.images) || [];
+      const keywords = normalizeKeywordList(l.keywords);
+      return {
+        id: l.id,
+        title: l.title,
+        content: l.content,
+        category: l.category,
+        quadrant: l.quadrant,
+        is_completed: l.is_completed,
+        created_at: formatDateTimeForBeijing(l.created_at),
+        log_date: l.log_date
+          ? formatDateOnlyForBeijing(l.log_date)
+          : formatDateOnlyForBeijing(l.created_at),
+        weather: l.weather,
+        keywords,
+        images,
+        location_name: l.location_name,
+        location_latitude: l.location_latitude,
+        location_longitude: l.location_longitude,
+        location_address: locationAddress
+      };
+    }));
+    
     console.log(`[日期详情] 用户 ${req.user.id} 请求 ${date} 的数据: ${tasks.length} 个任务, ${logs.length} 个日志`);
     
     res.json({
@@ -4858,28 +5000,7 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         creator_name: t.creator_name,
         attachments: safeParseJSON(t.attachments) || []
       })),
-      logs: logs.map(l => {
-        const images = safeParseJSON(l.images) || [];
-        const keywords = normalizeKeywordList(l.keywords);
-        return {
-          id: l.id,
-          title: l.title,
-          content: l.content,
-          category: l.category,
-          quadrant: l.quadrant,
-          is_completed: l.is_completed,
-          created_at: formatDateTimeForBeijing(l.created_at),
-          log_date: l.log_date
-            ? formatDateOnlyForBeijing(l.log_date)
-            : formatDateOnlyForBeijing(l.created_at),
-          weather: l.weather,
-          keywords,
-          images,
-          location_name: l.location_name,
-          location_latitude: l.location_latitude,
-          location_longitude: l.location_longitude
-        };
-      }),
+      logs: processedLogs,
       summary: {
         totalTasks: tasks.length,
         totalLogs: logs.length,

@@ -1,0 +1,36 @@
+{
+  "testEnvironment": "node",
+  "collectCoverage": true,
+  "coverageDirectory": "coverage",
+  "coverageReporters": ["lcov", "text", "html", "json"],
+  "collectCoverageFrom": [
+    "utils.js",
+    "taskProcessor.js",
+    "mbti_service.js",
+    "generate_coverage_report.js",
+    "!node_modules/**",
+    "!coverage/**",
+    "!test/**",
+    "!public/**",
+    "!re/**",
+    "!**/*.test.js",
+    "!**/*.spec.js"
+  ],
+  "testMatch": [
+    "**/test/**/*.test.js",
+    "**/test/**/*.spec.js"
+  ],
+  "coverageThreshold": {
+    "global": {
+      "branches": 0,
+      "functions": 0,
+      "lines": 0,
+      "statements": 0
+    }
+  },
+  "verbose": true,
+  "forceExit": true,
+  "clearMocks": true,
+  "resetMocks": true,
+  "restoreMocks": true
+}
