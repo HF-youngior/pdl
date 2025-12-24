@@ -25,7 +25,8 @@ class WordCloudAnalysis {
       keywords: (json['keywords'] as List<dynamic>?)
           ?.map((e) => Map<String, dynamic>.from(e as Map))
           .toList() ?? [],
-      wordFrequencies: (json['word_frequencies'] as List<dynamic>?)
+      wordFrequencies: ((json['word_frequencies'] as List<dynamic>?) ??
+              (json['wordFrequencies'] as List<dynamic>?))
           ?.map((e) => Map<String, dynamic>.from(e as Map))
           .toList() ?? [],
       createdAt: DateTime.parse(json['created_at'] ?? json['createdAt']),
