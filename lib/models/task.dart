@@ -165,12 +165,12 @@ class Task {
       case 'completed':
         return Colors.green;
       case 'cancelled':
-        return Colors.red;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   // 获取状态文本
   String getStatusText() {
     switch (status) {
@@ -181,12 +181,12 @@ class Task {
       case 'completed':
         return '已完成';
       case 'cancelled':
-        return '已取消';
+        return '已完成';
       default:
         return status;
     }
   }
-
+  
   // 检查任务是否过期
   bool get isOverdue {
     if (deadline == null) return false;
