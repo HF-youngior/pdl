@@ -586,14 +586,39 @@ class ApiService {
   // 获取员工统计数据
   static Future<Map<String, dynamic>?> getUserStatistics(String userId, String period) async {
     try {
+      // 将前端的period转换为后端期望的格式
+      String backendPeriod;
+      switch (period) {
+        case 'today':
+          backendPeriod = 'daily';
+          break;
+        case 'week':
+          backendPeriod = 'weekly';
+          break;
+        case 'all':
+          backendPeriod = 'all'; // 后端需要特殊处理
+          break;
+        default:
+          backendPeriod = 'daily';
+      }
+      
+      print('DEBUG: Fetching statistics for userId=$userId, period=$period (backend: $backendPeriod)');
       final response = await httpClient.get(
-        Uri.parse('$baseUrl/admin/user-statistics?userId=$userId&period=$period'),
+        Uri.parse('$baseUrl/admin/user-statistics?userId=$userId&period=$backendPeriod'),
         headers: getAuthHeaders(),
       );
+      print('DEBUG: API Response status: ${response.statusCode}');
+      print('DEBUG: API Response body: ${response.body}');
+      
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        print('DEBUG: Parsed data: $data');
+        print('DEBUG: totalTasks: ${data['totalTasks']}, inProgressTasks: ${data['inProgressTasks']}, completedTasks: ${data['completedTasks']}, completionRate: ${data['completionRate']}');
+        return data;
+      } else {
+        print('DEBUG: API request failed with status: ${response.statusCode}');
+        return null;
       }
-      return null;
     } catch (e) {
       print('获取员工统计数据错误: $e');
       return null;

@@ -5508,10 +5508,10 @@ app.get('/api/admin/search-users', authenticateToken, checkPermission(['admin'])
   }
 });
 
-// 获取员工统计数据（每天/每周/每月任务完成情况）
+// 获取员工统计数据（每天/每周/每月/全部任务完成情况）
 app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin']), async (req, res) => {
   try {
-    const { userId, period } = req.query; // period: 'daily', 'weekly', 'monthly'
+    const { userId, period } = req.query; // period: 'daily', 'weekly', 'monthly', 'all'
     
     if (!userId) {
       return res.status(400).json({ error: '请提供userId参数' });
@@ -5535,40 +5535,64 @@ app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
         break;
+      case 'all':
+        // 获取所有任务，不限制时间范围
+        startDate = null;
+        endDate = null;
+        break;
       default:
-        return res.status(400).json({ error: 'period参数必须是daily、weekly或monthly' });
+        return res.status(400).json({ error: 'period参数必须是daily、weekly、monthly或all' });
     }
     
     // 获取任务统计
-    const taskQuery = `
-      SELECT 
-        COUNT(*) as total_tasks,
-        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_tasks,
-        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_tasks,
-        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_tasks
-      FROM tasks
-      WHERE assignee_id = ?
-      AND (
-        (start_time >= ? AND start_time <= ?) OR
-        (end_time >= ? AND end_time <= ?) OR
-        (start_time <= ? AND end_time >= ?)
-      )
-    `;
+    let taskQuery, queryParams;
     
-    const [taskStats] = await db.execute(taskQuery, [
-      userId,
-      startDate, endDate,
-      startDate, endDate,
-      startDate, endDate
-    ]);
+    if (period === 'all') {
+      // 获取所有任务的统计
+      taskQuery = `
+        SELECT 
+          COUNT(*) as total_tasks,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_tasks,
+          SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_tasks,
+          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_tasks
+        FROM tasks
+        WHERE assignee_id = ?
+      `;
+      queryParams = [userId];
+    } else {
+      // 获取指定时间范围内的任务统计
+      taskQuery = `
+        SELECT 
+          COUNT(*) as total_tasks,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_tasks,
+          SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_tasks,
+          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_tasks
+        FROM tasks
+        WHERE assignee_id = ?
+        AND (
+          (start_time >= ? AND start_time <= ?) OR
+          (end_time >= ? AND end_time <= ?) OR
+          (start_time <= ? AND end_time >= ?)
+        )
+      `;
+      queryParams = [
+        userId,
+        startDate, endDate,
+        startDate, endDate,
+        startDate, endDate
+      ];
+    }
+    
+    const [taskStats] = await db.execute(taskQuery, queryParams);
     
     const stats = taskStats[0] || {};
     const total = parseInt(stats.total_tasks) || 0;
     const completed = parseInt(stats.completed_tasks) || 0;
     const completionRate = total > 0 ? (completed / total * 100).toFixed(1) : '0.0';
     
-    res.json({
+    const responseData = {
       period,
       totalTasks: total,
       completedTasks: completed,
@@ -5576,9 +5600,15 @@ app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin
       inProgressTasks: parseInt(stats.in_progress_tasks) || 0,
       cancelledTasks: parseInt(stats.cancelled_tasks) || 0,
       completionRate: parseFloat(completionRate),
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-    });
+    };
+    
+    // 只有在不是'all'的情况下才添加日期范围
+    if (period !== 'all' && startDate && endDate) {
+      responseData.startDate = startDate.toISOString();
+      responseData.endDate = endDate.toISOString();
+    }
+    
+    res.json(responseData);
   } catch (error) {
     console.error('获取员工统计数据错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
