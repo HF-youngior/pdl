@@ -320,26 +320,22 @@ class _PersonalLogEditScreenState extends State<PersonalLogEditScreen> {
 
       // 尝试将坐标转换为地址
       try {
-        print('开始逆地理编码，坐标: ${position.latitude}, ${position.longitude}');
         final address = await GeocodingService.reverseGeocodeCached(
           position.latitude,
           position.longitude,
         );
-        print('逆地理编码结果: $address');
         if (address != null && mounted) {
           setState(() {
             _locationName = address;
             _isLoadingLocation = false;
           });
         } else {
-          print('逆地理编码返回空地址');
           setState(() {
             _isLoadingLocation = false;
           });
         }
       } catch (e) {
         // 如果逆地理编码失败，保持使用坐标
-        print('逆地理编码异常: $e');
         if (mounted) {
           setState(() {
             _isLoadingLocation = false;
