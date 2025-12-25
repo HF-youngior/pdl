@@ -40,7 +40,7 @@ class ApiService {
     if (_cachedBaseUrl == null) {
       // 如果未初始化，使用默认值（向后兼容）
       // 但建议在应用启动时调用 initialize()
-      return 'http://10.0.2.2:8080/api';
+      return 'https://10.0.2.2:8080/api';
     }
     return _cachedBaseUrl!;
   }

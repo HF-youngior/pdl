@@ -118,11 +118,12 @@ class ServerConfigService {
   }
   
   /// 获取完整的baseUrl
-  /// 格式: http://host:port/api
+  /// 格式: https://host:port/api
   static Future<String> getBaseUrl() async {
     final host = await getServerHost();
     final port = await getServerPort();
-    return 'http://$host:$port/api';
+    // 后端已切换为 HTTPS，因此这里统一使用 https
+    return 'https://$host:$port/api';
   }
   
   /// 重置为默认配置

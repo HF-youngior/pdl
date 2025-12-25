@@ -1,12 +1,26 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'services/app_settings.dart';
 import 'services/api_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+// 仅开发/测试环境：忽略自签名证书（抓包或本地HTTPS调试时使用）
+class MyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // 开启自签名证书的全局信任（仅开发/测试环境）
+  HttpOverrides.global = MyHttpOverrides();
+
   // 初始化API服务（加载服务器配置）
   await ApiService.initialize();
   await AppSettings.instance.initialize();

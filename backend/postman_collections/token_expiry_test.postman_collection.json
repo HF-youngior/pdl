@@ -1,0 +1,287 @@
+{
+	"info": {
+		"_postman_id": "token-expiry-test-001",
+		"name": "Token过期测试 - 身份认证安全测试",
+		"description": "测试JWT Token过期机制。Token设置为10秒过期，用于验证Token有效期控制。",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. 登录获取Token",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"状态码为200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"保存Token到变量\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    if (jsonData.token) {",
+							"        pm.collectionVariables.set(\"auth_token\", jsonData.token);",
+							"        pm.collectionVariables.set(\"token_timestamp\", new Date().toISOString());",
+							"        console.log(\"✓ Token已保存:\", jsonData.token.substring(0, 50) + \"...\");",
+							"        console.log(\"✓ Token获取时间:\", new Date().toISOString());",
+							"    }",
+							"});",
+							"",
+							"pm.test(\"响应包含用户信息\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('user');",
+							"    pm.expect(jsonData).to.have.property('token');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"username\": \"hyx\",\n    \"password\": \"hyx123\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/auth/login",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"auth",
+						"login"
+					]
+				},
+				"description": "登录获取JWT Token。Token将在10秒后过期。"
+			},
+			"response": []
+		},
+		{
+			"name": "2. 立即获取用户信息（Token有效）",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"状态码为200（Token有效）\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"响应包含用户信息\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('username');",
+							"    pm.expect(jsonData).to.have.property('name');",
+							"    console.log(\"✓ Token当前有效，成功获取用户信息\");",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{auth_token}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/user/profile",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"user",
+						"profile"
+					]
+				},
+				"description": "使用刚获取的Token立即请求用户信息，验证Token当前有效。"
+			},
+			"response": []
+		},
+		{
+			"name": "3. 等待15秒后获取用户信息（Token过期）",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// 显示等待提示",
+							"console.log(\"⏳ 等待15秒，让Token过期...\");",
+							"console.log(\"⏳ Token在10秒后过期，等待15秒确保已过期\");",
+							"",
+							"// 注意：Postman无法真正等待，需要手动等待15秒后再发送此请求",
+							"// 或者使用setTimeout（但Postman不支持长时间等待）"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"状态码为403（Token已过期）\", function () {",
+							"    pm.response.to.have.status(403);",
+							"});",
+							"",
+							"pm.test(\"错误消息为'无效的访问令牌'\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('error');",
+							"    pm.expect(jsonData.error).to.include('无效的访问令牌');",
+							"    console.log(\"✓ Token已过期，系统正确拒绝访问\");",
+							"    console.log(\"✓ 错误消息:\", jsonData.error);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{auth_token}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/user/profile",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"user",
+						"profile"
+					]
+				},
+				"description": "⚠️ 重要：发送此请求前，请手动等待至少15秒！\n\nToken在10秒后过期，等待15秒确保Token已过期。\n\n预期结果：\n- 状态码：403 Forbidden\n- 响应：{\"error\": \"无效的访问令牌\"}\n\n这证明Token过期机制正常工作。"
+			},
+			"response": []
+		},
+		{
+			"name": "4. 重新登录获取新Token",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"状态码为200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"保存新Token\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    if (jsonData.token) {",
+							"        pm.collectionVariables.set(\"auth_token\", jsonData.token);",
+							"        pm.collectionVariables.set(\"token_timestamp\", new Date().toISOString());",
+							"        console.log(\"✓ 新Token已保存\");",
+							"        console.log(\"✓ 新Token获取时间:\", new Date().toISOString());",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"username\": \"hyx\",\n    \"password\": \"hyx123\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/auth/login",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"auth",
+						"login"
+					]
+				},
+				"description": "重新登录获取新的Token，用于验证新Token可以正常工作。"
+			},
+			"response": []
+		},
+		{
+			"name": "5. 使用新Token获取用户信息",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"状态码为200（新Token有效）\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"成功获取用户信息\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('username');",
+							"    console.log(\"✓ 新Token有效，成功获取用户信息\");",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{auth_token}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/user/profile",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"user",
+						"profile"
+					]
+				},
+				"description": "使用新Token立即获取用户信息，验证新Token有效。"
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "token_timestamp",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
+
