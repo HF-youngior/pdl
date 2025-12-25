@@ -63,10 +63,18 @@ class ApiService {
   static const String _tokenKey = 'auth_token';
   static const String _userKey = 'current_user_json';
   
+  // 缓存实例，避免频繁获取
+  static SharedPreferences? _prefsInstance;
+
+  static Future<SharedPreferences> _getPrefs() async {
+    _prefsInstance ??= await SharedPreferences.getInstance();
+    return _prefsInstance!;
+  }
+
   // 设置认证token
   static void setAuthToken(String token) {
     _authToken = token;
-    SharedPreferences.getInstance().then((prefs) {
+    _getPrefs().then((prefs) {
       prefs.setString(_tokenKey, token);
     });
   }
@@ -74,7 +82,7 @@ class ApiService {
   // 清除认证token
   static void clearAuthToken() {
     _authToken = null;
-    SharedPreferences.getInstance().then((prefs) {
+    _getPrefs().then((prefs) {
       prefs.remove(_tokenKey);
     });
   }
@@ -86,7 +94,7 @@ class ApiService {
   
   static void setCurrentUser(User user) {
     _currentUser = user;
-    SharedPreferences.getInstance().then((prefs) {
+    _getPrefs().then((prefs) {
       prefs.setString(_userKey, jsonEncode(user.toJson()));
     });
   }

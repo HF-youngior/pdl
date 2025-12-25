@@ -22,10 +22,12 @@ void main() async {
   // 开启自签名证书的全局信任（仅开发/测试环境）
   HttpOverrides.global = MyHttpOverrides();
 
-  // 初始化API服务（加载服务器配置）
-  await ApiService.initialize();
-  await ApiService.restoreAuthState();
-  await AppSettings.instance.initialize();
+  // 并行初始化所有服务，大幅缩短启动时间
+  await Future.wait([
+    ApiService.initialize(),
+    ApiService.restoreAuthState(),
+    AppSettings.instance.initialize(),
+  ]);
   
   runApp(const MyApp());
 }

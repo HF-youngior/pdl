@@ -140,40 +140,42 @@ class JPushService {
     if (!Platform.isAndroid) return;
     
     try {
+      // 使用 ApiService 的缓存实例方法，减少磁盘 IO
       final prefs = await SharedPreferences.getInstance();
       final lastCheck = prefs.getInt('last_system_opt_check') ?? 0;
       final now = DateTime.now().millisecondsSinceEpoch;
       
-      // 7 天频率限制，避免频繁干扰
+      // 7 天频率限制
       if (now - lastCheck < 7 * 24 * 60 * 60 * 1000) return;
 
-      // 启动 5 秒后执行，避开首屏加载高峰
-      await Future.delayed(const Duration(seconds: 5));
+      // 异步执行后续逻辑，完全不阻塞当前调用
+      _runOptimizationTasks(prefs, now);
       
+    } catch (e) {
+      print('系统优化静默执行失败: $e');
+    }
+  }
+
+  static Future<void> _runOptimizationTasks(SharedPreferences prefs, int now) async {
+    // 启动 10 秒后执行，此时应用肯定已经完全稳定
+    await Future.delayed(const Duration(seconds: 10));
+    
+    try {
       // 1. 检查并请求忽略电池优化
-      try {
-        await _pushUtilsChannel.invokeMethod('requestIgnoreBatteryOptimizations');
-      } catch (_) {}
+      await _pushUtilsChannel.invokeMethod('requestIgnoreBatteryOptimizations');
       
       // 2. 处理通知权限
       final status = await Permission.notification.status;
       if (!status.isGranted) {
-        // 先尝试系统原生弹窗申请
         final result = await Permission.notification.request();
-        // 如果原生申请没通过，延迟 2 秒引导去设置页面（可选）
         if (!result.isGranted) {
-          await Future.delayed(const Duration(seconds: 2));
-          try {
-            await _pushUtilsChannel.invokeMethod('openNotificationSettings');
-          } catch (_) {}
+          await Future.delayed(const Duration(seconds: 3));
+          await _pushUtilsChannel.invokeMethod('openNotificationSettings');
         }
       }
 
       // 记录本次执行时间
       await prefs.setInt('last_system_opt_check', now);
-      
-    } catch (e) {
-      print('系统优化静默执行失败: $e');
-    }
+    } catch (_) {}
   }
 }
