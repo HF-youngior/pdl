@@ -118,19 +118,6 @@ class MainActivity : FlutterActivity() {
                     }
                     manager.createNotificationChannel(newChannel)
                 }
-                
-                // 发送一次本地通知，确保系统识别为“会发送通知”的应用
-                try {
-                    val builder = Notification.Builder(this, PUSH_CHANNEL_ID)
-                    val notification = builder
-                        .setContentTitle("通知通道已创建")
-                        .setContentText("企业管理系统已创建默认通知通道")
-                        .setSmallIcon(R.mipmap.ic_launcher)
-                        .setAutoCancel(true)
-                        .build()
-                    manager.notify(10001, notification)
-                } catch (_: Exception) {
-                }
             }
         }
     }
