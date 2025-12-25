@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'services/app_settings.dart';
 import 'services/api_service.dart';
+import 'services/jpush_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 // 仅开发/测试环境：忽略自签名证书（抓包或本地HTTPS调试时使用）
@@ -23,6 +24,7 @@ void main() async {
 
   // 初始化API服务（加载服务器配置）
   await ApiService.initialize();
+  await ApiService.restoreAuthState();
   await AppSettings.instance.initialize();
   
   runApp(const MyApp());
@@ -75,6 +77,11 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _settings.addListener(_onSettingsChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await JPushService.initialize();
+      } catch (_) {}
+    });
   }
 
   @override
@@ -97,6 +104,7 @@ class _MyAppState extends State<MyApp> {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: _settings.themeMode,
+      navigatorKey: JPushService.navigatorKey,
       locale: _settings.locale,
       supportedLocales: const [Locale('zh'), Locale('en')],
       localizationsDelegates: const [

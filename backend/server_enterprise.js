@@ -8,11 +8,13 @@ const jwt = require('jsonwebtoken');
 const path = require('path');
 const axios = require('axios');
 const multer = require('multer');
+const fs = require('fs');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger.json');
 require('dotenv').config();
 // const { useDefault, Segment } = require('segmentit');
 // const segmenter = useDefault(new Segment());
+const { sendPush } = require('./push_jiguang');
 
 // 高德地图API配置 - 用于经纬度转地址
 const AMAP_API_KEY = process.env.AMAP_API_KEY || 'your_amap_api_key_here';
@@ -542,7 +544,19 @@ async function createTables() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       INDEX idx_points_user_created (user_id, created_at),
       INDEX idx_points_type (type)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='积分流水表（获取/消耗记录）';`
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='积分流水表（获取/消耗记录）';`,
+
+    `CREATE TABLE IF NOT EXISTS user_devices (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      registration_id VARCHAR(128) NOT NULL,
+      platform VARCHAR(20) DEFAULT 'android',
+      last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_registration (registration_id),
+      INDEX idx_user_id (user_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='极光推送设备注册表';`
   ];
 
   for (const table of tables) {
@@ -1384,6 +1398,53 @@ app.post('/api/auth/login', async (req, res) => {
     });
   } catch (error) {
     console.error('登录错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+app.post('/api/push/register', authenticateToken, async (req, res) => {
+  try {
+    const { registrationId, platform } = req.body || {};
+    if (!registrationId || typeof registrationId !== 'string') {
+      return res.status(400).json({ error: 'registrationId 必填' });
+    }
+    await db.execute(
+      `INSERT INTO user_devices (user_id, registration_id, platform, last_seen)
+       VALUES (?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE user_id = VALUES(user_id),
+                               platform = VALUES(platform),
+                               last_seen = NOW()`,
+      [req.user.id, registrationId.trim(), (platform || 'android').trim()]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('注册推送设备失败:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+app.post('/api/push/broadcast-logout', authenticateToken, async (req, res) => {
+  try {
+    const { excludeRegistrationId } = req.body || {};
+    const [rows] = await db.execute(
+      'SELECT registration_id FROM user_devices WHERE user_id = ?',
+      [req.user.id]
+    );
+    let sent = 0;
+    for (const row of rows) {
+      const regId = row.registration_id;
+      if (excludeRegistrationId && regId === excludeRegistrationId) continue;
+      const ok = await sendPush(
+        regId,
+        '账号通知',
+        '该账号在另一设备退出登录',
+        { type: 'account_logout', userId: String(req.user.id) }
+      );
+      if (ok) sent++;
+    }
+    res.json({ ok: true, sent });
+  } catch (error) {
+    console.error('广播登出通知失败:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
@@ -3493,6 +3554,48 @@ app.put('/api/notifications/mark-all-read', authenticateToken, async (req, res) 
   }
 });
 
+// 标记通知为未读
+app.put('/api/notifications/:id/unread', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.execute(
+      'UPDATE task_notifications SET is_read = FALSE WHERE id = ? AND to_user_id = ?',
+      [id, req.user.id]
+    );
+    res.json({ message: '通知已标记为未读' });
+  } catch (error) {
+    console.error('标记通知未读错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 批量/全部标记通知为未读
+app.put('/api/notifications/mark-all-unread', authenticateToken, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.notification_ids)
+      ? req.body.notification_ids.filter(id => typeof id === 'string' && id.trim().length > 0)
+      : [];
+
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(',');
+      await db.execute(
+        `UPDATE task_notifications SET is_read = FALSE WHERE to_user_id = ? AND id IN (${placeholders})`,
+        [req.user.id, ...ids]
+      );
+    } else {
+      await db.execute(
+        'UPDATE task_notifications SET is_read = FALSE WHERE to_user_id = ?',
+        [req.user.id]
+      );
+    }
+
+    res.json({ message: '通知已全部标记为未读' });
+  } catch (error) {
+    console.error('批量标记通知未读错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // ==================== 签到相关API ====================
 
 // 获取用户积分（兼容是否带 /api 前缀的两种路由）
@@ -4366,13 +4469,56 @@ async function updateParentTaskProgress(parentTaskId) {
 async function createNotification(taskId, fromUserId, toUserId, type, message) {
   try {
     const notificationId = require('crypto').randomUUID();
+    // 对于 focus_invite 类型，task_id 可以为 null
+    const finalTaskId = (type === 'focus_invite' || !taskId) ? null : taskId;
+    
+    console.log(`   [createNotification] 创建通知: type=${type}, fromUserId=${fromUserId}, toUserId=${toUserId}, taskId=${finalTaskId}`);
+    
     await db.execute(
       'INSERT INTO task_notifications (id, task_id, from_user_id, to_user_id, notification_type, message) VALUES (?, ?, ?, ?, ?, ?)',
       [notificationId, taskId, fromUserId, toUserId, type, message]
     );
+    
+    console.log(`   [createNotification] ✅ 通知已插入数据库: ${notificationId}`);
+
+    // 通过极光推送发送到接收者的所有设备（后台/锁屏可见）
+    try {
+      const [devices] = await db.execute(
+        'SELECT registration_id FROM user_devices WHERE user_id = ?',
+        [toUserId]
+      );
+      const titleMap = {
+        task_assigned: '新任务分配',
+        task_completed: '任务完成',
+        task_progress_update: '任务进度更新',
+        task_cancelled: '任务取消',
+        special_notes: '特别备注',
+        deadline_warning: '截止时间提醒',
+        focus_invite: '专注邀约'
+      };
+      const title = titleMap[type] || '通知';
+      let sentCount = 0;
+      for (const row of devices) {
+        const regId = row.registration_id;
+        if (!regId) continue;
+        const ok = await sendPush(regId, title, message, {
+          type,
+          notificationId,
+          taskId: finalTaskId || '',
+          toUserId: String(toUserId)
+        });
+        if (ok) sentCount++;
+      }
+      console.log(`   [createNotification] 已通过极光推送发送到设备: ${sentCount}/${devices.length}`);
+    } catch (pushErr) {
+      console.error('   [createNotification] 极光推送发送失败:', pushErr?.message || pushErr);
+    }
+
     return notificationId;
   } catch (error) {
     console.error('创建通知失败:', error);
+    console.error('错误详情:', error.message);
+    console.error('错误堆栈:', error.stack);
     return null;
   }
 }
@@ -5863,7 +6009,7 @@ app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin
     const completionRate = total > 0 ? (completed / total * 100).toFixed(1) : '0.0';
     
     let responseData;
-    
+
     if (period === 'all') {
       // 对于全部任务，保持原有的状态分类
       responseData = {
@@ -6111,6 +6257,128 @@ app.post('/api/admin/tracking', authenticateToken, async (req, res) => {
     res.json({ success: true, logId });
   } catch (error) {
     console.error('数据埋点错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 协同专注：发送“陪我专注”邀请通知
+app.post('/api/notify/invite-focus', authenticateToken, async (req, res) => {
+  try {
+    const { senderId, senderName, targetUserIds } = req.body || {};
+    const currentUserId = req.user.id;
+
+    if (!Array.isArray(targetUserIds) || targetUserIds.length === 0) {
+      return res.status(400).json({ error: 'targetUserIds 不能为空' });
+    }
+
+    // 防止伪造 senderId，必须与当前登录用户一致（或者未传则使用当前用户）
+    if (senderId && senderId !== currentUserId) {
+      return res.status(403).json({ error: '无权以其它用户身份发送邀请' });
+    }
+
+    const safeSenderName = senderName || req.user.name || req.user.username || '一位小伙伴';
+
+    // 只给真实存在且处于激活状态的用户发送
+    const [targets] = await db.execute(
+      `SELECT id, name, username 
+       FROM users 
+       WHERE id IN (${targetUserIds.map(() => '?').join(',')})
+         AND is_active = TRUE`,
+      targetUserIds
+    );
+
+    if (!targets || targets.length === 0) {
+      return res.status(400).json({ error: '未找到可邀请的目标用户' });
+    }
+
+    const clientIp =
+      (req.headers['x-forwarded-for'] &&
+        String(req.headers['x-forwarded-for']).split(',')[0].trim()) ||
+      req.ip ||
+      null;
+
+    const metaBase = {
+      senderId: currentUserId,
+      senderName: safeSenderName,
+      targetUserIds,
+      clientIp,
+      source: 'pomodoro_focus_collaboration',
+    };
+
+    let successCount = 0;
+    // 为每个目标用户创建通知（使用 createNotification 函数，写入 task_notifications 表）
+    console.log('📱 [协同专注通知]');
+    console.log(`   发送者: ${safeSenderName} (${currentUserId})`);
+    console.log(`   目标用户数: ${targets.length}`);
+    console.log(`   目标用户IDs: ${targets.map(t => t.id).join(', ')}`);
+    
+    const notificationMessage = `${safeSenderName}要开始专注了，你还在摸鱼吗？`;
+    // 兼容旧代码中可能使用的 message 变量，避免 ReferenceError
+    const message = notificationMessage;
+    console.log(`   通知内容: "${notificationMessage}"`);
+    console.log(`   时间: ${new Date().toISOString()}`);
+    
+    for (const target of targets) {
+      const targetName = target.name || target.username || '未知用户';
+      const targetId = target.id;
+      
+      console.log(`   正在为用户 ${targetName} (${targetId}) 创建通知...`);
+
+      // 1）去重：同一发送者 -> 同一接收者 的协同专注邀请，只保留一条“最新”通知
+      //    删除该组合下历史上所有 focus_invite 通知（无论已读/未读），避免叠加多条
+      await db.execute(
+        `DELETE FROM task_notifications
+         WHERE from_user_id = ?
+           AND to_user_id = ?
+         AND notification_type = 'focus_invite'`,
+        [currentUserId, targetId]
+      );
+      
+      // 2）真正创建新的通知（focus_invite 类型，task_id 为 null）
+      const notificationId = await createNotification(
+        null, // task_id 为 null（focus_invite 类型不需要任务关联）
+        currentUserId,
+        targetId,
+        'focus_invite',
+        notificationMessage
+      );
+
+      if (notificationId) {
+        successCount++;
+        console.log(`   ✅ 通知创建成功: ${notificationId} (用户: ${targetName})`);
+      } else {
+        console.error(`   ❌ 通知创建失败 (用户: ${targetName})`);
+      }
+
+      // 3）同时写入系统日志，便于后续在“通知/日志”中展示
+      const logId = require('crypto').randomUUID();
+      await db.execute(
+        `INSERT INTO system_logs (id, user_id, user_name, action, description, category, metadata, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          logId,
+          // 日志归属目标用户，方便其在自己的日志列表中查看
+          targetId,
+          targetName,
+          'invite_focus',
+          notificationMessage,
+          'focus_invite',
+          JSON.stringify({
+            ...metaBase,
+            targetId,
+            targetName,
+            notificationId, // 关联的通知ID
+          }),
+        ]
+      );
+    }
+
+    res.json({
+      success: true,
+      sent: successCount,
+    });
+  } catch (error) {
+    console.error('发送协同专注邀请错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });

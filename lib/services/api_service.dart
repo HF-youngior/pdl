@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:path/path.dart' as path;
 import 'package:mime/mime.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../models/important_item.dart';
 import '../models/task.dart';
@@ -58,15 +59,24 @@ class ApiService {
   }
   
   static String? _authToken;
+  static User? _currentUser;
+  static const String _tokenKey = 'auth_token';
+  static const String _userKey = 'current_user_json';
   
   // 设置认证token
   static void setAuthToken(String token) {
     _authToken = token;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setString(_tokenKey, token);
+    });
   }
   
   // 清除认证token
   static void clearAuthToken() {
     _authToken = null;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove(_tokenKey);
+    });
   }
   
   // 获取认证token
@@ -74,6 +84,32 @@ class ApiService {
     return _authToken;
   }
   
+  static void setCurrentUser(User user) {
+    _currentUser = user;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setString(_userKey, jsonEncode(user.toJson()));
+    });
+  }
+  
+  static User? getCurrentUser() {
+    return _currentUser;
+  }
+
+  static Future<void> restoreAuthState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_tokenKey);
+    final userJson = prefs.getString(_userKey);
+    if (token != null && token.isNotEmpty) {
+      _authToken = token;
+      TaskService.setAuthToken(token);
+    }
+    if (userJson != null && userJson.isNotEmpty) {
+      try {
+        final map = jsonDecode(userJson) as Map<String, dynamic>;
+        _currentUser = User.fromJson(map);
+      } catch (_) {}
+    }
+  }
   // 获取认证头（公开方法，供其他服务使用）
   static Map<String, String> getAuthHeaders() {
     final headers = {'Content-Type': 'application/json'};
@@ -103,12 +139,64 @@ class ApiService {
           // 同时设置TaskService的token
           TaskService.setAuthToken(data['token']);
         }
-        return User.fromJson(data['user']);
+        final user = User.fromJson(data['user']);
+        setCurrentUser(user);
+        return user;
       }
       return null;
     } catch (e) {
       print('登录错误: $e');
       return null;
+    }
+  }
+
+  static Future<User?> getCurrentUserProfile() async {
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$baseUrl/user/profile'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return User.fromJson(data);
+      }
+      return null;
+    } catch (e) {
+      print('获取当前用户资料失败: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> registerPushDevice(String registrationId, {String platform = 'android'}) async {
+    try {
+      final response = await httpClient.post(
+        Uri.parse('$baseUrl/push/register'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'registrationId': registrationId,
+          'platform': platform,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('注册推送设备失败: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> broadcastLogout({String? excludeRegistrationId}) async {
+    try {
+      final response = await httpClient.post(
+        Uri.parse('$baseUrl/push/broadcast-logout'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'excludeRegistrationId': excludeRegistrationId,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('广播登出通知失败: $e');
+      return false;
     }
   }
 

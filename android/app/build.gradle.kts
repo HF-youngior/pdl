@@ -28,6 +28,11 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // JPush Configuration
+        manifestPlaceholders["JPUSH_PKGNAME"] = applicationId.toString()
+        manifestPlaceholders["JPUSH_APPKEY"] = "a7474254450572b4411beacc"
+        manifestPlaceholders["JPUSH_CHANNEL"] = "developer-default"
     }
 
     buildTypes {

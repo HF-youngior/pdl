@@ -47,6 +47,7 @@ dependencies:
   shared_preferences: ^2.2.2
   path: ^1.9.0
   mime: ^1.0.4
+  jpush_flutter: ^3.0.0
 
 dev_dependencies:
   flutter_test:

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/user.dart';
 import '../widgets/data_panel.dart';
 import '../services/api_service.dart';
+import '../services/jpush_service.dart';
 import 'login_screen.dart';
 import 'settings_screen.dart';
 import 'help_support_screen.dart';
@@ -337,7 +338,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: () {
                 Navigator.of(context).pop();
                 // 清除认证token
+                final rid = JPushService.registrationId;
                 ApiService.clearAuthToken();
+                JPushService.currentUser = null;
                 // 返回登录页面
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (context) => const LoginScreen()),

@@ -22,7 +22,9 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
   List<TaskNotification> _filteredNotifications = [];
   bool _isLoading = true;
   String _error = '';
-  
+  bool _selectionMode = false;
+  final Set<String> _selectedIds = {};
+
   // 筛选条件
   String? _selectedType; // null表示全部类型
   bool? _selectedReadStatus; // null表示全部，true表示已读，false表示未读
@@ -114,6 +116,7 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
           );
         }
       });
+      _applyFilters();
     }
   }
 
@@ -123,6 +126,7 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
       setState(() {
         _notifications.removeWhere((n) => n.id == notificationId);
       });
+      _applyFilters();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('通知已删除')),
@@ -138,14 +142,40 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
   }
 
   Future<void> _markAllAsRead() async {
-    for (final notification in _notifications.where((n) => !n.isRead)) {
-      await NotificationService.markAsRead(notification.id);
-    }
-    await _loadNotifications();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('全部已读')),
-      );
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认全部已读'),
+        content: const Text('确定将所有未读通知标记为已读吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final ok = await NotificationService.markAllRead();
+      if (ok) {
+        await _loadNotifications();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('全部已读')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('操作失败，请稍后重试')),
+          );
+        }
+      }
     }
   }
 
@@ -194,113 +224,216 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
     }
   }
 
+  Future<void> _markSelectedAsRead() async {
+    if (_selectedIds.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认标记已读'),
+        content: Text('确定将选中的 ${_selectedIds.length} 条通知标记为已读吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      final ok = await NotificationService.markAllRead(ids: _selectedIds.toList());
+      if (ok) {
+        _selectedIds.clear();
+        _selectionMode = false;
+        await _loadNotifications();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('选中项已全部标记为已读')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('操作失败，请稍后重试')),
+          );
+        }
+      }
+    }
+  }
+
+  void _toggleSelectionMode() {
+    setState(() {
+      _selectionMode = !_selectionMode;
+      if (!_selectionMode) {
+        _selectedIds.clear();
+      }
+    });
+  }
+
+  void _selectAll() {
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..addAll(_filteredNotifications.map((n) => n.id));
+    });
+  }
+
+  Future<void> _unselectAllWithConfirm() async {
+    if (_selectedIds.isEmpty) {
+      _toggleSelectionMode();
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认取消勾选'),
+        content: Text('确定取消选中的 ${_selectedIds.length} 条通知吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      setState(() {
+        _selectedIds.clear();
+      });
+      _toggleSelectionMode();
+    }
+  }
+
   Future<void> _viewNotificationDetail(TaskNotification notification) async {
     await showDialog<void>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text(_getNotificationTitle(notification.notificationType)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (notification.taskTitle != null && notification.notificationType != 'deadline_warning') ...[
-                  Text(
-                    notification.taskTitle!,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                Text(
-                  notification.message,
-                  style: const TextStyle(fontSize: 14),
+        bool toggledAllRead = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text(_getNotificationTitle(notification.notificationType)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (notification.taskTitle != null && notification.notificationType != 'deadline_warning') ...[
+                      Text(
+                        notification.taskTitle!,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(
+                      notification.message,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '时间：${TimeUtils.formatDateTimeWithZone(notification.createdAt, includeSeconds: true)}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    if (notification.fromUserName != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '来自：${notification.fromUserName}',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 8),
-                // 如果是邀约相关的通知，尝试加载任务详情以显示邀约时间
-                FutureBuilder<Task?>(
-                  future: _getTaskIfRequest(notification),
-                  builder: (context, taskSnapshot) {
-                    if (taskSnapshot.connectionState == ConnectionState.done &&
-                        taskSnapshot.hasData &&
-                        taskSnapshot.data != null) {
-                      final task = taskSnapshot.data!;
-                      if (task.isRequest && task.requestStartTime != null && task.requestEndTime != null) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.access_time,
-                                size: 16,
-                                color: Colors.grey[600],
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '邀约时间: ${_formatDateTime(task.requestStartTime!)} 至 ${_formatDateTime(task.requestEndTime!)}',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '时间：${TimeUtils.formatDateTimeWithZone(notification.createdAt, includeSeconds: true)}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                if (notification.fromUserName != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '来自：${notification.fromUserName}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('关闭'),
-            ),
-            if (notification.taskId.isNotEmpty)
-              TextButton(
-                onPressed: () async {
-                  Navigator.of(context).pop();
-                  try {
-                    final task = await TaskService.getTaskById(notification.taskId);
-                    if (mounted) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => TaskDetailScreen(
-                            task: task,
-                            currentUser: widget.user,
-                          ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    if (!toggledAllRead) {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('确认全部已读'),
+                          content: const Text('确定将列表中所有未读通知标记为已读吗？'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(false),
+                              child: const Text('取消'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(true),
+                              child: const Text('确认'),
+                            ),
+                          ],
                         ),
                       );
+                      if (confirmed == true) {
+                        final ok = await NotificationService.markAllRead();
+                        if (ok) {
+                          setDialogState(() {
+                            toggledAllRead = true;
+                          });
+                          await _loadNotifications();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('全部已读')),
+                            );
+                          }
+                        } else {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('操作失败，请稍后重试')),
+                            );
+                          }
+                        }
+                      }
+                    } else {
+                      setDialogState(() {
+                        toggledAllRead = false;
+                      });
                     }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('获取任务失败: $e')),
-                      );
-                    }
-                  }
-                },
-                child: const Text('查看任务'),
-              ),
-          ],
+                  },
+                  child: Text(toggledAllRead ? '全部取消' : '全部已读'),
+                ),
+                if (notification.taskId.isNotEmpty)
+                  TextButton(
+                    onPressed: () async {
+                      Navigator.of(context).pop();
+                      try {
+                        final task = await TaskService.getTaskById(notification.taskId);
+                        if (mounted) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => TaskDetailScreen(
+                                task: task,
+                                currentUser: widget.user,
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('获取任务失败: $e')),
+                          );
+                        }
+                      }
+                    },
+                    child: const Text('查看任务'),
+                  ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('关闭'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -322,11 +455,11 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
     }
     return null;
   }
-  
+
   String _formatDateTime(DateTime dateTime) {
     return TimeUtils.formatDateTimeWithZone(dateTime);
   }
-  
+
   String _getNotificationTitle(String notificationType) {
     switch (notificationType) {
       case 'task_assigned':
@@ -356,6 +489,41 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
             PopupMenuButton(
               icon: const Icon(Icons.more_vert),
               itemBuilder: (context) => [
+                PopupMenuItem(
+                  child: Text(_selectionMode ? '退出选择模式' : '选择模式'),
+                  onTap: () {
+                    Future.delayed(Duration.zero, () {
+                      _toggleSelectionMode();
+                    });
+                  },
+                ),
+                if (_selectionMode)
+                  PopupMenuItem(
+                    child: const Text('全选'),
+                    onTap: () {
+                      Future.delayed(Duration.zero, () {
+                        _selectAll();
+                      });
+                    },
+                  ),
+                if (_selectionMode)
+                  PopupMenuItem(
+                    child: const Text('全不选'),
+                    onTap: () {
+                      Future.delayed(Duration.zero, () async {
+                        await _unselectAllWithConfirm();
+                      });
+                    },
+                  ),
+                if (_selectionMode)
+                  PopupMenuItem(
+                    child: const Text('标记选中为已读'),
+                    onTap: () {
+                      Future.delayed(Duration.zero, () async {
+                        await _markSelectedAsRead();
+                      });
+                    },
+                  ),
                 if (_notifications.any((n) => !n.isRead))
                   PopupMenuItem(
                     child: const Text('全部已读'),
@@ -586,15 +754,33 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
                                       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                       color: notification.isRead ? null : Colors.blue.shade50,
                                       child: ListTile(
-                                        leading: CircleAvatar(
-                                          backgroundColor: notification.isRead
-                                              ? Colors.grey
-                                              : Colors.blue,
-                                          child: Icon(
-                                            _getNotificationIcon(notification.notificationType),
-                                            color: Colors.white,
-                                            size: 20,
-                                          ),
+                                        leading: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (_selectionMode)
+                                              Checkbox(
+                                                value: _selectedIds.contains(notification.id),
+                                                onChanged: (checked) {
+                                                  setState(() {
+                                                    if (checked == true) {
+                                                      _selectedIds.add(notification.id);
+                                                    } else {
+                                                      _selectedIds.remove(notification.id);
+                                                    }
+                                                  });
+                                                },
+                                              ),
+                                            CircleAvatar(
+                                              backgroundColor: notification.isRead
+                                                  ? Colors.grey
+                                                  : Colors.blue,
+                                              child: Icon(
+                                                _getNotificationIcon(notification.notificationType),
+                                                color: Colors.white,
+                                                size: 20,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                         title: Text(
                                           notification.taskTitle ?? _getNotificationTitle(notification.notificationType),

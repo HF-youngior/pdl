@@ -325,8 +325,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         context: context,
         barrierDismissible: true,
         builder: (context) {
+          bool toggledAllRead = false;
           return StatefulBuilder(
-            builder: (context, setState) {
+            builder: (context, setDialogState) {
               return AlertDialog(
                 title: const Text('新通知'),
                 content: SizedBox(
@@ -360,7 +361,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         leading: Checkbox(
                           value: isRead,
                           onChanged: (value) {
-                            setState(() {
+                            setDialogState(() {
                               readStatus[notification.id] = value ?? false;
                             });
                             if (readStatus[notification.id] == true) {
@@ -412,16 +413,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: const Text('查看详情'),
                   ),
                   TextButton(
-                    onPressed: () {
-                      for (final notification in notifications) {
-                        if (!(readStatus[notification.id] ?? false)) {
-                          readStatus[notification.id] = true;
-                          NotificationService.markAsRead(notification.id);
+                    onPressed: () async {
+                      if (!toggledAllRead) {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('确认全部已读'),
+                            content: const Text('确定将列表中所有未读通知标记为已读吗？'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: const Text('取消'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                child: const Text('确认'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          final ids = notifications.map((n) => n.id).toList();
+                          final ok = await NotificationService.markAllRead(ids: ids);
+                          if (ok) {
+                            for (final id in ids) {
+                              readStatus[id] = true;
+                            }
+                            setDialogState(() {
+                              toggledAllRead = true;
+                            });
+                          }
+                        }
+                      } else {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('确认全部取消已读'),
+                            content: const Text('确定将列表中所有通知恢复为未读吗？'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: const Text('取消'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                child: const Text('确认'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          final ids = notifications.map((n) => n.id).toList();
+                          final ok = await NotificationService.markAllUnread(ids: ids);
+                          if (ok) {
+                            for (final id in ids) {
+                              readStatus[id] = false;
+                            }
+                            setDialogState(() {
+                              toggledAllRead = false;
+                            });
+                          }
                         }
                       }
-                      setState(() {});
                     },
-                    child: const Text('全部已读'),
+                    child: Text(toggledAllRead ? '全部取消' : '全部已读'),
                   ),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
