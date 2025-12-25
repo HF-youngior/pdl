@@ -8,7 +8,6 @@ const jwt = require('jsonwebtoken');
 const path = require('path');
 const axios = require('axios');
 const multer = require('multer');
-const fs = require('fs');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger.json');
 require('dotenv').config();
