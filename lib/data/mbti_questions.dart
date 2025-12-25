@@ -387,7 +387,7 @@ class MbtiQuestionsData {
     ),
     MbtiQuestion(
       questionNumber: 64,
-      question: "你更重视：",
+      question: "你在判断时更看重：",
       options: ["事实真相", "人际关系"],
       dimension: "TF",
     ),

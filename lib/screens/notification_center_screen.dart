@@ -7,6 +7,7 @@ import '../services/notification_service.dart';
 import '../services/task_service.dart';
 import '../utils/time_utils.dart';
 import 'task_detail_screen.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class NotificationCenterScreen extends StatefulWidget {
   final User user;
@@ -481,6 +482,16 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      // Web端完全隐藏通知中心界面
+      // 如果不小心跳转到该页面，立即返回上一页
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      });
+      return const SizedBox.shrink();
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('通知中心'),

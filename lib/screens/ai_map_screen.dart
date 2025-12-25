@@ -16,6 +16,7 @@ import '../utils/time_utils.dart';
 import 'mbti_test_screen.dart';
 import 'log_enhanced_screen.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AiMapScreen extends StatefulWidget {
   final User user;
@@ -79,6 +80,8 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
   // MBTI测试相关状态
   MbtiTestResult? _latestMbtiResult;
   bool _loadingMbtiResult = false;
+  bool _mbtiIncomplete = false;
+  int? _mbtiIncompleteIndex;
   
   @override
   void initState() {
@@ -89,6 +92,7 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
     _loadTodayLogs();
     _loadMbtiRecords();
     _loadLatestMbtiResult();
+    _checkMbtiIncompleteProgress();
   }
   
   @override
@@ -1046,6 +1050,8 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
             await _loadMbtiRecords();
             // 重新加载最新的MBTI结果
             await _loadLatestMbtiResult();
+            // 重新检查是否有未完成的测试进度
+            await _checkMbtiIncompleteProgress();
             // 测试完成后不自动开始性格分析，让用户手动选择
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -1078,6 +1084,22 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       return '开始MBTI性格测试';
     } else {
       return '重新测试MBTI（当前：${_latestMbtiResult!.mbtiType}）';
+    }
+  }
+
+  Future<void> _checkMbtiIncompleteProgress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final incomplete = prefs.getBool('mbti_incomplete') ?? false;
+      final index = prefs.getInt('mbti_current_index');
+      if (mounted) {
+        setState(() {
+          _mbtiIncomplete = incomplete;
+          _mbtiIncompleteIndex = incomplete ? index : null;
+        });
+      }
+    } catch (e) {
+      // ignore
     }
   }
   
@@ -1797,6 +1819,34 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 );
               },
             ),
+            if (_mbtiIncomplete) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7E6),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFFD58A)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: Color(0xFFB45309)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '测试未完成：上次停在第 ${(_mbtiIncompleteIndex ?? 0) + 1} 题',
+                        style: const TextStyle(color: Color(0xFF92400E)),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _startMbtiTest,
+                      child: const Text('继续测试'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             
             // 性格分析按钮 - 优化样式
