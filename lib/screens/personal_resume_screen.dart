@@ -61,7 +61,7 @@ class _PersonalResumeScreenState extends State<PersonalResumeScreen> {
       final mbti = await MbtiTestService.getUserLatestMbti();
       final tasks = await TaskService.getTasks();
       final myTasks = tasks.where((task) => task.assigneeId == widget.user.id || task.assigneeName == widget.user.name).toList();
-      final pendingTasks = myTasks.where((task) => task.status != 'completed' && task.status != 'cancelled').toList();
+      final pendingTasks = myTasks.where((task) => task.status != 'completed').toList();
       final Map<String, int> counts = {
         'important_urgent': 0,
         'important_not_urgent': 0,

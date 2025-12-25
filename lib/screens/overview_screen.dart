@@ -1296,12 +1296,12 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
       case 'pending':
         return Colors.grey;
       case 'cancelled':
-        return Colors.red;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   String _getStatusText(String? status) {
     switch (status) {
       case 'completed':
@@ -1311,7 +1311,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
       case 'pending':
         return '待处理';
       case 'cancelled':
-        return '已取消';
+        return '已完成';
       default:
         return status ?? '未知';
     }

@@ -96,4 +96,3 @@ temp_test/
 
 # Cleanup scripts
 clean_cache_files.bat
-backend/delete_bulk_tasks_500.sql

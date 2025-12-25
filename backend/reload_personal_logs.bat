@@ -4,9 +4,15 @@ echo 重新加载个人日志数据...
 echo.
 
 REM Set database connection parameters
-set DB_HOST=rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com
-set DB_USER=pdl123
+<<<<<<< Updated upstream
+set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
+set DB_USER=pdl
 set DB_PASSWORD=Pdl1234567
+=======
+set DB_HOST=localhost
+set DB_USER=root
+set DB_PASSWORD=Zs462581379
+>>>>>>> Stashed changes
 set DB_NAME=enterprise_management
 set DB_PORT=3306
 
@@ -35,7 +41,6 @@ echo 现在日志数据的 created_at 字段已被设置为 2025年10月的固�
 echo 每次重新运行此脚本，日期都不会改变（除非主键冲突）
 echo.
 pause
-
 
 
 

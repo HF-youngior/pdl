@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/notification.dart' show TaskNotification;
 import '../models/user.dart';
+import '../models/task.dart';
 import '../services/notification_service.dart';
 import '../services/task_service.dart';
 import '../utils/time_utils.dart';
@@ -216,6 +217,43 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
                   style: const TextStyle(fontSize: 14),
                 ),
                 const SizedBox(height: 8),
+                // 如果是邀约相关的通知，尝试加载任务详情以显示邀约时间
+                FutureBuilder<Task?>(
+                  future: _getTaskIfRequest(notification),
+                  builder: (context, taskSnapshot) {
+                    if (taskSnapshot.connectionState == ConnectionState.done &&
+                        taskSnapshot.hasData &&
+                        taskSnapshot.data != null) {
+                      final task = taskSnapshot.data!;
+                      if (task.isRequest && task.requestStartTime != null && task.requestEndTime != null) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.access_time,
+                                size: 16,
+                                color: Colors.grey[600],
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '邀约时间: ${_formatDateTime(task.requestStartTime!)} 至 ${_formatDateTime(task.requestEndTime!)}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+                const SizedBox(height: 8),
                 Text(
                   '时间：${TimeUtils.formatDateTimeWithZone(notification.createdAt, includeSeconds: true)}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
@@ -268,6 +306,27 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
     );
   }
 
+  // 根据通知类型判断是否需要获取任务详情（只对邀约相关通知获取任务详情）
+  Future<Task?> _getTaskIfRequest(TaskNotification notification) async {
+    // 检查是否为邀约相关的通知类型
+    if (notification.notificationType == 'task_assigned' &&
+        (notification.message.contains('邀约') ||
+         notification.message.contains('request') ||
+         (notification.taskTitle?.contains('邀约') ?? false))) {
+      try {
+        return await TaskService.getTaskById(notification.taskId);
+      } catch (e) {
+        print('获取任务详情失败: $e');
+        return null;
+      }
+    }
+    return null;
+  }
+  
+  String _formatDateTime(DateTime dateTime) {
+    return TimeUtils.formatDateTimeWithZone(dateTime);
+  }
+  
   String _getNotificationTitle(String notificationType) {
     switch (notificationType) {
       case 'task_assigned':

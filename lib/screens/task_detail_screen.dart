@@ -286,12 +286,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       case 'completed':
         return Colors.green;
       case 'cancelled':
-        return Colors.red;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   // 获取状态文本
   String _getStatusText(String status) {
     switch (status) {
@@ -302,12 +302,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       case 'completed':
         return '已完成';
       case 'cancelled':
-        return '已取消';
+        return '已完成';
       default:
         return status;
     }
   }
-
+  
   // 格式化日期时间，带本地时区标签，便于与管理端对照
   String _formatDateTime(DateTime dateTime, {bool includeSeconds = false}) {
     return TimeUtils.formatDateTimeWithZone(
@@ -676,80 +676,136 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         const SizedBox(height: 16),
                       ],
 
-                      // 进度条
-                      Text(
-                        '完成进度',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[800],
+                      // 进度条（对于已处理的邀约任务隐藏）
+                      if (!(task.isRequest && task.requestResponse != null)) ...[
+                        Text(
+                          '完成进度',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              backgroundColor: Colors.grey[300],
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                progress == 1.0 ? Colors.green : Colors.blue,
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                backgroundColor: Colors.grey[300],
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  progress == 1.0 ? Colors.green : Colors.blue,
+                                ),
+                                minHeight: 8,
                               ),
-                              minHeight: 8,
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            '${task.progressPercentage}%',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey[700],
+                            const SizedBox(width: 12),
+                            Text(
+                              '${task.progressPercentage}%',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[700],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                      ],
 
-                      // 任务信息列表
-                      _buildInfoRow(
-                        icon: Icons.person,
-                        label: '负责人',
-                        value: task.assigneeName,
-                      ),
-                      const SizedBox(height: 8),
-                      _buildInfoRow(
-                        icon: Icons.business,
-                        label: '部门',
-                        value: task.department,
-                      ),
-                      const SizedBox(height: 8),
-                      if (task.startTime != null)
+                      // 任务信息列表（对于已处理的邀约任务，只显示关键信息）
+                      if (task.isRequest && task.requestResponse != null) ...[
+                        // 对于已处理的邀约任务，只显示关键信息
                         _buildInfoRow(
-                          icon: Icons.play_arrow,
-                          label: '开始时间',
-                          value: _formatDateTime(task.startTime),
+                          icon: Icons.person,
+                          label: '发起人',
+                          value: task.createdBy,
                         ),
-                      if (task.startTime != null) const SizedBox(height: 8),
-                      if (task.deadline != null)
-                        _buildInfoRow(
-                          icon: Icons.schedule,
-                          label: '截止时间',
-                          value: _formatDateTime(task.deadline!),
-                        ),
-                      if (task.deadline != null) const SizedBox(height: 8),
-                      _buildInfoRow(
-                        icon: Icons.access_time,
-                        label: '创建时间',
-                        value: _formatDateTime(task.createdAt),
-                      ),
-                      if (task.location != null && task.location!.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         _buildInfoRow(
-                          icon: Icons.location_on,
-                          label: '地点',
-                          value: task.location!,
+                          icon: Icons.person,
+                          label: '接收人',
+                          value: task.assigneeName,
                         ),
+                        const SizedBox(height: 8),
+                        if (task.deadline != null)
+                          _buildInfoRow(
+                            icon: Icons.schedule,
+                            label: '期望回复时间',
+                            value: _formatDateTime(task.deadline!),
+                          ),
+                        if (task.deadline != null) const SizedBox(height: 8),
+                        _buildInfoRow(
+                          icon: Icons.access_time,
+                          label: '创建时间',
+                          value: _formatDateTime(task.createdAt),
+                        ),
+                        const SizedBox(height: 8),
+                        // 显示邀约时间
+                        if (task.requestStartTime != null)
+                          _buildInfoRow(
+                            icon: Icons.access_time,
+                            label: '邀约时间',
+                            value: '${_formatDateTime(task.requestStartTime!)} 至 ${_formatDateTime(task.requestEndTime!)}',
+                          ),
+                        if (task.requestStartTime != null) const SizedBox(height: 8),
+                        if (task.completedAt != null) ...[
+                          _buildInfoRow(
+                            icon: Icons.access_time,
+                            label: '处理时间',
+                            value: _formatDateTime(task.completedAt!),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                      ] else ...[
+                        // 对于普通任务或未处理的邀约任务，显示完整信息
+                        _buildInfoRow(
+                          icon: Icons.person,
+                          label: '负责人',
+                          value: task.assigneeName,
+                        ),
+                        const SizedBox(height: 8),
+                        _buildInfoRow(
+                          icon: Icons.business,
+                          label: '部门',
+                          value: task.department,
+                        ),
+                        const SizedBox(height: 8),
+                        if (task.startTime != null)
+                          _buildInfoRow(
+                            icon: Icons.play_arrow,
+                            label: '开始时间',
+                            value: _formatDateTime(task.startTime),
+                          ),
+                        if (task.startTime != null) const SizedBox(height: 8),
+                        if (task.deadline != null)
+                          _buildInfoRow(
+                            icon: Icons.schedule,
+                            label: '截止时间',
+                            value: _formatDateTime(task.deadline!),
+                          ),
+                        if (task.deadline != null) const SizedBox(height: 8),
+                        _buildInfoRow(
+                          icon: Icons.access_time,
+                          label: '创建时间',
+                          value: _formatDateTime(task.createdAt),
+                        ),
+                        if (task.location != null && task.location!.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          _buildInfoRow(
+                            icon: Icons.location_on,
+                            label: '地点',
+                            value: task.location!,
+                          ),
+                        ],
+                        // 显示邀约时间（对于邀约任务）
+                        if (task.isRequest && task.requestStartTime != null)
+                          _buildInfoRow(
+                            icon: Icons.access_time,
+                            label: '邀约时间',
+                            value: '${_formatDateTime(task.requestStartTime!)} 至 ${_formatDateTime(task.requestEndTime!)}',
+                          ),
+                        if (task.isRequest && task.requestStartTime != null) const SizedBox(height: 8),
                       ],
                     ],
                   ),
@@ -758,10 +814,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
               const SizedBox(height: 16),
 
-              // 邀约处理（仅邀约任务且当前用户是被邀约人且未完成时显示）
+              // 邀约处理（仅邀约任务且当前用户是被邀约人且未处理时显示）
               if (_currentTask!.isRequest && 
                   _currentTask!.assigneeId == widget.currentUser.id && 
-                  _currentTask!.status != 'completed')
+                  _currentTask!.requestResponse == null)
                 Card(
                   elevation: 4,
                   shape: RoundedRectangleBorder(

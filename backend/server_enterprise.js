@@ -20,7 +20,7 @@ const AMAP_GEOCODE_URL = 'https://restapi.amap.com/v3/geocode/regeo';
 // 经纬度转中文地址函数
 async function convertToAddress(latitude, longitude) {
   if (!latitude || !longitude) return null;
-  
+
   try {
     const response = await axios.get(AMAP_GEOCODE_URL, {
       params: {
@@ -33,11 +33,11 @@ async function convertToAddress(latitude, longitude) {
         roadlevel: 0
       }
     });
-    
+
     if (response.data.status === '1' && response.data.regeocode) {
       const addressComponent = response.data.regeocode.addressComponent;
       const formattedAddress = response.data.regeocode.formatted_address;
-      
+
       // 构建详细地址信息
       const addressInfo = {
         formatted_address: formattedAddress,
@@ -49,7 +49,7 @@ async function convertToAddress(latitude, longitude) {
         street: addressComponent.streetNumber?.street || '',
         street_number: addressComponent.streetNumber?.number || ''
       };
-      
+
       return addressInfo;
     } else {
       console.warn('经纬度转地址失败:', response.data.info);
@@ -373,14 +373,14 @@ async function createTables() {
     // 任务通知表
     `CREATE TABLE IF NOT EXISTS task_notifications (
       id VARCHAR(36) PRIMARY KEY,
-      task_id VARCHAR(36) NULL,
+      task_id VARCHAR(36) NOT NULL,
       from_user_id VARCHAR(36) NOT NULL,
       to_user_id VARCHAR(36) NOT NULL,
-      notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes', 'deadline_warning', 'focus_invite') NOT NULL,
+      notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes', 'deadline_warning') NOT NULL,
       message TEXT NOT NULL,
       is_read BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
+      FOREIGN KEY (task_id) REFERENCES tasks(id),
       FOREIGN KEY (from_user_id) REFERENCES users(id),
       FOREIGN KEY (to_user_id) REFERENCES users(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
@@ -484,6 +484,20 @@ async function createTables() {
       INDEX idx_user_analysis_date (user_id, analysis_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='性格分析表，存储AI性格分析结果';`,
 
+    `CREATE TABLE IF NOT EXISTS task_assignees (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      task_id VARCHAR(36) NOT NULL,
+      assignee_id VARCHAR(36) NOT NULL,
+      assignee_name VARCHAR(100) NOT NULL,
+      progress_percentage INT DEFAULT 0,
+      status VARCHAR(50) DEFAULT 'pending',
+      assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      completed_at TIMESTAMP NULL,
+      UNIQUE KEY task_assignee_unique (task_id, assignee_id),
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+      FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
     `CREATE TABLE IF NOT EXISTS log_task_linkage (
       id INT AUTO_INCREMENT PRIMARY KEY,
       log_id VARCHAR(36) NOT NULL,
@@ -568,6 +582,8 @@ async function ensureSchemaCompatibility() {
     // tasks表邀约相关字段
     try { await db.execute("ALTER TABLE tasks ADD COLUMN is_request BOOLEAN DEFAULT FALSE"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN request_type VARCHAR(50) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE tasks ADD COLUMN request_start_time TIMESTAMP NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE tasks ADD COLUMN request_end_time TIMESTAMP NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN request_response VARCHAR(20) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN related_task_id VARCHAR(36) NULL"); } catch(e){}
     
@@ -1409,8 +1425,6 @@ app.post('/api/user/focus-duration', authenticateToken, async (req, res) => {
   }
 });
 
-// 注意：旧的接口已删除，真正的协同专注通知接口在下方（第5648行）
-
 // 获取部门列表
 app.get('/api/departments', async (req, res) => {
   try {
@@ -1969,13 +1983,29 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
     const [rows] = await db.execute(query, params);
 
     // 处理时区 - 将所有时间字段转换为北京时间格式
-    const tasksWithTimezone = rows.map(task => ({
-      ...task,
-      start_time: formatDateTimeForBeijing(task.start_time),
-      end_time: formatDateTimeForBeijing(task.end_time),
-      deadline: formatDateTimeForBeijing(task.deadline),
-      created_at: formatDateTimeForBeijing(task.created_at),
-      updated_at: formatDateTimeForBeijing(task.updated_at)
+    const tasksWithTimezone = await Promise.all(rows.map(async (task) => {
+      const taskWithTimezone = {
+        ...task,
+        start_time: formatDateTimeForBeijing(task.start_time),
+        end_time: formatDateTimeForBeijing(task.end_time),
+        deadline: formatDateTimeForBeijing(task.deadline),
+        created_at: formatDateTimeForBeijing(task.created_at),
+        updated_at: formatDateTimeForBeijing(task.updated_at),
+        request_start_time: formatDateTimeForBeijing(task.request_start_time),
+        request_end_time: formatDateTimeForBeijing(task.request_end_time)
+      };
+
+      // 检查是否为多负责人任务
+      const [assignees] = await db.execute(
+        `SELECT assignee_id, assignee_name, progress_percentage, status FROM task_assignees WHERE task_id = ?`,
+        [task.id]
+      );
+
+      if (assignees.length > 0) {
+        taskWithTimezone.assignees = assignees;
+      }
+
+      return taskWithTimezone;
     }));
 
     res.json(tasksWithTimezone);
@@ -2026,8 +2056,20 @@ app.get('/api/tasks/:id', authenticateToken, async (req, res) => {
       deadline: formatDateTimeForBeijing(rows[0].deadline),
       created_at: formatDateTimeForBeijing(rows[0].created_at),
       updated_at: formatDateTimeForBeijing(rows[0].updated_at),
+      request_start_time: formatDateTimeForBeijing(rows[0].request_start_time),
+      request_end_time: formatDateTimeForBeijing(rows[0].request_end_time),
       related_task_id: rows[0].related_task_id // 确保返回related_task_id字段
     };
+
+    // 检查是否为多负责人任务
+    const [assignees] = await db.execute(
+      `SELECT assignee_id, assignee_name, progress_percentage, status FROM task_assignees WHERE task_id = ?`,
+      [id]
+    );
+
+    if (assignees.length > 0) {
+      taskWithTimezone.assignees = assignees;
+    }
 
     res.json(taskWithTimezone);
   } catch (error) {
@@ -2043,7 +2085,7 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       title,
       description,
       assignee_id,
-      assignees,
+      assignee_ids, // 支持多个负责人
       department_id,
       priority,
       deadline,
@@ -2057,60 +2099,63 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       ? req.body.attachments.filter(item => typeof item === 'string' && item.trim().length > 0)
       : [];
 
+    // 处理多负责人逻辑
+    let assigneeIds = [];
+    if (assignee_ids && Array.isArray(assignee_ids) && assignee_ids.length > 0) {
+      // 使用多负责人列表
+      assigneeIds = assignee_ids;
+    } else if (assignee_id) {
+      // 使用单个负责人
+      assigneeIds = [assignee_id];
+    } else {
+      return res.status(400).json({ error: '必须指定至少一个责任人' });
+    }
+
     // 参数验证
     if (!title || !title.trim()) {
       return res.status(400).json({ error: '任务名称不能为空' });
     }
-
-    // 汇总被分配人：支持 assignees（数组）或单个 assignee_id
-    let assigneeList = Array.isArray(assignees)
-      ? assignees.filter(id => typeof id === 'string' && id.trim().length > 0)
-      : [];
-    if (assigneeList.length === 0 && assignee_id) {
-      assigneeList = [assignee_id];
+    if (assigneeIds.length === 0) {
+      return res.status(400).json({ error: '必须指定至少一个责任人' });
     }
-    assigneeList = Array.from(new Set(assigneeList)); // 去重
-
-    if (assigneeList.length === 0) {
-      return res.status(400).json({ error: '必须至少指定一位责任人（assignees 或 assignee_id）' });
-    }
+    // department_id 可以为空，将从被分配人信息中获取
 
     // 权限检查
     if (req.user.role === 'employee') {
       return res.status(403).json({ error: '员工无权创建任务' });
     }
 
-    // 读取所有被分配人信息
-    const placeholders = assigneeList.map(() => '?').join(',');
-    const [assigneeRows] = await db.execute(
-      `SELECT id, name, department_id FROM users WHERE id IN (${placeholders})`,
-      assigneeList
+    // 获取第一个被分配人信息（用于主负责人和部门信息）
+    const [firstAssigneeRows] = await db.execute(
+      'SELECT name, department_id FROM users WHERE id = ?',
+      [assigneeIds[0]]
     );
-    if (assigneeRows.length !== assigneeList.length) {
-      return res.status(400).json({ error: '部分被分配人不存在，请检查 assignees / assignee_id' });
-    }
-    const assigneeMap = new Map(assigneeRows.map(row => [row.id, row]));
 
-    // 工具：清理值
+    if (firstAssigneeRows.length === 0) {
+      return res.status(400).json({ error: '第一个被分配人不存在' });
+    }
+
+    const firstAssigneeName = firstAssigneeRows[0].name;
+    // 如果前端没有传递 department_id，从用户信息中获取
+    const final_department_id = department_id || firstAssigneeRows[0].department_id;
+
+    if (!final_department_id) {
+      return res.status(400).json({ error: '无法确定任务部门，请确保用户有部门信息' });
+    }
+
+    const taskId = require('crypto').randomUUID();
+
+    // 将 undefined 和空字符串转换为 null，确保数据库参数有效
     const cleanValue = (value) => {
       if (value === undefined || value === '') return null;
       return value;
     };
 
-    // 主负责人（用于父任务）
-    const primaryAssigneeId = assigneeList[0];
-    const primaryAssignee = assigneeMap.get(primaryAssigneeId);
-    const final_department_id = department_id || primaryAssignee.department_id;
-    if (!final_department_id) {
-      return res.status(400).json({ error: '无法确定任务部门，请确保责任人有部门信息' });
-    }
-
     // 获取进度百分比和状态（如果前端传递了）
     const progress_percentage = req.body.progress_percentage !== undefined ? req.body.progress_percentage : 0;
     const status = req.body.status || 'pending';
 
-    // 创建父任务
-    const parentId = require('crypto').randomUUID();
+    // 创建主任务记录（使用第一个负责人作为主负责人）
     await db.execute(
       `INSERT INTO tasks (
         id, title, description, parent_task_id, assignee_id, assignee_name,
@@ -2118,12 +2163,12 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
         location, is_all_day, progress_percentage, status, attachments
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        parentId,
+        taskId,
         title,
         cleanValue(description),
         cleanValue(parent_task_id),
-        primaryAssigneeId,
-        primaryAssignee.name,
+        assigneeIds[0], // 第一个负责人作为主负责人
+        firstAssigneeName,
         final_department_id,
         priority || 'p1',
         cleanValue(deadline),
@@ -2132,64 +2177,44 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
         cleanValue(end_time),
         cleanValue(location),
         is_all_day || false,
-        progress_percentage,
+        0, // 初始进度为0
         status,
         attachments.length ? JSON.stringify(attachments) : JSON.stringify([])
       ]
     );
 
-    // 通知主负责人
-    await createNotification(parentId, req.user.id, primaryAssigneeId, 'task_assigned', `您收到了新任务：${title}`);
+    // 为每个负责人创建分配记录
+    for (const assigneeId of assigneeIds) {
+      // 获取负责人信息
+      const [assigneeInfo] = await db.execute(
+        'SELECT name FROM users WHERE id = ?',
+        [assigneeId]
+      );
 
-    // 如果有多位责任人，则为每位创建子任务（包含主负责人，让进度聚合基于子任务）
-    if (assigneeList.length > 1) {
-      for (const subAssigneeId of assigneeList) {
-        const info = assigneeMap.get(subAssigneeId);
-        const subDept = info.department_id || final_department_id;
-        const subTaskId = require('crypto').randomUUID();
+      if (assigneeInfo.length > 0) {
+        // 插入分配记录
         await db.execute(
-          `INSERT INTO tasks (
-            id, title, description, parent_task_id, assignee_id, assignee_name,
-            department_id, priority, deadline, created_by, start_time, end_time,
-            location, is_all_day, progress_percentage, status, attachments
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            subTaskId,
-            title,
-            cleanValue(description),
-            parentId,
-            subAssigneeId,
-            info.name,
-            subDept,
-            priority || 'p1',
-            cleanValue(deadline),
-            req.user.id,
-            cleanValue(start_time),
-            cleanValue(end_time),
-            cleanValue(location),
-            is_all_day || false,
-            0,
-            'pending',
-            attachments.length ? JSON.stringify(attachments) : JSON.stringify([])
-          ]
+          `INSERT INTO task_assignees (task_id, assignee_id, assignee_name)
+           VALUES (?, ?, ?)`,
+          [taskId, assigneeId, assigneeInfo[0].name]
         );
-        await createNotification(subTaskId, req.user.id, subAssigneeId, 'task_assigned', `您收到了新任务：${title}`);
+
+        // 为每个负责人创建任务分配通知
+        await createNotification(taskId, req.user.id, assigneeId, 'task_assigned', `您收到了新任务：${title}`);
       }
-      // 创建完子任务后，刷新父任务进度
-      await updateParentTaskProgress(parentId);
     }
 
-    // 创建任务时，如果截止时间在24小时内，立刻发送截止时间通知（父任务）
+    // 创建任务时，如果截止时间在24小时内，立刻发送截止时间通知
     if (cleanValue(deadline)) {
-      await checkAndSendDeadlineNotification(parentId, primaryAssigneeId, cleanValue(deadline));
+      await checkAndSendDeadlineNotification(taskId, assignee_id, cleanValue(deadline));
     }
 
-    // 如果外层还有父任务，更新进度
+    // 如果是子任务，需要更新父任务进度
     if (cleanValue(parent_task_id)) {
       await updateParentTaskProgress(parent_task_id);
     }
 
-    res.status(201).json({ message: '任务创建成功', id: parentId, assignees: assigneeList });
+    res.status(201).json({ message: '任务创建成功', id: taskId });
   } catch (error) {
     console.error('创建任务错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
@@ -2263,12 +2288,32 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
     const finalNotes = updateData.special_notes ?? null;
     const finalCompletedAt = updateData.completed_at ?? null;
 
-    await db.execute(
-      `UPDATE tasks SET 
-       status = ?, progress_percentage = ?, special_notes = ?, completed_at = ?
-       WHERE id = ?`,
-      [status, finalProgress, finalNotes, finalCompletedAt, id]
+    // 检查是否为多负责人任务
+    const [assigneeCount] = await db.execute(
+      `SELECT COUNT(*) as count FROM task_assignees WHERE task_id = ?`,
+      [id]
     );
+
+    if (assigneeCount[0].count > 0) {
+      // 多负责人任务：更新该用户在任务分配表中的进度
+      await db.execute(
+        `UPDATE task_assignees SET
+         status = ?, progress_percentage = ?, completed_at = ?
+         WHERE task_id = ? AND assignee_id = ?`,
+        [status, finalProgress, finalCompletedAt, id, req.user.id]
+      );
+
+      // 更新主任务的总体进度
+      await updateMultiAssigneeTaskProgress(id);
+    } else {
+      // 单负责人任务：更新主任务进度
+      await db.execute(
+        `UPDATE tasks SET
+         status = ?, progress_percentage = ?, special_notes = ?, completed_at = ?
+         WHERE id = ?`,
+        [status, finalProgress, finalNotes, finalCompletedAt, id]
+      );
+    }
 
     // 如果这个任务有父任务，更新父任务的进度
     if (task.parent_task_id) {
@@ -2711,7 +2756,9 @@ app.post('/api/tasks/request', authenticateToken, async (req, res) => {
       assignee_id,
       description,
       deadline,
-      related_task_id
+      related_task_id,
+      request_start_time,
+      request_end_time
     } = req.body;
 
     // 允许的请求类型
@@ -2820,6 +2867,32 @@ app.post('/api/tasks/request', authenticateToken, async (req, res) => {
       }
     }
 
+    // 格式化邀约时间
+    let formattedRequestStartTime = null;
+    let formattedRequestEndTime = null;
+    if (request_start_time) {
+      try {
+        const requestStartTimeDate = new Date(request_start_time);
+        if (isNaN(requestStartTimeDate.getTime())) {
+          return res.status(400).json({ error: '邀约开始时间格式无效' });
+        }
+        formattedRequestStartTime = requestStartTimeDate.toISOString().slice(0, 19).replace('T', ' ');
+      } catch (e) {
+        return res.status(400).json({ error: '邀约开始时间格式无效' });
+      }
+    }
+    if (request_end_time) {
+      try {
+        const requestEndTimeDate = new Date(request_end_time);
+        if (isNaN(requestEndTimeDate.getTime())) {
+          return res.status(400).json({ error: '邀约结束时间格式无效' });
+        }
+        formattedRequestEndTime = requestEndTimeDate.toISOString().slice(0, 19).replace('T', ' ');
+      } catch (e) {
+        return res.status(400).json({ error: '邀约结束时间格式无效' });
+      }
+    }
+
     // 计算默认结束时间（如果没有deadline，默认3天后）
     const defaultEndTime = formattedDeadline
       ? new Date(formattedDeadline)
@@ -2831,8 +2904,8 @@ app.post('/api/tasks/request', authenticateToken, async (req, res) => {
         id, title, description, assignee_id, assignee_name,
         department_id, priority, deadline, created_by,
         start_time, end_time, is_all_day, progress_percentage, status,
-        is_request, request_type, related_task_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        is_request, request_type, related_task_id, request_start_time, request_end_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         taskId,
         taskTitle,
@@ -2850,7 +2923,9 @@ app.post('/api/tasks/request', authenticateToken, async (req, res) => {
         'pending', // 状态为pending（待处理）
         true, // 标记为邀约任务
         request_type.trim(),
-        cleanValue(related_task_id)
+        cleanValue(related_task_id),
+        formattedRequestStartTime,
+        formattedRequestEndTime
       ]
     );
 
@@ -2890,7 +2965,9 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
       assignee_id,
       description,
       deadline,
-      related_task_id
+      related_task_id,
+      request_start_time,
+      request_end_time
     } = req.body;
 
     // 获取任务信息
@@ -3021,6 +3098,32 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
       }
     }
 
+    // 格式化邀约时间
+    let formattedRequestStartTime = null;
+    let formattedRequestEndTime = null;
+    if (request_start_time) {
+      try {
+        const requestStartTimeDate = new Date(request_start_time);
+        if (isNaN(requestStartTimeDate.getTime())) {
+          return res.status(400).json({ error: '邀约开始时间格式无效' });
+        }
+        formattedRequestStartTime = requestStartTimeDate.toISOString().slice(0, 19).replace('T', ' ');
+      } catch (e) {
+        return res.status(400).json({ error: '邀约开始时间格式无效' });
+      }
+    }
+    if (request_end_time) {
+      try {
+        const requestEndTimeDate = new Date(request_end_time);
+        if (isNaN(requestEndTimeDate.getTime())) {
+          return res.status(400).json({ error: '邀约结束时间格式无效' });
+        }
+        formattedRequestEndTime = requestEndTimeDate.toISOString().slice(0, 19).replace('T', ' ');
+      } catch (e) {
+        return res.status(400).json({ error: '邀约结束时间格式无效' });
+      }
+    }
+
     // 生成任务标题
     const taskTitle = `邀约请求：${request_type}`;
 
@@ -3039,7 +3142,9 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
         department_id = ?,
         deadline = ?,
         request_type = ?,
-        related_task_id = ?
+        related_task_id = ?,
+        request_start_time = ?,
+        request_end_time = ?
       WHERE id = ?`,
       [
         taskTitle,
@@ -3050,6 +3155,8 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
         formattedDeadline,
         request_type.trim(),
         cleanValue(related_task_id),
+        formattedRequestStartTime,
+        formattedRequestEndTime,
         id
       ]
     );
@@ -3186,9 +3293,6 @@ app.put('/api/tasks/:id/request-response', authenticateToken, async (req, res) =
 // 获取任务通知
 app.get('/api/notifications', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    console.log(`[获取通知] 用户ID: ${userId}`);
-    
     const [rows] = await db.execute(
       `SELECT tn.*, t.title as task_title, t.deadline as task_deadline, u.name as from_user_name
        FROM task_notifications tn
@@ -3196,11 +3300,9 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
        LEFT JOIN users u ON tn.from_user_id = u.id
        WHERE tn.to_user_id = ?
        ORDER BY tn.created_at DESC`,
-      [userId]
+      [req.user.id]
     );
 
-    console.log(`[获取通知] 找到 ${rows.length} 条通知`);
-    
     // 将时间字段转换为北京时间格式
     const formattedRows = rows.map(row => {
       const formatted = { ...row };
@@ -3210,12 +3312,6 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
       if (row.task_deadline) {
         formatted.task_deadline = formatDateTimeForBeijing(row.task_deadline);
       }
-      
-      // 调试日志：打印 focus_invite 类型的通知
-      if (row.notification_type === 'focus_invite') {
-        console.log(`[获取通知] focus_invite 通知: id=${row.id}, message="${row.message}", is_read=${row.is_read}`);
-      }
-      
       return formatted;
     });
 
@@ -3834,7 +3930,7 @@ app.post('/api/upload-images', authenticateToken, upload.array('images', 10), as
 // 创建个人日志
 async function convertPersonalLogForResponse(log, taskUpdates = []) {
   if (!log) return null;
-  
+
   // 如果有经纬度信息，转换为中文地址
   let locationAddress = null;
   if (log.location_latitude && log.location_longitude) {
@@ -3842,7 +3938,7 @@ async function convertPersonalLogForResponse(log, taskUpdates = []) {
     // 提取格式化地址作为字符串，同时保留完整信息供前端使用
     locationAddress = addressInfo ? addressInfo.formatted_address : null;
   }
-  
+
   return {
     ...log,
     created_at: formatDateTimeForBeijing(log.created_at),
@@ -4247,22 +4343,13 @@ async function updateParentTaskProgress(parentTaskId) {
 async function createNotification(taskId, fromUserId, toUserId, type, message) {
   try {
     const notificationId = require('crypto').randomUUID();
-    // 对于 focus_invite 类型，task_id 可以为 null
-    const finalTaskId = (type === 'focus_invite' || !taskId) ? null : taskId;
-    
-    console.log(`   [createNotification] 创建通知: type=${type}, fromUserId=${fromUserId}, toUserId=${toUserId}, taskId=${finalTaskId}`);
-    
     await db.execute(
       'INSERT INTO task_notifications (id, task_id, from_user_id, to_user_id, notification_type, message) VALUES (?, ?, ?, ?, ?, ?)',
-      [notificationId, finalTaskId, fromUserId, toUserId, type, message]
+      [notificationId, taskId, fromUserId, toUserId, type, message]
     );
-    
-    console.log(`   [createNotification] ✅ 通知已插入数据库: ${notificationId}`);
     return notificationId;
   } catch (error) {
     console.error('创建通知失败:', error);
-    console.error('错误详情:', error.message);
-    console.error('错误堆栈:', error.stack);
     return null;
   }
 }
@@ -4365,6 +4452,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         t.is_all_day,
         t.assignee_name,
         t.attachments,
+        t.request_start_time,
+        t.request_end_time,
         DATE_FORMAT(COALESCE(t.start_time, t.deadline), '%Y-%m-%d') as task_date
       FROM tasks t
       WHERE t.assignee_id = ?
@@ -4443,7 +4532,13 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
     }
     
     // 填充任务数据（处理跨天任务）
-    tasks.forEach(task => {
+    for (const task of tasks) {
+      // 获取多负责人信息
+      const [assignees] = await db.execute(
+        `SELECT assignee_id, assignee_name, progress_percentage, status FROM task_assignees WHERE task_id = ?`,
+        [task.id]
+      );
+
       // 既有开始又有结束：按天展开
       if (task.start_time && task.end_time) {
         const rangeStart = new Date(task.start_time);
@@ -4461,7 +4556,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
           if (calendar[key]) {
             const exists = calendar[key].tasks.some(t => t.id === task.id);
             if (!exists) {
-              calendar[key].tasks.push({
+              const taskObj = {
                 id: task.id,
                 title: task.title,
                 description: task.description,
@@ -4473,8 +4568,16 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
                 deadline: formatDateTimeForBeijing(task.deadline),
                 is_all_day: task.is_all_day,
                 assignee_name: task.assignee_name,
-                attachments: safeParseJSON(task.attachments) || []
-              });
+                attachments: safeParseJSON(task.attachments) || [],
+                request_start_time: formatDateTimeForBeijing(task.request_start_time),
+                request_end_time: formatDateTimeForBeijing(task.request_end_time)
+              };
+
+              if (assignees.length > 0) {
+                taskObj.assignees = assignees;
+              }
+
+              calendar[key].tasks.push(taskObj);
               calendar[key].hasData = true;
             }
           }
@@ -4491,7 +4594,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         if (calendar[key]) {
           const exists = calendar[key].tasks.some(t => t.id === task.id);
           if (!exists) {
-            calendar[key].tasks.push({
+            const taskObj = {
               id: task.id,
               title: task.title,
               description: task.description,
@@ -4503,8 +4606,16 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
               deadline: formatDateTimeForBeijing(task.deadline),
               is_all_day: task.is_all_day,
               assignee_name: task.assignee_name,
-              attachments: safeParseJSON(task.attachments) || []
-            });
+              attachments: safeParseJSON(task.attachments) || [],
+              request_start_time: formatDateTimeForBeijing(task.request_start_time),
+              request_end_time: formatDateTimeForBeijing(task.request_end_time)
+            };
+
+            if (assignees.length > 0) {
+              taskObj.assignees = assignees;
+            }
+
+            calendar[key].tasks.push(taskObj);
             calendar[key].hasData = true;
           }
         }
@@ -4515,7 +4626,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         if (calendar[key]) {
           const exists = calendar[key].tasks.some(t => t.id === task.id);
           if (!exists) {
-            calendar[key].tasks.push({
+            const taskObj = {
               id: task.id,
               title: task.title,
               description: task.description,
@@ -4527,13 +4638,21 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
               deadline: formatDateTimeForBeijing(task.deadline),
               is_all_day: task.is_all_day,
               assignee_name: task.assignee_name,
-              attachments: safeParseJSON(task.attachments) || []
-            });
+              attachments: safeParseJSON(task.attachments) || [],
+              request_start_time: formatDateTimeForBeijing(task.request_start_time),
+              request_end_time: formatDateTimeForBeijing(task.request_end_time)
+            };
+
+            if (assignees.length > 0) {
+              taskObj.assignees = assignees;
+            }
+
+            calendar[key].tasks.push(taskObj);
             calendar[key].hasData = true;
           }
         }
       }
-    });
+    }
     
     // 填充日志数据
     const processedLogs = await Promise.all(logs.map(async log => {
@@ -4544,7 +4663,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
       }
       return { ...log, location_address: locationAddress };
     }));
-    
+
     processedLogs.forEach(log => {
       if (log.log_date) {
         const dateKey = log.log_date;
@@ -4635,6 +4754,8 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         t.is_all_day,
         t.assignee_name,
         t.attachments,
+        t.request_start_time,
+        t.request_end_time,
         DATE_FORMAT(COALESCE(t.start_time, t.deadline), '%Y-%m-%d') as task_date
       FROM tasks t
       WHERE t.assignee_id = ?
@@ -4708,7 +4829,7 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
       if (log.location_latitude && log.location_longitude) {
         locationAddress = await convertToAddress(log.location_latitude, log.location_longitude);
       }
-      
+
       return {
         id: log.id,
         title: log.title,
@@ -4723,11 +4844,43 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         images: safeParseJSON(log.images) || [],
         location_name: log.location_name,
         location_latitude: log.location_latitude,
+        location_longitude: log.location_longitude
+      })),
+      // 获取每个任务的多负责人信息
+      tasks: await Promise.all(tasks.map(async (task) => {
+        const [assignees] = await db.execute(
+          `SELECT assignee_id, assignee_name, progress_percentage, status FROM task_assignees WHERE task_id = ?`,
+          [task.id]
+        );
+
+        const taskObj = {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          status: task.status,
+          priority: task.priority,
+          color: task.color,
+          startTime: task.start_time,
+          endTime: task.end_time,
+          deadline: task.deadline,
+          isAllDay: task.is_all_day === 1,
+          assigneeName: task.assignee_name,
+          date: task.task_date,
+          attachments: safeParseJSON(task.attachments) || [],
+          requestStartTime: task.request_start_time,
+          requestEndTime: task.request_end_time
+        };
+
+        if (assignees.length > 0) {
+          taskObj.assignees = assignees;
+        }
+
+        return taskObj;
         location_longitude: log.location_longitude,
         location_address: locationAddress
       };
     }));
-    
+
     // 返回简化的数据格式
     res.json({
       month: `${year}-${String(month).padStart(2, '0')}`,
@@ -4748,6 +4901,7 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         date: task.task_date,
         attachments: safeParseJSON(task.attachments) || []
       })),
+
       statistics: {
         totalTasks: tasks.length,
         completedTasks: completedTasks,
@@ -4862,7 +5016,7 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
       if (l.location_latitude && l.location_longitude) {
         locationAddress = await convertToAddress(l.location_latitude, l.location_longitude);
       }
-      
+
       const images = safeParseJSON(l.images) || [];
       const keywords = normalizeKeywordList(l.keywords);
       return {
@@ -4885,12 +5039,17 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         location_address: locationAddress
       };
     }));
-    
+
     console.log(`[日期详情] 用户 ${req.user.id} 请求 ${date} 的数据: ${tasks.length} 个任务, ${logs.length} 个日志`);
     
-    res.json({
-      date: date,
-      tasks: tasks.map(t => ({
+    // 获取每个任务的多负责人信息
+    const tasksWithAssignees = await Promise.all(tasks.map(async (t) => {
+      const [assignees] = await db.execute(
+        `SELECT assignee_id, assignee_name, progress_percentage, status FROM task_assignees WHERE task_id = ?`,
+        [t.id]
+      );
+
+      const taskObj = {
         id: t.id,
         title: t.title,
         description: t.description,
@@ -4904,9 +5063,43 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         assignee_name: t.assignee_name,
         department_name: t.department_name,
         creator_name: t.creator_name,
-        attachments: safeParseJSON(t.attachments) || []
-      })),
-      logs: processedLogs,
+        attachments: safeParseJSON(t.attachments) || [],
+        request_start_time: formatDateTimeForBeijing(t.request_start_time),
+        request_end_time: formatDateTimeForBeijing(t.request_end_time)
+      };
+
+      if (assignees.length > 0) {
+        taskObj.assignees = assignees;
+      }
+
+      return taskObj;
+    }));
+
+    res.json({
+      date: date,
+      tasks: tasksWithAssignees,
+      logs: logs.map(l => {
+        const images = safeParseJSON(l.images) || [];
+        const keywords = normalizeKeywordList(l.keywords);
+        return {
+          id: l.id,
+          title: l.title,
+          content: l.content,
+          category: l.category,
+          quadrant: l.quadrant,
+          is_completed: l.is_completed,
+          created_at: formatDateTimeForBeijing(l.created_at),
+          log_date: l.log_date
+            ? formatDateOnlyForBeijing(l.log_date)
+            : formatDateOnlyForBeijing(l.created_at),
+          weather: l.weather,
+          keywords,
+          images,
+          location_name: l.location_name,
+          location_latitude: l.location_latitude,
+          location_longitude: l.location_longitude
+        };
+      }),
       summary: {
         totalTasks: tasks.length,
         totalLogs: logs.length,
@@ -5005,6 +5198,61 @@ function generateAiAnalysis(mbtiType, testScores, personalityTraits) {
     ],
     career_advice: `基于您的${mbtiType}性格类型，建议考虑从事需要${template.strengths[0]}和${template.strengths[1]}的工作`
   };
+}
+
+// 计算多负责人任务的总进度
+async function calculateMultiAssigneeTaskProgress(taskId) {
+  try {
+    // 获取所有分配给该任务的负责人
+    const [assignees] = await db.execute(
+      `SELECT progress_percentage FROM task_assignees WHERE task_id = ?`,
+      [taskId]
+    );
+
+    if (assignees.length === 0) {
+      return 0; // 如果没有分配负责人，返回0进度
+    }
+
+    // 计算平均进度
+    const totalProgress = assignees.reduce((sum, assignee) => sum + (assignee.progress_percentage || 0), 0);
+    const averageProgress = totalProgress / assignees.length;
+
+    return Math.round(averageProgress);
+  } catch (error) {
+    console.error('计算多负责人任务进度错误:', error);
+    return 0;
+  }
+}
+
+// 更新多负责人任务的总体进度
+async function updateMultiAssigneeTaskProgress(taskId) {
+  try {
+    const overallProgress = await calculateMultiAssigneeTaskProgress(taskId);
+
+    // 更新主任务的总体进度
+    await db.execute(
+      `UPDATE tasks SET progress_percentage = ? WHERE id = ?`,
+      [overallProgress, taskId]
+    );
+
+    // 根据总体进度更新任务状态
+    let newStatus = 'pending';
+    if (overallProgress >= 100) {
+      newStatus = 'completed';
+    } else if (overallProgress > 0) {
+      newStatus = 'in_progress';
+    }
+
+    await db.execute(
+      `UPDATE tasks SET status = ? WHERE id = ?`,
+      [newStatus, taskId]
+    );
+
+    return overallProgress;
+  } catch (error) {
+    console.error('更新多负责人任务进度错误:', error);
+    throw error;
+  }
 }
 
 function generateWorkSuggestions(mbtiType, aiAnalysis) {
@@ -5546,11 +5794,11 @@ app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin
     
     // 获取任务统计
     let taskQuery, queryParams;
-    
+
     if (period === 'all') {
       // 获取所有任务的统计
       taskQuery = `
-        SELECT 
+        SELECT
           COUNT(*) as total_tasks,
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_tasks,
@@ -5563,7 +5811,7 @@ app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin
     } else {
       // 获取指定时间范围内的任务统计
       taskQuery = `
-        SELECT 
+        SELECT
           COUNT(*) as total_tasks,
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_tasks,
@@ -5584,7 +5832,7 @@ app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin
         startDate, endDate
       ];
     }
-    
+
     const [taskStats] = await db.execute(taskQuery, queryParams);
     
     const stats = taskStats[0] || {};
@@ -5601,13 +5849,13 @@ app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin
       cancelledTasks: parseInt(stats.cancelled_tasks) || 0,
       completionRate: parseFloat(completionRate),
     };
-    
+
     // 只有在不是'all'的情况下才添加日期范围
     if (period !== 'all' && startDate && endDate) {
       responseData.startDate = startDate.toISOString();
       responseData.endDate = endDate.toISOString();
     }
-    
+
     res.json(responseData);
   } catch (error) {
     console.error('获取员工统计数据错误:', error);
@@ -5824,128 +6072,6 @@ app.post('/api/admin/tracking', authenticateToken, async (req, res) => {
     res.json({ success: true, logId });
   } catch (error) {
     console.error('数据埋点错误:', error);
-    res.status(500).json({ error: '服务器内部错误' });
-  }
-});
-
-// 协同专注：发送“陪我专注”邀请通知
-app.post('/api/notify/invite-focus', authenticateToken, async (req, res) => {
-  try {
-    const { senderId, senderName, targetUserIds } = req.body || {};
-    const currentUserId = req.user.id;
-
-    if (!Array.isArray(targetUserIds) || targetUserIds.length === 0) {
-      return res.status(400).json({ error: 'targetUserIds 不能为空' });
-    }
-
-    // 防止伪造 senderId，必须与当前登录用户一致（或者未传则使用当前用户）
-    if (senderId && senderId !== currentUserId) {
-      return res.status(403).json({ error: '无权以其它用户身份发送邀请' });
-    }
-
-    const safeSenderName = senderName || req.user.name || req.user.username || '一位小伙伴';
-
-    // 只给真实存在且处于激活状态的用户发送
-    const [targets] = await db.execute(
-      `SELECT id, name, username 
-       FROM users 
-       WHERE id IN (${targetUserIds.map(() => '?').join(',')})
-         AND is_active = TRUE`,
-      targetUserIds
-    );
-
-    if (!targets || targets.length === 0) {
-      return res.status(400).json({ error: '未找到可邀请的目标用户' });
-    }
-
-    const clientIp =
-      (req.headers['x-forwarded-for'] &&
-        String(req.headers['x-forwarded-for']).split(',')[0].trim()) ||
-      req.ip ||
-      null;
-
-    const metaBase = {
-      senderId: currentUserId,
-      senderName: safeSenderName,
-      targetUserIds,
-      clientIp,
-      source: 'pomodoro_focus_collaboration',
-    };
-
-    let successCount = 0;
-    // 为每个目标用户创建通知（使用 createNotification 函数，写入 task_notifications 表）
-    console.log('📱 [协同专注通知]');
-    console.log(`   发送者: ${safeSenderName} (${currentUserId})`);
-    console.log(`   目标用户数: ${targets.length}`);
-    console.log(`   目标用户IDs: ${targets.map(t => t.id).join(', ')}`);
-    
-    const notificationMessage = `${safeSenderName}要开始专注了，你还在摸鱼吗？`;
-    // 兼容旧代码中可能使用的 message 变量，避免 ReferenceError
-    const message = notificationMessage;
-    console.log(`   通知内容: "${notificationMessage}"`);
-    console.log(`   时间: ${new Date().toISOString()}`);
-    
-    for (const target of targets) {
-      const targetName = target.name || target.username || '未知用户';
-      const targetId = target.id;
-      
-      console.log(`   正在为用户 ${targetName} (${targetId}) 创建通知...`);
-
-      // 1）去重：同一发送者 -> 同一接收者 的协同专注邀请，只保留一条“最新”通知
-      //    删除该组合下历史上所有 focus_invite 通知（无论已读/未读），避免叠加多条
-      await db.execute(
-        `DELETE FROM task_notifications
-         WHERE from_user_id = ?
-           AND to_user_id = ?
-         AND notification_type = 'focus_invite'`,
-        [currentUserId, targetId]
-      );
-      
-      // 2）真正创建新的通知（focus_invite 类型，task_id 为 null）
-      const notificationId = await createNotification(
-        null, // task_id 为 null（focus_invite 类型不需要任务关联）
-        currentUserId,
-        targetId,
-        'focus_invite',
-        notificationMessage
-      );
-
-      if (notificationId) {
-        successCount++;
-        console.log(`   ✅ 通知创建成功: ${notificationId} (用户: ${targetName})`);
-      } else {
-        console.error(`   ❌ 通知创建失败 (用户: ${targetName})`);
-      }
-
-      // 3）同时写入系统日志，便于后续在“通知/日志”中展示
-      const logId = require('crypto').randomUUID();
-      await db.execute(
-        `INSERT INTO system_logs (id, user_id, user_name, action, description, category, metadata, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [
-          logId,
-          // 日志归属目标用户，方便其在自己的日志列表中查看
-          targetId,
-          targetName,
-          'invite_focus',
-          notificationMessage,
-          'focus_invite',
-          JSON.stringify({
-            ...metaBase,
-            targetId,
-            targetName,
-            notificationId, // 关联的通知ID
-          }),
-        ]
-      );
-    }
-
-    res.json({
-      success: true,
-      sent: successCount,
-    });
-  } catch (error) {
-    console.error('发送协同专注邀请错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });

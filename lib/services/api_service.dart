@@ -459,33 +459,6 @@ class ApiService {
     return null;
   }
 
-  // 发送协同专注邀请通知
-  static Future<bool> inviteFocus({
-    required String senderId,
-    required String senderName,
-    required List<String> targetUserIds,
-  }) async {
-    try {
-      final response = await httpClient.post(
-        Uri.parse('$baseUrl/notify/invite-focus'),
-        headers: getAuthHeaders(),
-        body: jsonEncode({
-          'senderId': senderId,
-          'senderName': senderName,
-          'targetUserIds': targetUserIds,
-        }),
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['success'] == true;
-      }
-      return false;
-    } catch (e) {
-      print('发送协同专注邀请错误: $e');
-      return false;
-    }
-  }
-
   // 创建向上邀约请求
   static Future<bool> createRequest({
     required String requestType,
@@ -493,6 +466,8 @@ class ApiService {
     required String description,
     String? deadline,
     String? relatedTaskId,
+    String? requestStartTime,
+    String? requestEndTime,
   }) async {
     try {
       final response = await httpClient.post(
@@ -504,6 +479,8 @@ class ApiService {
           'description': description,
           'deadline': deadline,
           'related_task_id': relatedTaskId,
+          'request_start_time': requestStartTime,
+          'request_end_time': requestEndTime,
         }),
       );
       return response.statusCode == 201;
@@ -543,6 +520,8 @@ class ApiService {
     required String description,
     String? deadline,
     String? relatedTaskId,
+    String? requestStartTime,
+    String? requestEndTime,
   }) async {
     try {
       final response = await httpClient.put(
@@ -554,6 +533,8 @@ class ApiService {
           'description': description,
           'deadline': deadline,
           'related_task_id': relatedTaskId,
+          'request_start_time': requestStartTime,
+          'request_end_time': requestEndTime,
         }),
       );
       return response.statusCode == 200;

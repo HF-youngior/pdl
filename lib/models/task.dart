@@ -28,6 +28,8 @@ class Task {
   final String? requestType; // 请求类型
   final String? requestResponse; // 处理结果：'approve' 或 'reject'
   final String? specialNotes; // 备注信息
+  final DateTime? requestStartTime; // 邀约开始时间
+  final DateTime? requestEndTime; // 邀约结束时间
 
   Task({
     required this.id,
@@ -54,6 +56,8 @@ class Task {
     this.requestType,
     this.requestResponse,
     this.specialNotes,
+    this.requestStartTime,
+    this.requestEndTime,
     this.attachments = const [],
   });
 
@@ -91,6 +95,8 @@ class Task {
       requestType: json['request_type'] ?? json['requestType'],
       requestResponse: json['request_response'] ?? json['requestResponse'],
       specialNotes: json['special_notes'] ?? json['specialNotes'],
+      requestStartTime: json['request_start_time'] != null ? DateTime.parse(json['request_start_time']) : null,
+      requestEndTime: json['request_end_time'] != null ? DateTime.parse(json['request_end_time']) : null,
       attachments: _parseStringList(json['attachments']),
     );
   }
@@ -123,6 +129,8 @@ class Task {
       'parent_task_id': parentTaskId, // 支持创建子任务
       'progress_percentage': progressPercentage, // 添加进度字段
       'attachments': attachments,
+      'request_start_time': requestStartTime != null ? formatDateTime(requestStartTime!) : null,
+      'request_end_time': requestEndTime != null ? formatDateTime(requestEndTime!) : null,
     };
   }
 
@@ -157,12 +165,12 @@ class Task {
       case 'completed':
         return Colors.green;
       case 'cancelled':
-        return Colors.red;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   // 获取状态文本
   String getStatusText() {
     switch (status) {
@@ -173,12 +181,12 @@ class Task {
       case 'completed':
         return '已完成';
       case 'cancelled':
-        return '已取消';
+        return '已完成';
       default:
         return status;
     }
   }
-
+  
   // 检查任务是否过期
   bool get isOverdue {
     if (deadline == null) return false;
