@@ -609,6 +609,7 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
               builder: (context) => TaskDetailScreen(
                 task: task,
                 currentUser: widget.user,
+                showTaskTree: false,
               ),
             ),
           ).then((_) {
@@ -844,6 +845,7 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
                               builder: (context) => TaskDetailScreen(
                                 task: task,
                                 currentUser: widget.user,
+                                showTaskTree: false,
                               ),
                             ),
                           ).then((_) {
@@ -864,6 +866,7 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
                               builder: (context) => TaskDetailScreen(
                                 task: task,
                                 currentUser: widget.user,
+                                showTaskTree: false,
                               ),
                             ),
                           ).then((_) {

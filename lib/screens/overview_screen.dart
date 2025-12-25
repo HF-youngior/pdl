@@ -17,6 +17,7 @@ class OverviewScreen extends StatefulWidget {
 class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _taskSearchController = TextEditingController();
 
   final Map<String, int> _rolePriority = {
     'admin': 0,
@@ -51,6 +52,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
 
   // 公司任务数据
   List<Task> _companyTasks = [];
+  List<Task> _filteredCompanyTasks = [];
   DateTime? _selectedTaskDate;
   bool _loadingTasks = false;
 
@@ -63,6 +65,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _searchController.addListener(_onSearchChanged);
+    _taskSearchController.addListener(_onTaskSearchChanged);
     _loadInitialUsers();
     _loadCompanyTasks();
     ApiService.trackAction('admin_overview_access', category: 'admin_action');
@@ -72,6 +75,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
+    _taskSearchController.dispose();
     super.dispose();
   }
 
@@ -118,6 +122,19 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
       return;
     }
     _searchUsers(keyword);
+  }
+
+  void _onTaskSearchChanged() {
+    final query = _taskSearchController.text.toLowerCase();
+    setState(() {
+      _filteredCompanyTasks = _companyTasks.where((task) {
+        return task.title.toLowerCase().contains(query) ||
+               (task.description?.toLowerCase().contains(query) ?? false) ||
+               task.assigneeName.toLowerCase().contains(query) ||
+               task.department.toLowerCase().contains(query) ||
+               task.getStatusText().toLowerCase().contains(query);
+      }).toList();
+    });
   }
 
   Future<void> _searchUsers(String keyword) async {
@@ -320,6 +337,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
       final tasks = await ApiService.getAllCompanyTasks(date: dateStr);
       setState(() {
         _companyTasks = tasks;
+        _filteredCompanyTasks = tasks;
         _loadingTasks = false;
       });
       
@@ -348,6 +366,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
     
     try {
       final tree = await ApiService.getTaskTree(taskId);
+      print('任务树数据: $tree'); // 添加调试信息
       setState(() {
         _taskTree = tree;
       });
@@ -357,6 +376,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
         category: 'admin_action',
         metadata: {'task_id': taskId});
     } catch (e) {
+      print('加载任务树错误: $e'); // 添加调试信息
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('加载任务树失败: $e')),
@@ -552,6 +572,27 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
       children: [
         Padding(
           padding: const EdgeInsets.all(16.0),
+          child: TextField(
+            controller: _taskSearchController,
+            decoration: InputDecoration(
+              hintText: '搜索任务（标题、描述、负责人、部门、状态）',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _taskSearchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _taskSearchController.clear();
+                      },
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Row(
             children: [
               Expanded(
@@ -594,12 +635,18 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
         Expanded(
           child: _loadingTasks
               ? const Center(child: CircularProgressIndicator())
-              : _companyTasks.isEmpty
-                  ? const Center(child: Text('暂无任务'))
+              : _filteredCompanyTasks.isEmpty
+                  ? Center(
+                      child: Text(
+                        _taskSearchController.text.isNotEmpty
+                            ? '没有找到匹配的任务'
+                            : '暂无任务',
+                      ),
+                    )
                   : ListView.builder(
-                      itemCount: _companyTasks.length,
+                      itemCount: _filteredCompanyTasks.length,
                       itemBuilder: (context, index) {
-                        final task = _companyTasks[index];
+                        final task = _filteredCompanyTasks[index];
                         return Card(
                           margin: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -642,6 +689,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
   }
 
   Widget _buildTaskTreeNode(Map<String, dynamic> node) {
+    print('构建任务树节点: $node'); // 添加调试信息
     final hasSubtasks =
         node['subtasks'] != null && (node['subtasks'] as List).isNotEmpty;
 
@@ -1138,13 +1186,9 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
       _loadingTaskTree = true;
     });
 
-    await _loadTaskTree(task.id, silent: true);
+    await _loadTaskTree(task.id);
 
     if (!mounted) return;
-
-    setState(() {
-      _loadingTaskTree = false;
-    });
 
     await showModalBottomSheet(
       context: context,
@@ -1201,10 +1245,18 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
                 ),
               ),
               const SizedBox(height: 16),
+              const Text(
+                '任务树结构',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
               if (_loadingTaskTree)
                 const Center(child: CircularProgressIndicator())
               else if (_taskTree == null)
-                const Text('暂无任务树数据')
+                const Text('无')
               else
                 _buildTaskTreeNode(_taskTree!),
             ],
