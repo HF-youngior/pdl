@@ -26,7 +26,7 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
   bool _isRefreshing = false;
   bool _showNailong = false; // 是否显示奶龙界面
 
-  String? get _equippedRewardId => AppSettings.instance.equippedLoopyId;
+  String? get _equippedRewardId => AppSettings.instance.getEquippedLoopyId(widget.user.id);
 
   @override
   void initState() {
@@ -41,7 +41,7 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
     if (equippedId != null) {
       final settings = AppSettings.instance;
       if (!_redeemedRewardIds.contains(equippedId)) {
-        final expiry = settings.equippedLoopyExpiry ?? DateTime.now().add(const Duration(days: 7));
+        final expiry = settings.getEquippedLoopyExpiry(widget.user.id) ?? DateTime.now().add(const Duration(days: 7));
         _rewardExpiry[equippedId] = expiry;
         _redeemedRewardIds.add(equippedId);
         settings.markRewardRedeemed(equippedId, expiry);
@@ -401,7 +401,6 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final r = records[index];
-                          final date = r['date']?.toString() ?? '';
                           final rawAmount = r['amount'];
                           int amount;
                           if (rawAmount is int) {
@@ -416,6 +415,47 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
                           final desc = r['description']?.toString() ?? '';
                           final sign = isEarn ? '+' : '-';
                           final color = isEarn ? Colors.green[600] : Colors.red[600];
+                          
+                          // 对于签到记录，使用checkin_date（date字段）和created_at都减16小时，与日历显示保持一致
+                          String displayDate;
+                          if (desc == '每日签到') {
+                            final checkinDate = r['date']?.toString() ?? '';
+                            if (checkinDate.isNotEmpty) {
+                              if (r['created_at'] != null) {
+                                try {
+                                  // 解析created_at，减16小时后再加24小时（即加8小时）显示日期和时间
+                                  final createdAtStr = r['created_at'].toString();
+                                  final dateTime = DateTime.parse(createdAtStr);
+                                  final adjustedDateTime = dateTime.subtract(const Duration(hours: 16)).add(const Duration(hours: 24));
+                                  // 格式化为：YYYY-MM-DD HH:mm
+                                  displayDate = DateFormat('yyyy-MM-dd HH:mm').format(adjustedDateTime);
+                                } catch (e) {
+                                  // 如果解析失败，尝试只调整日期
+                                  try {
+                                    final date = DateTime.parse(checkinDate);
+                                    final adjustedDate = date.subtract(const Duration(hours: 16));
+                                    displayDate = DateFormat('yyyy-MM-dd').format(adjustedDate);
+                                  } catch (e2) {
+                                    displayDate = checkinDate;
+                                  }
+                                }
+                              } else {
+                                // 如果没有created_at，只调整日期
+                                try {
+                                  final date = DateTime.parse(checkinDate);
+                                  final adjustedDate = date.subtract(const Duration(hours: 16));
+                                  displayDate = DateFormat('yyyy-MM-dd').format(adjustedDate);
+                                } catch (e) {
+                                  displayDate = checkinDate;
+                                }
+                              }
+                            } else {
+                              displayDate = '';
+                            }
+                          } else {
+                            // 非签到记录，只显示日期
+                            displayDate = r['date']?.toString() ?? '';
+                          }
 
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
@@ -424,7 +464,7 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
                               style: const TextStyle(fontSize: 14),
                             ),
                             subtitle: Text(
-                              date,
+                              displayDate,
                               style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                             ),
                             trailing: Text(
@@ -451,12 +491,13 @@ class _PointsMallScreenState extends State<PointsMallScreen> {
 
   void _handleToggleEquip(_LoopyReward reward) {
     final settings = AppSettings.instance;
-    final currentId = settings.equippedLoopyId;
+    final currentId = settings.getEquippedLoopyId(widget.user.id);
     if (currentId == reward.id) {
-      settings.clearLoopy();
+      settings.clearLoopyForUser(widget.user.id);
     } else {
       final expiry = _rewardExpiry[reward.id] ?? DateTime.now().add(Duration(days: reward.validDays));
-      settings.equipLoopy(
+      settings.equipLoopyForUser(
+        userId: widget.user.id,
         id: reward.id,
         assetPath: reward.assetPath,
         expiry: expiry,

@@ -20,6 +20,7 @@ class ViewScreen extends StatefulWidget {
 class _ViewScreenState extends State<ViewScreen> {
   DateTime _currentDate = DateTime.now();
   VoidCallback? _refreshCalendar;
+  VoidCallback? _openDateSelector;
 
   @override
   void initState() {
@@ -111,6 +112,13 @@ class _ViewScreenState extends State<ViewScreen> {
         elevation: 0,
         actions: [
           IconButton(
+            tooltip: '跳转到指定日期',
+            onPressed: () {
+              _openDateSelector?.call();
+            },
+            icon: const Icon(Icons.calendar_today),
+          ),
+          IconButton(
             tooltip: '刷新',
             onPressed: () {
               _refreshCalendar?.call();
@@ -124,6 +132,9 @@ class _ViewScreenState extends State<ViewScreen> {
         currentDate: _currentDate,
         onProvideRefresh: (cb) {
           _refreshCalendar = cb;
+        },
+        onProvideDateSelector: (cb) {
+          _openDateSelector = cb;
         },
         onDateSelected: (date) {
           setState(() {

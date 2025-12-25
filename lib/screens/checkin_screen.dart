@@ -19,8 +19,9 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
   Map<String, bool> _checkinRecords = {};
   int _points = 0;
   int _consecutiveDays = 0;
-  bool _isLoading = true;
+  bool _isLoading = false; // 初始改为false，先显示页面
   bool _isCheckingIn = false;
+  String _serverToday = ''; // 服务端今天的日期字符串
   late AnimationController _animationController;
   late Animation<double> _animation;
 
@@ -34,7 +35,7 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
       vsync: this,
     );
     _animation = CurvedAnimation(parent: _animationController, curve: Curves.easeInOut);
-    _loadData();
+    _loadData(); // 异步加载，不阻塞页面显示
   }
 
   @override
@@ -43,57 +44,85 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
     super.dispose();
   }
 
-  Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+  // 将日期字符串减16小时后再加24小时（即加8小时）返回新的日期字符串（用于统一日历和记录显示）
+  String _subtract16Hours(String dateStr) {
     try {
+      final date = DateTime.parse(dateStr);
+      final adjustedDate = date.subtract(const Duration(hours: 16)).add(const Duration(hours: 24));
+      return DateFormat('yyyy-MM-dd').format(adjustedDate);
+    } catch (e) {
+      return dateStr; // 如果解析失败，返回原日期
+    }
+  }
+
+  Future<void> _loadData() async {
+    // 不设置isLoading，让页面先显示，后台更新数据
+    try {
+      // 先获取服务端日期，确保日期判断一致
+      final serverTodayData = await CheckinService.getServerToday();
+      final serverTodayStr = serverTodayData['today'] as String;
+      
       // 使用Future.wait并行加载数据，提高性能
       final results = await Future.wait([
-        CheckinService.getUserPoints(widget.user.id).catchError((e) {
-          print('获取积分失败: $e');
-          return 0; // 失败时返回0
-        }),
+        CheckinService.getUserPoints(widget.user.id),
         CheckinService.getCheckinRecords(
           widget.user.id,
           _currentMonth.year,
           _currentMonth.month,
-        ).catchError((e) {
-          print('获取签到记录失败: $e');
-          return <String, bool>{}; // 失败时返回空记录
-        }),
-        CheckinService.getConsecutiveDays(widget.user.id).catchError((e) {
-          print('获取连续签到天数失败: $e');
-          return 0; // 失败时返回0
-        }),
+        ),
+        CheckinService.getConsecutiveDays(widget.user.id),
       ]);
 
-      setState(() {
-        _points = results[0] as int;
-        _checkinRecords = results[1] as Map<String, bool>;
-        _consecutiveDays = results[2] as int;
-        _isLoading = false;
-      });
+      if (mounted) {
+        // 将签到记录的日期都减16小时再加24小时（即加8小时），确保与显示一致
+        final originalRecords = results[1] as Map<String, bool>;
+        final adjustedRecords = <String, bool>{};
+        originalRecords.forEach((dateStr, value) {
+          final adjustedDate = _subtract16Hours(dateStr);
+          adjustedRecords[adjustedDate] = value;
+        });
+        
+        setState(() {
+          _serverToday = serverTodayStr;
+          _points = results[0] as int;
+          _checkinRecords = adjustedRecords;
+          _consecutiveDays = results[2] as int;
+        });
+      }
     } catch (e) {
       print('加载数据异常: $e');
-      setState(() {
-        _isLoading = false;
-        // 即使出错，也设置默认值，避免页面显示异常
-        _points = 0;
-        _checkinRecords = {};
-        _consecutiveDays = 0;
-      });
-      // 不显示错误提示，因为已经设置了默认值
-      // 如果确实有问题，用户会在签到操作时看到错误
+      // 静默失败，使用默认值，不影响用户体验
+      if (mounted && _serverToday.isEmpty) {
+        // 如果服务端日期获取失败，使用本地日期作为fallback
+        final now = DateTime.now();
+        final todayStr = DateFormat('yyyy-MM-dd').format(now);
+        setState(() {
+          _serverToday = todayStr;
+        });
+      }
     }
   }
 
   Future<void> _handleCheckin() async {
-    final today = DateTime.now();
-    final todayStr = DateFormat('yyyy-MM-dd').format(today);
+    // 确保服务端日期已加载
+    String todayStr = _serverToday;
+    if (todayStr.isEmpty) {
+      try {
+        final serverTodayData = await CheckinService.getServerToday();
+        todayStr = serverTodayData['today'] as String;
+        if (mounted) {
+          setState(() {
+            _serverToday = todayStr;
+          });
+        }
+      } catch (e) {
+        // 如果获取服务端日期失败，使用本地日期作为fallback
+        final now = DateTime.now();
+        todayStr = DateFormat('yyyy-MM-dd').format(now);
+      }
+    }
     
-    // 检查今天是否已签到
+    // 检查今天是否已签到（使用服务端日期）
     if (_checkinRecords[todayStr] == true) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -109,44 +138,51 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
 
     try {
       final result = await CheckinService.checkin(widget.user.id);
-      final points = result['points'] ?? _points + 5;
+      final pointsEarned = (result['pointsEarned'] as num?)?.toInt() ?? 5;
+      final points = (result['points'] as num?)?.toInt() ?? (_points + pointsEarned);
+      final consecutiveDays = (result['consecutiveDays'] as num?)?.toInt() ?? (_consecutiveDays + 1);
+      final checkinDate = result['checkinDate'] as String? ?? todayStr;
       
-      // 更新本地状态
-      setState(() {
-        _checkinRecords[todayStr] = true;
-        _points = points;
-        _consecutiveDays = result['consecutiveDays'] ?? _consecutiveDays + 1;
-      });
-
-      _animationController.forward().then((_) {
-        _animationController.reverse();
-      });
-
+      // 更新本地状态（使用服务端返回的日期，减16小时再加24小时（即加8小时）后存储）
       if (mounted) {
+        final adjustedCheckinDate = _subtract16Hours(checkinDate);
+        setState(() {
+          _checkinRecords[adjustedCheckinDate] = true;
+          _points = points;
+          _consecutiveDays = consecutiveDays;
+        });
+
+        _animationController.forward().then((_) {
+          _animationController.reverse();
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('签到成功！获得 5 积分 🎉'),
+            content: Text('签到成功！获得 $pointsEarned 积分 🎉'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
         );
       }
-
-      // 重新加载数据以确保同步
-      await _loadData();
+      
+      // 后台静默刷新数据以确保同步，但不阻塞UI
+      _loadData();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('签到失败: $e'),
+            content: Text('签到失败: ${e.toString().replaceAll('Exception: ', '')}'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
           ),
         );
       }
     } finally {
-      setState(() {
-        _isCheckingIn = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isCheckingIn = false;
+        });
+      }
     }
   }
 
@@ -165,6 +201,7 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
     setState(() {
       _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1);
     });
+    // 异步加载，不阻塞UI
     _loadData();
   }
 
@@ -172,27 +209,53 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
     setState(() {
       _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1);
     });
+    // 异步加载，不阻塞UI
     _loadData();
   }
 
   bool _isToday(DateTime date) {
-    final today = DateTime.now();
-    return date.year == today.year &&
-        date.month == today.month &&
-        date.day == today.day;
+    // 使用服务端日期字符串进行比较，确保时区一致
+    if (_serverToday.isEmpty) {
+      // 如果服务端日期未加载，使用本地日期作为fallback
+      final today = DateTime.now();
+      return date.year == today.year &&
+          date.month == today.month &&
+          date.day == today.day;
+    }
+    final dateStr = DateFormat('yyyy-MM-dd').format(date);
+    return dateStr == _serverToday;
   }
 
   bool _isCheckedIn(DateTime date) {
+    // 使用统一的日期格式，确保与服务端返回的日期格式一致
     final dateStr = DateFormat('yyyy-MM-dd').format(date);
     return _checkinRecords[dateStr] == true;
   }
 
   @override
   Widget build(BuildContext context) {
-    final today = DateTime.now();
-    final todayStr = DateFormat('yyyy-MM-dd').format(today);
-    final isCurrentMonth = _currentMonth.year == today.year && _currentMonth.month == today.month;
-    final canCheckin = isCurrentMonth && !(_checkinRecords[todayStr] == true);
+    // 使用服务端日期判断今天
+    final todayStr = _serverToday.isNotEmpty 
+        ? _serverToday 
+        : DateFormat('yyyy-MM-dd').format(DateTime.now());
+    
+    // 解析服务端日期来确定当前月份
+    DateTime todayDate;
+    if (_serverToday.isNotEmpty) {
+      final parts = _serverToday.split('-');
+      todayDate = DateTime(
+        int.parse(parts[0]),
+        int.parse(parts[1]),
+        int.parse(parts[2]),
+      );
+    } else {
+      todayDate = DateTime.now();
+    }
+    
+    final isCurrentMonth = _currentMonth.year == todayDate.year && 
+        _currentMonth.month == todayDate.month;
+    final isCheckedInToday = _checkinRecords[todayStr] == true;
+    final canCheckin = isCurrentMonth && !isCheckedInToday && !_isCheckingIn;
 
     return Scaffold(
       appBar: AppBar(
@@ -204,7 +267,18 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: '刷新',
-            onPressed: _isLoading ? null : _loadData,
+            onPressed: _isCheckingIn ? null : () {
+              setState(() {
+                _isLoading = true;
+              });
+              _loadData().then((_) {
+                if (mounted) {
+                  setState(() {
+                    _isLoading = false;
+                  });
+                }
+              });
+            },
           ),
         ],
       ),
@@ -227,7 +301,7 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _buildCheckinButton(canCheckin, isCurrentMonth),
+                      _buildCheckinButton(canCheckin, isCurrentMonth, isCheckedInToday),
                       const SizedBox(height: 24),
                       _buildPointsCard(),
                       const SizedBox(height: 24),
@@ -350,10 +424,13 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildCheckinButton(bool canCheckin, bool isCurrentMonth) {
-    final gradient = canCheckin
-        ? [const Color(0xFFFFAA85), const Color(0xFFFD4C77)]
-        : [Colors.grey[400]!, Colors.grey[500]!];
+  Widget _buildCheckinButton(bool canCheckin, bool isCurrentMonth, bool isCheckedInToday) {
+    // 如果当天已签到，使用绿色渐变；如果可以签到，使用红色渐变；否则使用灰色
+    final gradient = isCheckedInToday
+        ? [Colors.green[400]!, Colors.green[600]!]
+        : canCheckin
+            ? [const Color(0xFFFFAA85), const Color(0xFFFD4C77)]
+            : [Colors.grey[400]!, Colors.grey[500]!];
 
     return Column(
       children: [
@@ -398,7 +475,8 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(20),
-                onTap: canCheckin && !_isCheckingIn ? _handleCheckin : null,
+                // 如果已签到或正在签到中，禁用按钮
+                onTap: canCheckin ? _handleCheckin : null,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
                   child: Column(
@@ -430,13 +508,21 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(
-                                    canCheckin ? Icons.check_circle_rounded : Icons.lock_clock_rounded,
+                                    isCheckedInToday
+                                        ? Icons.check_circle_rounded
+                                        : canCheckin
+                                            ? Icons.check_circle_outline_rounded
+                                            : Icons.lock_clock_rounded,
                                     color: Colors.white,
                                     size: 36,
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    canCheckin ? '签到' : '已完成',
+                                    isCheckedInToday
+                                        ? '已签到'
+                                        : canCheckin
+                                            ? '签到'
+                                            : '已完成',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 17,
@@ -449,11 +535,13 @@ class _CheckinScreenState extends State<CheckinScreen> with SingleTickerProvider
                       ),
                       const SizedBox(height: 12),
                       Text(
-                      canCheckin
-                          ? '今日还未签到，点击领取奖励'
-                          : (isCurrentMonth
-                              ? '今天的签到已完成，明天继续哦'
-                              : '请切换到本月进行签到'),
+                        isCheckedInToday
+                            ? '今天已经签到过了，明天继续哦'
+                            : canCheckin
+                                ? '今日还未签到，点击领取奖励'
+                                : (isCurrentMonth
+                                    ? '今天的签到已完成，明天继续哦'
+                                    : '请切换到本月进行签到'),
                         style: TextStyle(
                           color: Colors.grey[700],
                           fontSize: 13,

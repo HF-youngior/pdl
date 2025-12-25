@@ -9,7 +9,6 @@ import '../services/task_service.dart';
 import '../screens/notification_center_screen.dart';
 import '../screens/task_detail_screen.dart';
 import '../models/user.dart';
-import '../models/task.dart';
 
 class JPushService {
   static final JPushFlutterInterface jpush = JPush.newJPush();
@@ -40,7 +39,6 @@ class JPushService {
           print("Flutter 点击了推送: $message");
           try {
             final extras = _parseExtras(message);
-            final type = extras['type'] ?? '';
             final taskId = extras['taskId'] ?? '';
             final user = currentUser;
             if (user == null) return;
