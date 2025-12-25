@@ -1,3 +1,5 @@
+const fs = require('fs');
+const https = require('https');
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
@@ -6,7 +8,6 @@ const jwt = require('jsonwebtoken');
 const path = require('path');
 const axios = require('axios');
 const multer = require('multer');
-const fs = require('fs');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger.json');
 require('dotenv').config();
@@ -15,6 +16,11 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+
+// ========= 密码工具 =========
+const BCRYPT_ROUNDS = 10;
+const isBcryptHash = (value) => typeof value === 'string' && value.startsWith('$2');
+const hashPassword = async (plain) => bcrypt.hash(plain.trim(), BCRYPT_ROUNDS);
 
 // DeepSeek API 配置
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
@@ -1242,8 +1248,20 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const user = rows[0];
-    // 直接比较明文密码
-    const isValidPassword = (password === user.password);
+    let isValidPassword = false;
+
+    // 支持老的明文 -> 新的 bcrypt：若存储为明文且匹配，登录成功后回写为哈希
+    if (isBcryptHash(user.password)) {
+      isValidPassword = await bcrypt.compare(password, user.password);
+    } else {
+      isValidPassword = password === user.password;
+      if (isValidPassword) {
+        // 将旧明文密码升级为 bcrypt 哈希
+        const hashed = await hashPassword(password);
+        await db.execute('UPDATE users SET password = ? WHERE id = ?', [hashed, user.id]);
+        user.password = hashed;
+      }
+    }
 
     if (!isValidPassword) {
       return res.status(401).json({ error: '用户名或密码错误' });
@@ -1421,7 +1439,7 @@ app.post('/api/users', authenticateToken, checkPermission(['admin', 'founder']),
     await db.execute(
       `INSERT INTO users (id, username, password, name, position, department_id, role, parent_id, is_active, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, NOW())`,
-      [userId, username.trim(), password, name.trim(), position.trim(), department_id, role, parentToUse]
+      [userId, username.trim(), await hashPassword(password), name.trim(), position.trim(), department_id, role, parentToUse]
     );
 
     const [rows] = await db.execute(
@@ -1455,7 +1473,7 @@ app.put('/api/users/:id', authenticateToken, checkPermission(['admin', 'founder'
 
     if (password && password.trim()) {
       updates.push('password = ?');
-      values.push(password.trim());
+      values.push(await hashPassword(password));
     }
     if (name && name.trim()) {
       updates.push('name = ?');
@@ -1560,12 +1578,17 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
     const user = users[0];
 
     // 验证旧密码
-    if (user.password !== oldPassword.trim()) {
-      return res.status(401).json({ error: '旧密码不正确' });
+    let oldOk = false;
+    if (isBcryptHash(user.password)) {
+      oldOk = await bcrypt.compare(oldPassword.trim(), user.password);
+    } else {
+      oldOk = user.password === oldPassword.trim();
     }
+    if (!oldOk) return res.status(401).json({ error: '旧密码不正确' });
 
     // 更新密码
-    await db.execute('UPDATE users SET password = ? WHERE id = ?', [newPassword.trim(), req.user.id]);
+    const newHashed = await hashPassword(newPassword.trim());
+    await db.execute('UPDATE users SET password = ? WHERE id = ?', [newHashed, req.user.id]);
 
     res.json({ message: '密码修改成功' });
   } catch (error) {
@@ -5753,14 +5776,54 @@ app.post('/api/notify/invite-focus', authenticateToken, async (req, res) => {
 // 启动服务器
 async function startServer() {
   await initDatabase();
-  
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`企业管理系统服务器运行在端口 ${PORT}`);
-    console.log(`API地址: http://localhost:${PORT}/api`);
-    console.log(`Swagger UI: http://localhost:${PORT}/swagger`);
-    console.log(`Web管理端: http://localhost:${PORT}/web_admin`);
+  // 启动时自动迁移旧的明文密码为 bcrypt 哈希（只迁移非 bcrypt 格式）
+  try {
+    const [plainRows] = await db.execute(
+      `SELECT id, password FROM users WHERE password NOT LIKE '$2%'`
+    );
+    if (plainRows.length > 0) {
+      console.log(`🔒 检测到 ${plainRows.length} 条明文密码，正在迁移为 bcrypt...`);
+      for (const row of plainRows) {
+        if (row.password && typeof row.password === 'string') {
+          const hashed = await hashPassword(row.password);
+          await db.execute('UPDATE users SET password = ? WHERE id = ?', [hashed, row.id]);
+        }
+      }
+      console.log('🔒 明文密码迁移完成。');
+    }
+  } catch (e) {
+    console.error('明文密码迁移失败:', e);
+  }
+
+  // 将管理员账号密码重置为 admin123（仅用户名为 admin 或 id 为 admin-001）
+  try {
+    const adminHash = await hashPassword('admin123');
+    const [result] = await db.execute(
+      `UPDATE users SET password = ? WHERE username = 'admin' OR id = 'admin-001'`,
+      [adminHash]
+    );
+    if (result?.affectedRows > 0) {
+      console.log(`🔐 管理员密码已重置为 admin123（用户名=admin 或 id=admin-001），rows=${result.affectedRows}`);
+    }
+  } catch (e) {
+    console.error('重置管理员密码失败:', e);
+  }
+
+  // 读取证书文件（请确保 private.key 和 certificate.crt 位于启动目录）
+  const privateKey = fs.readFileSync('private.key', 'utf8');
+  const certificate = fs.readFileSync('certificate.crt', 'utf8');
+  const credentials = { key: privateKey, cert: certificate };
+
+  // 创建 HTTPS 服务器
+  const httpsServer = https.createServer(credentials, app);
+
+  httpsServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`HTTPS Server running on port ${PORT}`);
+    console.log(`API地址: https://localhost:${PORT}/api`);
+    console.log(`Swagger UI: https://localhost:${PORT}/swagger`);
+    console.log(`Web管理端: https://localhost:${PORT}/web_admin`);
     console.log(`\n📱 手机访问地址（同一WiFi网络）:`);
-    console.log(`   请使用电脑的IP地址: http://[电脑IP]:${PORT}/api`);
+    console.log(`   请使用电脑的IP地址: https://[电脑IP]:${PORT}/api`);
     console.log(`\n📱 测试账户:`);
     console.log(`   管理员: admin / admin123`);
     console.log(`   创始人: founder1 / founder123, founder2 / founder123`);
@@ -5770,9 +5833,9 @@ async function startServer() {
     console.log(`   团队长: hr_team1 / hrteam123, finance_team1 / financeteam123, marketing_team1 / marketingteam123`);
     console.log(`   员工: hr_emp1 / hremp123, finance_emp1 / financeemp123, marketing_emp1 / marketingemp123`);
     console.log(`\n🌐 访问地址:`);
-    console.log(`   API接口: http://localhost:${PORT}/api`);
-    console.log(`   Swagger UI: http://localhost:${PORT}/swagger`);
-    console.log(`   Web管理: http://localhost:${PORT}/web_admin`);
+    console.log(`   API接口: https://localhost:${PORT}/api`);
+    console.log(`   Swagger UI: https://localhost:${PORT}/swagger`);
+    console.log(`   Web管理: https://localhost:${PORT}/web_admin`);
   });
 }
 
