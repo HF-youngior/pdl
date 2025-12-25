@@ -249,16 +249,26 @@ class _CalendarWidgetState extends State<CalendarWidget> {
               ),
               const Divider(height: 1),
               Expanded(
-                child: CupertinoTheme(
-                  data: CupertinoThemeData(
-                    primaryColor: themeColor,
-                  ),
-                  child: CupertinoDatePicker(
-                    mode: CupertinoDatePickerMode.date,
-                    minimumDate: min,
-                    maximumDate: max,
-                    initialDateTime: _currentDate,
-                    onDateTimeChanged: (date) => temp = date,
+                child: Container(
+                  color: Colors.white,
+                  child: CupertinoTheme(
+                    data: CupertinoThemeData(
+                      primaryColor: themeColor,
+                      textTheme: CupertinoTextThemeData(
+                        dateTimePickerTextStyle: TextStyle(
+                          color: Colors.black87,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    child: CupertinoDatePicker(
+                      mode: CupertinoDatePickerMode.date,
+                      minimumDate: min,
+                      maximumDate: max,
+                      initialDateTime: _currentDate,
+                      onDateTimeChanged: (date) => temp = date,
+                    ),
                   ),
                 ),
               ),
