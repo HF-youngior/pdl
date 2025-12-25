@@ -52,6 +52,7 @@ class CalendarService {
     String? description,
     String? priority,
     String? status,
+    List<String>? attachments,
   }) async {
     try {
       final body = <String, dynamic>{};
@@ -59,6 +60,7 @@ class CalendarService {
       if (description != null) body['description'] = description;
       if (priority != null) body['priority'] = priority;
       if (status != null) body['status'] = status;
+      if (attachments != null) body['attachments'] = attachments;
 
       final response = await http.put(
         Uri.parse('$baseUrl/tasks/$taskId'),

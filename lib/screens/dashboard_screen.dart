@@ -749,6 +749,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
   }
+  // 刷新所有数据
+  Future<void> _refreshData() async {
+    await Future.wait([
+      _loadPreviewData(),
+      _loadBadgeCount(),
+      _loadUnreadNotificationCount(),
+    ]);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('刷新成功'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -762,6 +779,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             tooltip: '改变主题颜色',
             icon: const Icon(Icons.checkroom_outlined),
             onPressed: _openThemeColorPicker,
+          ),
+          IconButton(
+            tooltip: '刷新',
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshData,
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8),

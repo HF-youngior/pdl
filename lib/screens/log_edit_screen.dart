@@ -8,6 +8,7 @@ import '../models/task.dart';
 import '../models/log.dart';
 import '../services/api_service.dart';
 import '../services/geocoding_service.dart';
+import '../utils/coordinate_converter.dart';
 
 class LogEditScreen extends StatefulWidget {
   final User user;
@@ -260,18 +261,26 @@ class _LogEditScreenState extends State<LogEditScreen> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // 先设置坐标
+      // 将WGS84坐标转换为GCJ-02坐标（高德地图使用的坐标系）
+      final converted = CoordinateConverter.wgs84ToGcj02(
+        position.latitude,
+        position.longitude,
+      );
+      final convertedLat = converted['latitude']!;
+      final convertedLon = converted['longitude']!;
+
+      // 先设置转换后的坐标
       setState(() {
-        _latitude = position.latitude;
-        _longitude = position.longitude;
-        _locationName = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+        _latitude = convertedLat;
+        _longitude = convertedLon;
+        _locationName = '${convertedLat.toStringAsFixed(6)}, ${convertedLon.toStringAsFixed(6)}';
       });
 
-      // 尝试将坐标转换为地址
+      // 尝试将坐标转换为地址（使用转换后的GCJ-02坐标）
       try {
         final address = await GeocodingService.reverseGeocodeCached(
-          position.latitude,
-          position.longitude,
+          convertedLat,
+          convertedLon,
         );
         if (address != null && mounted) {
           setState(() {
