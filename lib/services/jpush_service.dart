@@ -11,7 +11,6 @@ import '../services/task_service.dart';
 import '../screens/notification_center_screen.dart';
 import '../screens/task_detail_screen.dart';
 import '../models/user.dart';
-import '../models/task.dart';
 
 class JPushService {
   static final JPushFlutterInterface jpush = JPush.newJPush();

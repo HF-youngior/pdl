@@ -244,10 +244,16 @@ function shiftToBeijing(date) {
 }
 
 // 将数据库中的时间统一转换为北京时间 ISO 字符串
+// mysql2配置了timezone: '+08:00'，会将数据库时间（假设为+08:00时区）转换为Date对象
+// Date对象内部存储的是UTC时间戳，我们需要加8小时偏移来得到正确的北京时间
 function formatDateTimeForBeijing(dateTime) {
   const date = normalizeDateInput(dateTime);
   if (!date) return null;
-  const beijingDate = shiftToBeijing(date);
+  // Date对象内部存储UTC时间戳，加8小时偏移得到北京时间
+  const utcMillis = date.getTime();
+  const beijingMillis = utcMillis + (8 * 60 * 60 * 1000);
+  const beijingDate = new Date(beijingMillis);
+  // 使用UTC方法获取，因为Date对象内部是UTC时间戳
   const year = beijingDate.getUTCFullYear();
   const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
   const day = String(beijingDate.getUTCDate()).padStart(2, '0');
@@ -274,7 +280,10 @@ function formatDateTimeForMySQL(dateTime) {
 function formatDateOnlyForBeijing(dateTime) {
   const date = normalizeDateInput(dateTime);
   if (!date) return null;
-  const beijingDate = shiftToBeijing(date);
+  // Date对象内部存储UTC时间戳，加8小时偏移得到北京时间，然后获取日期部分
+  const utcMillis = date.getTime();
+  const beijingMillis = utcMillis + (8 * 60 * 60 * 1000);
+  const beijingDate = new Date(beijingMillis);
   const year = beijingDate.getUTCFullYear();
   const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
   const day = String(beijingDate.getUTCDate()).padStart(2, '0');
@@ -1784,6 +1793,41 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
     res.json({ message: '密码修改成功' });
   } catch (error) {
     console.error('修改密码错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 重置密码（忘记密码功能，仅用于紧急情况，不验证旧密码）
+// 注意：此接口不进行身份验证，仅用于应急情况，存在安全风险
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { username, newPassword } = req.body;
+
+    if (!username || !newPassword) {
+      return res.status(400).json({ error: '请提供用户名和新密码' });
+    }
+
+    // 查找用户
+    const [users] = await db.execute(
+      'SELECT id FROM users WHERE username = ? AND is_active = TRUE',
+      [username.trim()]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: '用户不存在或已被删除' });
+    }
+
+    const userId = users[0].id;
+
+    // 更新密码（使用bcrypt加密）
+    const newHashed = await hashPassword(newPassword.trim());
+    await db.execute('UPDATE users SET password = ? WHERE id = ?', [newHashed, userId]);
+
+    console.log(`⚠️ 密码重置: 用户 ${username} (ID: ${userId}) 通过忘记密码功能重置了密码`);
+
+    res.json({ message: '密码重置成功，请使用新密码登录' });
+  } catch (error) {
+    console.error('重置密码错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
@@ -3639,10 +3683,11 @@ app.put('/api/notifications/mark-all-unread', authenticateToken, async (req, res
 // 获取用户积分（兼容是否带 /api 前缀的两种路由）
 app.get(['/api/checkin/points', '/checkin/points'], authenticateToken, async (req, res) => {
   try {
-    const userId = req.query.userId || req.user.id;
+    // 使用字符串比较确保类型一致
+    const userId = req.query.userId ? String(req.query.userId) : String(req.user.id);
     
     // 验证权限：只能查询自己的积分，或者管理员/创始人可以查询其他人的
-    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+    if (userId !== String(req.user.id) && !['admin', 'founder'].includes(req.user.role)) {
       return res.status(403).json({ error: '无权查询该用户的积分' });
     }
 
@@ -3662,15 +3707,42 @@ app.get(['/api/checkin/points', '/checkin/points'], authenticateToken, async (re
   }
 });
 
+// 获取服务器当前日期（北京时间），用于前端日期判断
+app.get(['/api/checkin/today', '/checkin/today'], authenticateToken, async (req, res) => {
+  try {
+    // 直接使用UTC时间戳，加上8小时偏移，然后计算北京时间的日期
+    // 这样可以确保无论服务器在什么时区，都能正确返回北京时间
+    const now = Date.now(); // 当前UTC时间戳（毫秒）
+    const beijingMillis = now + (8 * 60 * 60 * 1000); // 加上8小时
+    const beijingDate = new Date(beijingMillis);
+    
+    const year = beijingDate.getUTCFullYear();
+    const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(beijingDate.getUTCDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
+    
+    res.json({ 
+      today: todayStr,
+      year: year,
+      month: parseInt(month),
+      day: parseInt(day)
+    });
+  } catch (error) {
+    console.error('获取服务器日期错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 获取签到记录（按月查询，兼容是否带 /api 前缀）
 app.get(['/api/checkin/records', '/checkin/records'], authenticateToken, async (req, res) => {
   try {
-    const userId = req.query.userId || req.user.id;
+    // 使用字符串比较确保类型一致
+    const userId = req.query.userId ? String(req.query.userId) : String(req.user.id);
     const year = parseInt(req.query.year) || new Date().getFullYear();
     const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
     
-    // 验证权限
-    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+    // 验证权限：所有用户都可以查询自己的签到记录，管理员/创始人可以查询其他人的
+    if (userId !== String(req.user.id) && !['admin', 'founder'].includes(req.user.role)) {
       return res.status(403).json({ error: '无权查询该用户的签到记录' });
     }
 
@@ -3833,17 +3905,44 @@ app.get('/api/checkin/consecutive', authenticateToken, async (req, res) => {
 // 每日签到（支持带/不带/api前缀）
 app.post(['/api/checkin', '/checkin'], authenticateToken, async (req, res) => {
   try {
-    const userId = req.body.userId || req.user.id;
+    // 确定目标用户ID：所有用户都可以为自己签到，管理员/创始人可以为其他用户签到
+    const currentUserId = String(req.user.id);
+    const requestedUserId = req.body.userId ? String(req.body.userId) : null;
+    let userId;
     
-    // 验证权限：只能为自己签到，或者管理员/创始人可以为其他人签到
-    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
-      return res.status(403).json({ error: '无权为该用户签到' });
+    // 如果没有指定 userId 或指定的 userId 与当前用户相同，则为当前用户签到
+    if (!requestedUserId || requestedUserId === currentUserId) {
+      userId = currentUserId;
+    } else {
+      // 尝试为其他用户签到
+      if (!['admin', 'founder'].includes(req.user.role)) {
+        return res.status(403).json({ error: '无权为该用户签到，只能为自己签到' });
+      }
+      // 管理员/创始人可以为其他用户签到，验证目标用户是否存在
+      userId = requestedUserId;
+      const [targetUserRows] = await db.execute(
+        'SELECT id, is_active FROM users WHERE id = ?',
+        [userId]
+      );
+      if (targetUserRows.length === 0) {
+        return res.status(404).json({ error: '目标用户不存在' });
+      }
+      if (!targetUserRows[0].is_active) {
+        return res.status(403).json({ error: '目标用户已被禁用' });
+      }
     }
+    
+    console.log(`签到请求: userId=${userId}, currentUserId=${currentUserId}, role=${req.user.role}`);
 
     // 获取今天的日期（北京时间）
-    const today = new Date();
-    const beijingDate = shiftToBeijing(today);
-    const todayStr = formatDateOnlyForBeijing(beijingDate);
+    // 直接计算当前北京时间的日期：UTC时间戳 + 8小时
+    const now = Date.now(); // 当前UTC时间戳（毫秒）
+    const beijingMillis = now + (8 * 60 * 60 * 1000); // 加上8小时得到北京时间
+    const beijingDate = new Date(beijingMillis);
+    const year = beijingDate.getUTCFullYear();
+    const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(beijingDate.getUTCDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
 
     // 检查今天是否已经签到
     const [existing] = await db.execute(
@@ -3857,9 +3956,13 @@ app.post(['/api/checkin', '/checkin'], authenticateToken, async (req, res) => {
 
     // 计算连续签到天数（用于可能的奖励）
     // 先检查昨天是否签到
-    const yesterday = new Date(beijingDate);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = formatDateOnlyForBeijing(yesterday);
+    const yesterdayMillis = now - (24 * 60 * 60 * 1000); // 减去24小时（UTC时间）
+    const yesterdayBeijingMillis = yesterdayMillis + (8 * 60 * 60 * 1000); // 加上8小时得到北京时间
+    const yesterdayDate = new Date(yesterdayBeijingMillis);
+    const yesterdayYear = yesterdayDate.getUTCFullYear();
+    const yesterdayMonth = String(yesterdayDate.getUTCMonth() + 1).padStart(2, '0');
+    const yesterdayDay = String(yesterdayDate.getUTCDate()).padStart(2, '0');
+    const yesterdayStr = `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}`;
     
     const [lastCheckin] = await db.execute(
       `SELECT checkin_date
@@ -3964,11 +4067,14 @@ app.post(['/api/checkin', '/checkin'], authenticateToken, async (req, res) => {
     } catch (error) {
       await connection.rollback();
       connection.release();
+      console.error('签到事务错误:', error);
       throw error;
     }
   } catch (error) {
     console.error('签到错误:', error);
-    res.status(500).json({ error: error.message || '服务器内部错误' });
+    console.error('错误堆栈:', error.stack);
+    const errorMessage = error.message || '服务器内部错误';
+    res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -6455,6 +6561,20 @@ async function startServer() {
     }
   } catch (e) {
     console.error('重置管理员密码失败:', e);
+  }
+
+  // 将 hr_head 账号密码重置为 hr123
+  try {
+    const hrHeadHash = await hashPassword('hr123');
+    const [result] = await db.execute(
+      `UPDATE users SET password = ? WHERE username = 'hr_head'`,
+      [hrHeadHash]
+    );
+    if (result?.affectedRows > 0) {
+      console.log(`🔐 hr_head 密码已重置为 hr123，rows=${result.affectedRows}`);
+    }
+  } catch (e) {
+    console.error('重置 hr_head 密码失败:', e);
   }
 
   // 读取证书文件（请确保 private.key 和 certificate.crt 位于启动目录）

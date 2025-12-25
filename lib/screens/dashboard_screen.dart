@@ -898,7 +898,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 ],
                               ),
                             ),
-                            if (_settings.equippedLoopyAssetPath != null)
+                            if (_settings.getEquippedLoopyAssetPath(widget.user.id) != null)
                               Container(
                                 width: 80,
                                 height: 80,
@@ -916,7 +916,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 ),
                                 clipBehavior: Clip.antiAlias,
                                 child: Image.asset(
-                                  _settings.equippedLoopyAssetPath!,
+                                  _settings.getEquippedLoopyAssetPath(widget.user.id)!,
                                   fit: BoxFit.cover,
                                 ),
                               ),

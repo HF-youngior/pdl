@@ -14,6 +14,10 @@ class AppSettings extends ChangeNotifier {
   static const _keyEquippedLoopyId = 'settings_equipped_loopy_id';
   static const _keyEquippedLoopyAsset = 'settings_equipped_loopy_asset';
   static const _keyEquippedLoopyExpiry = 'settings_equipped_loopy_expiry';
+  // 按用户ID存储装扮状态的key前缀
+  static const _keyUserEquippedLoopyIdPrefix = 'user_equipped_loopy_id_';
+  static const _keyUserEquippedLoopyAssetPrefix = 'user_equipped_loopy_asset_';
+  static const _keyUserEquippedLoopyExpiryPrefix = 'user_equipped_loopy_expiry_';
   static const _keyRedeemedLoopies = 'settings_redeemed_loopy_rewards';
   static const _keyThemeColor = 'settings_theme_color';
 
@@ -29,13 +33,40 @@ class AppSettings extends ChangeNotifier {
   String? _equippedLoopyAssetPath;
   DateTime? _equippedLoopyExpiry;
   final Map<String, DateTime> _redeemedLoopyRewards = {};
+  // 按用户ID存储装扮状态
+  final Map<String, String?> _userEquippedLoopyIds = {};
+  final Map<String, String?> _userEquippedLoopyAssets = {};
+  final Map<String, DateTime?> _userEquippedLoopyExpiries = {};
 
   bool get notificationsEnabled => _notificationsEnabled;
   bool get darkMode => _darkMode;
   String get language => _language;
+  // 兼容旧代码，但建议使用带userId的方法
   String? get equippedLoopyId => _equippedLoopyId;
   String? get equippedLoopyAssetPath => _equippedLoopyAssetPath;
   DateTime? get equippedLoopyExpiry => _equippedLoopyExpiry;
+  
+  // 获取指定用户的装扮状态（自动加载）
+  String? getEquippedLoopyId(String userId) {
+    if (!_userEquippedLoopyIds.containsKey(userId)) {
+      _loadUserEquippedLoopy(userId);
+    }
+    return _userEquippedLoopyIds[userId];
+  }
+  
+  String? getEquippedLoopyAssetPath(String userId) {
+    if (!_userEquippedLoopyAssets.containsKey(userId)) {
+      _loadUserEquippedLoopy(userId);
+    }
+    return _userEquippedLoopyAssets[userId];
+  }
+  
+  DateTime? getEquippedLoopyExpiry(String userId) {
+    if (!_userEquippedLoopyExpiries.containsKey(userId)) {
+      _loadUserEquippedLoopy(userId);
+    }
+    return _userEquippedLoopyExpiries[userId];
+  }
   Map<String, DateTime> get redeemedLoopyRewards => Map.unmodifiable(_redeemedLoopyRewards);
   Color get themeColor => _themeColor;
 
@@ -64,6 +95,25 @@ class AppSettings extends ChangeNotifier {
     _loadRedeemedLoopyRewards();
     purgeExpiredLoopyRewards(save: false);
     _initialized = true;
+  }
+  
+  // 加载指定用户的装扮状态
+  void _loadUserEquippedLoopy(String userId) {
+    if (_prefs == null) {
+      // 如果_prefs未初始化，将空值放入Map以避免重复加载
+      _userEquippedLoopyIds[userId] = null;
+      _userEquippedLoopyAssets[userId] = null;
+      _userEquippedLoopyExpiries[userId] = null;
+      return;
+    }
+    final idKey = '$_keyUserEquippedLoopyIdPrefix$userId';
+    final assetKey = '$_keyUserEquippedLoopyAssetPrefix$userId';
+    final expiryKey = '$_keyUserEquippedLoopyExpiryPrefix$userId';
+    
+    _userEquippedLoopyIds[userId] = _prefs?.getString(idKey);
+    _userEquippedLoopyAssets[userId] = _prefs?.getString(assetKey);
+    final expiryIso = _prefs?.getString(expiryKey);
+    _userEquippedLoopyExpiries[userId] = expiryIso != null ? DateTime.tryParse(expiryIso) : null;
   }
 
   void setNotificationsEnabled(bool value) {
@@ -94,7 +144,7 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 装扮 Loopy，到期时间仅用于展示
+  /// 装扮 Loopy，到期时间仅用于展示（兼容旧代码，但建议使用带userId的方法）
   void equipLoopy({
     required String id,
     required String assetPath,
@@ -109,7 +159,28 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 取消当前 Loopy 装扮
+  /// 装扮 Loopy（按用户ID）
+  void equipLoopyForUser({
+    required String userId,
+    required String id,
+    required String assetPath,
+    required DateTime expiry,
+  }) {
+    _userEquippedLoopyIds[userId] = id;
+    _userEquippedLoopyAssets[userId] = assetPath;
+    _userEquippedLoopyExpiries[userId] = expiry;
+    
+    final idKey = '$_keyUserEquippedLoopyIdPrefix$userId';
+    final assetKey = '$_keyUserEquippedLoopyAssetPrefix$userId';
+    final expiryKey = '$_keyUserEquippedLoopyExpiryPrefix$userId';
+    
+    _persist(_prefs?.setString(idKey, id));
+    _persist(_prefs?.setString(assetKey, assetPath));
+    _persist(_prefs?.setString(expiryKey, expiry.toIso8601String()));
+    notifyListeners();
+  }
+
+  /// 取消当前 Loopy 装扮（兼容旧代码）
   void clearLoopy() {
     _equippedLoopyId = null;
     _equippedLoopyAssetPath = null;
@@ -117,6 +188,22 @@ class AppSettings extends ChangeNotifier {
     _persist(_prefs?.remove(_keyEquippedLoopyId));
     _persist(_prefs?.remove(_keyEquippedLoopyAsset));
     _persist(_prefs?.remove(_keyEquippedLoopyExpiry));
+    notifyListeners();
+  }
+  
+  /// 取消指定用户的 Loopy 装扮
+  void clearLoopyForUser(String userId) {
+    _userEquippedLoopyIds.remove(userId);
+    _userEquippedLoopyAssets.remove(userId);
+    _userEquippedLoopyExpiries.remove(userId);
+    
+    final idKey = '$_keyUserEquippedLoopyIdPrefix$userId';
+    final assetKey = '$_keyUserEquippedLoopyAssetPrefix$userId';
+    final expiryKey = '$_keyUserEquippedLoopyExpiryPrefix$userId';
+    
+    _persist(_prefs?.remove(idKey));
+    _persist(_prefs?.remove(assetKey));
+    _persist(_prefs?.remove(expiryKey));
     notifyListeners();
   }
 
