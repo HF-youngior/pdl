@@ -1397,7 +1397,15 @@ class _UserTaskListScreenState extends State<UserTaskListScreen> {
 
       // 根据任务类型过滤
       if (widget.taskType != 'all') {
-        tasks = tasks.where((task) => task.status == widget.taskType).toList();
+        if (widget.taskType == 'in_progress' && (widget.period == 'today' || widget.period == 'week')) {
+          // 对于今日/本周任务，"进行中"包括所有非"已完成"且非"已取消"的任务
+          tasks = tasks.where((task) => 
+            task.status != 'completed' && task.status != 'cancelled'
+          ).toList();
+        } else {
+          // 其他情况，按原始状态过滤
+          tasks = tasks.where((task) => task.status == widget.taskType).toList();
+        }
       }
 
       setState(() {
@@ -1427,36 +1435,87 @@ class _UserTaskListScreenState extends State<UserTaskListScreen> {
     final allTasks = await _getAllTasks();
     final today = DateTime.now();
     final todayStart = DateTime(today.year, today.month, today.day);
-    final todayEnd = todayStart.add(const Duration(days: 1));
+    final todayEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
     
     return allTasks.where((task) {
-      if (task.createdAt == null) return false;
-      final createdAt = task.createdAt;
-      return createdAt.isAfter(todayStart) && createdAt.isBefore(todayEnd);
+      // 使用与后端统计API相同的逻辑：基于start_time和end_time判断
+      final startTime = task.startTime;
+      final endTime = task.endTime;
+      
+      // 检查任务是否在今天的时间范围内
+      if (startTime != null && endTime != null) {
+        // 任务有开始和结束时间，检查是否与今天有重叠
+        return (startTime.isBefore(todayEnd) && endTime.isAfter(todayStart)) ||
+               (startTime.isAfter(todayStart) && startTime.isBefore(todayEnd)) ||
+               (endTime.isAfter(todayStart) && endTime.isBefore(todayEnd));
+      } else if (startTime != null) {
+        // 只有开始时间，检查是否在今天
+        return startTime.isAfter(todayStart) && startTime.isBefore(todayEnd);
+      } else if (endTime != null) {
+        // 只有结束时间，检查是否在今天
+        return endTime.isAfter(todayStart) && endTime.isBefore(todayEnd);
+      }
+      
+      return false;
     }).toList();
   }
 
   Future<List<Task>> _getWeekTasks() async {
     final allTasks = await _getAllTasks();
     final now = DateTime.now();
-    final weekStart = now.subtract(const Duration(days: 7));
+    final dayOfWeek = now.weekday;
+    final diff = dayOfWeek - 1; // 周一为第1天
+    final weekStart = DateTime(now.year, now.month, now.day - diff);
+    final weekEnd = DateTime(weekStart.year, weekStart.month, weekStart.day + 6, 23, 59, 59);
     
     return allTasks.where((task) {
-      if (task.createdAt == null) return false;
-      final createdAt = task.createdAt;
-      return createdAt.isAfter(weekStart);
+      // 使用与后端统计API相同的逻辑：基于start_time和end_time判断
+      final startTime = task.startTime;
+      final endTime = task.endTime;
+      
+      // 检查任务是否在本周的时间范围内
+      if (startTime != null && endTime != null) {
+        // 任务有开始和结束时间，检查是否与本周有重叠
+        return (startTime.isBefore(weekEnd) && endTime.isAfter(weekStart)) ||
+               (startTime.isAfter(weekStart) && startTime.isBefore(weekEnd)) ||
+               (endTime.isAfter(weekStart) && endTime.isBefore(weekEnd));
+      } else if (startTime != null) {
+        // 只有开始时间，检查是否在本周
+        return startTime.isAfter(weekStart) && startTime.isBefore(weekEnd);
+      } else if (endTime != null) {
+        // 只有结束时间，检查是否在本周
+        return endTime.isAfter(weekStart) && endTime.isBefore(weekEnd);
+      }
+      
+      return false;
     }).toList();
   }
 
   Future<List<Task>> _getCustomDateTasks(DateTime date) async {
     final allTasks = await _getAllTasks();
     final dateStart = DateTime(date.year, date.month, date.day);
-    final dateEnd = dateStart.add(const Duration(days: 1));
+    final dateEnd = DateTime(date.year, date.month, date.day, 23, 59, 59);
     
     return allTasks.where((task) {
-      if (task.createdAt == null) return false;
-      final createdAt = task.createdAt;
-      return createdAt.isAfter(dateStart) && createdAt.isBefore(dateEnd);
+      // 使用与后端统计API相同的逻辑：基于start_time和end_time判断
+      final startTime = task.startTime;
+      final endTime = task.endTime;
+      
+      // 检查任务是否在指定日期的时间范围内
+      if (startTime != null && endTime != null) {
+        // 任务有开始和结束时间，检查是否与指定日期有重叠
+        return (startTime.isBefore(dateEnd) && endTime.isAfter(dateStart)) ||
+               (startTime.isAfter(dateStart) && startTime.isBefore(dateEnd)) ||
+               (endTime.isAfter(dateStart) && endTime.isBefore(dateEnd));
+      } else if (startTime != null) {
+        // 只有开始时间，检查是否在指定日期
+        return startTime.isAfter(dateStart) && startTime.isBefore(dateEnd);
+      } else if (endTime != null) {
+        // 只有结束时间，检查是否在指定日期
+        return endTime.isAfter(dateStart) && endTime.isBefore(dateEnd);
+      }
+      
+      return false;
     }).toList();
   }
 

@@ -4845,8 +4845,10 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         location_name: log.location_name,
         location_latitude: log.location_latitude,
         location_longitude: log.location_longitude
-      })),
-      // 获取每个任务的多负责人信息
+      };
+    }));
+    
+    // 获取每个任务的多负责人信息
       tasks: await Promise.all(tasks.map(async (task) => {
         const [assignees] = await db.execute(
           `SELECT assignee_id, assignee_name, progress_percentage, status FROM task_assignees WHERE task_id = ?`,
@@ -4876,10 +4878,7 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         }
 
         return taskObj;
-        location_longitude: log.location_longitude,
-        location_address: locationAddress
-      };
-    }));
+      })),
 
     // 返回简化的数据格式
     res.json({
@@ -5810,13 +5809,13 @@ app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin
       queryParams = [userId];
     } else {
       // 获取指定时间范围内的任务统计
+      // 对于今日/本周任务，将非"已完成"状态的任务归类为"进行中"
       taskQuery = `
         SELECT
           COUNT(*) as total_tasks,
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
-          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_tasks,
-          SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_tasks,
-          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_tasks
+          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_tasks,
+          SUM(CASE WHEN status = 'completed' THEN 0 ELSE 1 END) as in_progress_tasks
         FROM tasks
         WHERE assignee_id = ?
         AND (
@@ -5840,15 +5839,32 @@ app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin
     const completed = parseInt(stats.completed_tasks) || 0;
     const completionRate = total > 0 ? (completed / total * 100).toFixed(1) : '0.0';
     
-    const responseData = {
-      period,
-      totalTasks: total,
-      completedTasks: completed,
-      pendingTasks: parseInt(stats.pending_tasks) || 0,
-      inProgressTasks: parseInt(stats.in_progress_tasks) || 0,
-      cancelledTasks: parseInt(stats.cancelled_tasks) || 0,
-      completionRate: parseFloat(completionRate),
-    };
+    let responseData;
+    
+    if (period === 'all') {
+      // 对于全部任务，保持原有的状态分类
+      responseData = {
+        period,
+        totalTasks: total,
+        completedTasks: completed,
+        pendingTasks: parseInt(stats.pending_tasks) || 0,
+        inProgressTasks: parseInt(stats.in_progress_tasks) || 0,
+        cancelledTasks: parseInt(stats.cancelled_tasks) || 0,
+        completionRate: parseFloat(completionRate),
+      };
+    } else {
+      // 对于今日/本周任务，将非"已完成"状态的任务归类为"进行中"
+      const inProgress = total - completed - (parseInt(stats.cancelled_tasks) || 0);
+      responseData = {
+        period,
+        totalTasks: total,
+        completedTasks: completed,
+        pendingTasks: 0, // 对于今日/本周任务，不显示pending状态
+        inProgressTasks: inProgress, // 所有非"已完成"且非"已取消"的任务都算作"进行中"
+        cancelledTasks: parseInt(stats.cancelled_tasks) || 0,
+        completionRate: parseFloat(completionRate),
+      };
+    }
 
     // 只有在不是'all'的情况下才添加日期范围
     if (period !== 'all' && startDate && endDate) {
