@@ -6,6 +6,11 @@ const API_BASE_URL = (typeof window !== 'undefined' && window.API_BASE_URL)
   ? window.API_BASE_URL 
   : 'https://localhost:8080/api';
 
+// 是否启用 Web 端通知中心（默认禁用，可通过 window.ENABLE_WEB_NOTIFICATION_CENTER = true 启用）
+const ENABLE_WEB_NOTIFICATION_CENTER = (typeof window !== 'undefined' && window.ENABLE_WEB_NOTIFICATION_CENTER !== undefined)
+  ? !!window.ENABLE_WEB_NOTIFICATION_CENTER
+  : false;
+
 // 角色与部门配置
 const ROLE_OPTIONS = [
     { value: 'admin', label: '管理员' },
@@ -129,7 +134,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // 检查是否已登录
     checkAuthStatus();
     initUserFormOptions();
-    createNotificationCenterLauncher();
+    if (ENABLE_WEB_NOTIFICATION_CENTER) {
+        createNotificationCenterLauncher();
+    } else {
+        const btn = document.getElementById('notificationCenterLauncher');
+        if (btn) btn.remove();
+        stopNotificationPolling();
+    }
     
     // 添加责任人选择事件监听器（编辑任务时更新部门显示）
     document.addEventListener('change', function(e) {
@@ -162,6 +173,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 检查新通知并显示弹窗
 async function checkNotifications() {
+    if (!ENABLE_WEB_NOTIFICATION_CENTER) return;
     if (!authToken || !currentUser) return;
     
     try {
@@ -231,6 +243,7 @@ function createNotificationCenterLauncher() {
 }
 
 async function updateNotificationBadge() {
+    if (!ENABLE_WEB_NOTIFICATION_CENTER) return;
     const badge = document.getElementById('notificationLauncherBadge');
     if (!badge) return;
     
@@ -265,6 +278,7 @@ async function updateNotificationBadge() {
 }
 
 function openNotificationCenterModal() {
+    if (!ENABLE_WEB_NOTIFICATION_CENTER) return;
     if (pendingNotifications.length === 0) return;
     if (notificationModalInstance) {
         refreshNotificationModalContent();
@@ -557,6 +571,7 @@ function removeNotificationFromQueue(notificationId) {
 
 // 启动通知轮询
 function startNotificationPolling() {
+    if (!ENABLE_WEB_NOTIFICATION_CENTER) return;
     // 清除之前的轮询
     if (notificationPollingInterval) {
         clearInterval(notificationPollingInterval);

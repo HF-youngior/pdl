@@ -78,15 +78,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadBadgeCount();
     _loadPreviewData();
     _settings.addListener(_onSettingsChanged);
-    _startDeadlineReminderMonitor();
-    _startNotificationPolling();
+    if (!kIsWeb) {
+      _startDeadlineReminderMonitor();
+      _startNotificationPolling();
+    }
     // 初始化时加载未读通知数量
     _loadUnreadNotificationCount();
   }
 
   /// 加载未读通知数量
   Future<void> _loadUnreadNotificationCount() async {
-    if (_isGuestUser || ApiService.getToken() == null) return;
+    if (kIsWeb || _isGuestUser || ApiService.getToken() == null) return;
 
     try {
       final notifications = await NotificationService.getNotifications();
@@ -148,6 +150,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _startNotificationPolling() {
+    if (kIsWeb) return;
     _notificationPollingTimer?.cancel();
     if (_isGuestUser) return;
     _checkNotifications();
@@ -156,13 +159,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _scheduleNextNotificationCheck() {
+    if (kIsWeb) return;
     if (!mounted || _isGuestUser) return;
     _checkNotifications();
     _notificationPollingTimer = Timer(const Duration(seconds: 5), _scheduleNextNotificationCheck);
   }
 
   Future<void> _checkNotifications() async {
-    if (!mounted ||
+    if (kIsWeb ||
+        !mounted ||
         _isGuestUser ||
         !_settings.notificationsEnabled ||
         _isCheckingNotifications ||

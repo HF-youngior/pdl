@@ -4,6 +4,7 @@ import 'package:jpush_flutter/jpush_flutter.dart';
 import 'package:jpush_flutter/jpush_interface.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/api_service.dart';
 import '../services/task_service.dart';
 import '../screens/notification_center_screen.dart';
@@ -46,6 +47,7 @@ class JPushService {
             if (user == null) return;
             final state = navigatorKey.currentState;
             if (state == null) return;
+            if (kIsWeb) return;
             if (taskId is String && taskId.isNotEmpty) {
               try {
                 final task = await TaskService.getTaskById(taskId);
