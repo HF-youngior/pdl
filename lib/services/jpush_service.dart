@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:jpush_flutter/jpush_flutter.dart';
 import 'package:jpush_flutter/jpush_interface.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/api_service.dart';
 import '../services/task_service.dart';
 import '../screens/notification_center_screen.dart';
@@ -17,21 +19,16 @@ class JPushService {
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
   static bool _initialized = false;
   static User? currentUser;
+  static const MethodChannel _pushUtilsChannel = MethodChannel('com.example.testflutterproject/push_utils');
 
   static Future<void> initialize() async {
     if (_initialized) return;
     try {
-      if (Platform.isAndroid) {
-        final status = await Permission.notification.status;
-        if (!status.isGranted) {
-          final result = await Permission.notification.request();
-          if (!result.isGranted) {
-            return;
-          }
-        }
-      }
-      await Future.delayed(const Duration(milliseconds: 600));
+      // 移除启动时的即时权限申请，移至 throttled 的 suggestSystemOptimizations 中
+      // 移除 600ms 的人工延迟，让启动更丝滑
+      
       currentUser ??= ApiService.getCurrentUser();
+      
       jpush.addEventHandler(
         onReceiveNotification: (Map<String, dynamic> message) async {
           print("Flutter 接收到推送: $message");
@@ -40,12 +37,13 @@ class JPushService {
           print("Flutter 点击了推送: $message");
           try {
             final extras = _parseExtras(message);
-            final type = extras['type'] ?? '';
             final taskId = extras['taskId'] ?? '';
-            final user = currentUser;
+            final user = currentUser ?? ApiService.getCurrentUser();
             if (user == null) return;
             final state = navigatorKey.currentState;
             if (state == null) return;
+            if (kIsWeb) return;
+            
             if (taskId is String && taskId.isNotEmpty) {
               try {
                 final task = await TaskService.getTaskById(taskId);
@@ -75,22 +73,29 @@ class JPushService {
         appKey: "a7474254450572b4411beacc",
         channel: "developer-default",
         production: false,
-        debug: true,
+        debug: false, // 生产环境下建议关闭 debug 日志以提升性能
       );
+
+      // 异步获取 ID，不阻塞初始化完成
       jpush.getRegistrationID().then((rid) {
-        print("极光推送 Registration ID: $rid");
-        registrationId = rid;
-        final user = ApiService.getCurrentUser();
-        final token = ApiService.getToken();
-        if (user != null && token != null && rid.isNotEmpty) {
-          ApiService.registerPushDevice(rid, platform: Platform.isAndroid ? 'android' : 'ios')
-              .then((ok) => print('推送设备注册结果: $ok'))
-              .catchError((e) => print('注册推送设备失败: $e'));
-          currentUser ??= user;
+        if (rid.isNotEmpty) {
+          registrationId = rid;
+          final user = ApiService.getCurrentUser();
+          final token = ApiService.getToken();
+          if (user != null && token != null) {
+            ApiService.registerPushDevice(rid, platform: Platform.isAndroid ? 'android' : 'ios')
+                .catchError((e) => print('后台注册推送设备失败: $e'));
+          }
         }
       });
+      
       _initialized = true;
-    } on PlatformException catch (e) {
+      
+      // 启动后异步触发系统优化建议（内部有延迟和频率限制）
+      if (Platform.isAndroid) {
+        suggestSystemOptimizations();
+      }
+    } catch (e) {
       print('极光推送初始化失败: $e');
     }
   }
@@ -101,5 +106,76 @@ class JPushService {
       return Map<String, dynamic>.from(m['extras'] as Map);
     }
     return m;
+  }
+
+  static DateTime? _lastRefreshTime;
+
+  static Future<void> refreshRegistration() async {
+    // 增加频率限制，30分钟内只允许自动刷新一次
+    if (_lastRefreshTime != null && 
+        DateTime.now().difference(_lastRefreshTime!).inMinutes < 30) {
+      return;
+    }
+    
+    try {
+      final rid = await jpush.getRegistrationID();
+      if (rid.isNotEmpty) {
+        _lastRefreshTime = DateTime.now();
+        if (rid != registrationId) {
+          registrationId = rid;
+          final user = ApiService.getCurrentUser();
+          final token = ApiService.getToken();
+          if (user != null && token != null) {
+            await ApiService.registerPushDevice(rid, platform: Platform.isAndroid ? 'android' : 'ios');
+            currentUser ??= user;
+          }
+        }
+      }
+    } catch (e) {
+      print('刷新推送注册失败: $e');
+    }
+  }
+
+  static Future<void> suggestSystemOptimizations() async {
+    if (!Platform.isAndroid) return;
+    
+    try {
+      // 使用 ApiService 的缓存实例方法，减少磁盘 IO
+      final prefs = await SharedPreferences.getInstance();
+      final lastCheck = prefs.getInt('last_system_opt_check') ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      
+      // 7 天频率限制
+      if (now - lastCheck < 7 * 24 * 60 * 60 * 1000) return;
+
+      // 异步执行后续逻辑，完全不阻塞当前调用
+      _runOptimizationTasks(prefs, now);
+      
+    } catch (e) {
+      print('系统优化静默执行失败: $e');
+    }
+  }
+
+  static Future<void> _runOptimizationTasks(SharedPreferences prefs, int now) async {
+    // 启动 10 秒后执行，此时应用肯定已经完全稳定
+    await Future.delayed(const Duration(seconds: 10));
+    
+    try {
+      // 1. 检查并请求忽略电池优化
+      await _pushUtilsChannel.invokeMethod('requestIgnoreBatteryOptimizations');
+      
+      // 2. 处理通知权限
+      final status = await Permission.notification.status;
+      if (!status.isGranted) {
+        final result = await Permission.notification.request();
+        if (!result.isGranted) {
+          await Future.delayed(const Duration(seconds: 3));
+          await _pushUtilsChannel.invokeMethod('openNotificationSettings');
+        }
+      }
+
+      // 记录本次执行时间
+      await prefs.setInt('last_system_opt_check', now);
+    } catch (_) {}
   }
 }

@@ -22,10 +22,12 @@ void main() async {
   // 开启自签名证书的全局信任（仅开发/测试环境）
   HttpOverrides.global = MyHttpOverrides();
 
-  // 初始化API服务（加载服务器配置）
-  await ApiService.initialize();
-  await ApiService.restoreAuthState();
-  await AppSettings.instance.initialize();
+  // 并行初始化所有服务，大幅缩短启动时间
+  await Future.wait([
+    ApiService.initialize(),
+    ApiService.restoreAuthState(),
+    AppSettings.instance.initialize(),
+  ]);
   
   runApp(const MyApp());
 }
@@ -39,6 +41,8 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final AppSettings _settings = AppSettings.instance;
+  AppLifecycleState? _lastLifecycleState;
+  late final _LifecycleObserver _lifecycleObserver;
 
   ThemeData _buildTheme(Brightness brightness) {
     final Color baseColor = _settings.themeColor;
@@ -77,6 +81,10 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _settings.addListener(_onSettingsChanged);
+    _lifecycleObserver = _LifecycleObserver(onResumed: () {
+      JPushService.refreshRegistration();
+    });
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await JPushService.initialize();
@@ -87,6 +95,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     _settings.removeListener(_onSettingsChanged);
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
     super.dispose();
   }
 
@@ -117,5 +126,16 @@ class _MyAppState extends State<MyApp> {
         '/login': (context) => const LoginScreen(),
       },
     );
+  }
+}
+
+class _LifecycleObserver with WidgetsBindingObserver {
+  final VoidCallback onResumed;
+  _LifecycleObserver({required this.onResumed});
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      onResumed();
+    }
   }
 }

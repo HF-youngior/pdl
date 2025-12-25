@@ -25,6 +25,7 @@ import '../models/deadline_reminder.dart';
 import '../models/notification.dart' show TaskNotification;
 import '../utils/time_utils.dart';
 import 'notification_center_screen.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class DashboardScreen extends StatefulWidget {
   final User user;
@@ -77,15 +78,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadBadgeCount();
     _loadPreviewData();
     _settings.addListener(_onSettingsChanged);
-    _startDeadlineReminderMonitor();
-    _startNotificationPolling();
+    if (!kIsWeb) {
+      _startDeadlineReminderMonitor();
+      _startNotificationPolling();
+    }
     // 初始化时加载未读通知数量
     _loadUnreadNotificationCount();
   }
 
   /// 加载未读通知数量
   Future<void> _loadUnreadNotificationCount() async {
-    if (_isGuestUser || ApiService.getToken() == null) return;
+    if (kIsWeb || _isGuestUser || ApiService.getToken() == null) return;
 
     try {
       final notifications = await NotificationService.getNotifications();
@@ -147,6 +150,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _startNotificationPolling() {
+    if (kIsWeb) return;
     _notificationPollingTimer?.cancel();
     if (_isGuestUser) return;
     _checkNotifications();
@@ -155,13 +159,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _scheduleNextNotificationCheck() {
+    if (kIsWeb) return;
     if (!mounted || _isGuestUser) return;
     _checkNotifications();
     _notificationPollingTimer = Timer(const Duration(seconds: 5), _scheduleNextNotificationCheck);
   }
 
   Future<void> _checkNotifications() async {
-    if (!mounted ||
+    if (kIsWeb ||
+        !mounted ||
         _isGuestUser ||
         !_settings.notificationsEnabled ||
         _isCheckingNotifications ||
@@ -206,6 +212,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _showNotificationDialog(List<TaskNotification> notifications) async {
+    if (kIsWeb) return;
     if (!mounted || notifications.isEmpty) return;
 
     // 如果只有一个通知，显示简化版本
@@ -268,19 +275,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('关闭'),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      // 打开通知中心查看详情
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => NotificationCenterScreen(user: widget.user),
-                        ),
-                      );
-                    },
-                    child: const Text('查看详情'),
-                  ),
+                  if (!kIsWeb)
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => NotificationCenterScreen(user: widget.user),
+                          ),
+                        );
+                      },
+                      child: const Text('查看详情'),
+                    ),
                   if (notification.taskId.isNotEmpty)
                     TextButton(
                       onPressed: () async {
@@ -399,19 +406,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 actions: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      // 打开通知中心查看详情
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => NotificationCenterScreen(user: widget.user),
-                        ),
-                      );
-                    },
-                    child: const Text('查看详情'),
-                  ),
+                  if (!kIsWeb)
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        // 打开通知中心查看详情
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => NotificationCenterScreen(user: widget.user),
+                          ),
+                        );
+                      },
+                      child: const Text('查看详情'),
+                    ),
                   TextButton(
                     onPressed: () async {
                       if (!toggledAllRead) {
@@ -511,6 +519,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _showDeadlineReminderDialog(List<DeadlineReminder> reminders) async {
+    if (kIsWeb) return;
     if (!mounted || reminders.isEmpty) return;
 
     // 如果只有一个提醒，显示简化版本
@@ -785,36 +794,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: _refreshData,
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.notifications),
-                  onPressed: _openNotificationsPanel,
-                ),
-                if (_settings.notificationsEnabled && _unreadNotificationCount > 0)
-                  Positioned(
-                    right: 10,
-                    top: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      constraints: const BoxConstraints(minWidth: 18),
-                      child: Text(
-                        _unreadNotificationCount > 99 ? '99+' : _unreadNotificationCount.toString(),
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.center,
+          if (!kIsWeb)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications),
+                    onPressed: _openNotificationsPanel,
+                  ),
+                  if (_settings.notificationsEnabled && _unreadNotificationCount > 0)
+                    Positioned(
+                      right: 10,
+                      top: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 18),
+                        child: Text(
+                          _unreadNotificationCount > 99 ? '99+' : _unreadNotificationCount.toString(),
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
         ],
       ),
       body: Stack(
@@ -1181,6 +1191,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _openNotificationsPanel() async {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Web端暂不显示通知中心')),
+      );
+      return;
+    }
     // 打开通知中心页面
     Navigator.push(
       context,
