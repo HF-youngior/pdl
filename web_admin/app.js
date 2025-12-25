@@ -4,7 +4,7 @@
 // 例如: <script>window.API_BASE_URL = 'http://192.168.1.100:8080/api';</script>
 const API_BASE_URL = (typeof window !== 'undefined' && window.API_BASE_URL) 
   ? window.API_BASE_URL 
-  : 'http://localhost:8080/api';
+  : 'https://localhost:8080/api';
 
 // 角色与部门配置
 const ROLE_OPTIONS = [
