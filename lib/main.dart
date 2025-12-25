@@ -39,6 +39,8 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final AppSettings _settings = AppSettings.instance;
+  AppLifecycleState? _lastLifecycleState;
+  late final _LifecycleObserver _lifecycleObserver;
 
   ThemeData _buildTheme(Brightness brightness) {
     final Color baseColor = _settings.themeColor;
@@ -77,6 +79,10 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _settings.addListener(_onSettingsChanged);
+    _lifecycleObserver = _LifecycleObserver(onResumed: () {
+      JPushService.refreshRegistration();
+    });
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await JPushService.initialize();
@@ -87,6 +93,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     _settings.removeListener(_onSettingsChanged);
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
     super.dispose();
   }
 
@@ -117,5 +124,16 @@ class _MyAppState extends State<MyApp> {
         '/login': (context) => const LoginScreen(),
       },
     );
+  }
+}
+
+class _LifecycleObserver with WidgetsBindingObserver {
+  final VoidCallback onResumed;
+  _LifecycleObserver({required this.onResumed});
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      onResumed();
+    }
   }
 }

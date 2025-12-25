@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:jpush_flutter/jpush_flutter.dart';
 import 'package:jpush_flutter/jpush_interface.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:workmanager/workmanager.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/api_service.dart';
@@ -12,17 +13,63 @@ import '../screens/task_detail_screen.dart';
 import '../models/user.dart';
 import '../models/task.dart';
 
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    print("WorkManager 执行后台任务: $task");
+    try {
+      // 初始化 API 服务和状态，因为这是在独立进程/入口点运行的
+      await ApiService.initialize();
+      await ApiService.restoreAuthState();
+      
+      final user = ApiService.getCurrentUser();
+      final token = ApiService.getToken();
+      
+      if (user == null || token == null) {
+        print("WorkManager: 用户未登录，跳过刷新");
+        return Future.value(true);
+      }
+
+      final jpush = JPush.newJPush();
+      final rid = await jpush.getRegistrationID();
+      if (rid.isNotEmpty) {
+        await ApiService.registerPushDevice(rid, platform: Platform.isAndroid ? 'android' : 'ios');
+        print("WorkManager 刷新极光 ID 成功: $rid");
+      }
+    } catch (e) {
+      print("WorkManager 任务失败: $e");
+    }
+    return Future.value(true);
+  });
+}
+
 class JPushService {
   static final JPushFlutterInterface jpush = JPush.newJPush();
   static String? registrationId;
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
   static bool _initialized = false;
   static User? currentUser;
+  static const MethodChannel _pushUtilsChannel = MethodChannel('com.example.testflutterproject/push_utils');
 
   static Future<void> initialize() async {
     if (_initialized) return;
     try {
       if (Platform.isAndroid) {
+        // 初始化 WorkManager 用于后台保活/刷新
+        await Workmanager().initialize(
+          callbackDispatcher,
+          isInDebugMode: false,
+        );
+        await Workmanager().registerPeriodicTask(
+          "jpush-refresh-task",
+          "jpushRefreshTask",
+          frequency: const Duration(minutes: 15), // Android 最小间隔 15 分钟
+          existingWorkPolicy: ExistingWorkPolicy.keep,
+          constraints: Constraints(
+            networkType: NetworkType.connected,
+          ),
+        );
+
         final status = await Permission.notification.status;
         if (!status.isGranted) {
           final result = await Permission.notification.request();
@@ -89,6 +136,9 @@ class JPushService {
               .then((ok) => print('推送设备注册结果: $ok'))
               .catchError((e) => print('注册推送设备失败: $e'));
           currentUser ??= user;
+          if (Platform.isAndroid) {
+            suggestSystemOptimizations();
+          }
         }
       });
       _initialized = true;
@@ -103,5 +153,40 @@ class JPushService {
       return Map<String, dynamic>.from(m['extras'] as Map);
     }
     return m;
+  }
+
+  static Future<void> refreshRegistration() async {
+    try {
+      final rid = await jpush.getRegistrationID();
+      if (rid.isNotEmpty && rid != registrationId) {
+        registrationId = rid;
+        final user = ApiService.getCurrentUser();
+        final token = ApiService.getToken();
+        if (user != null && token != null) {
+          await ApiService.registerPushDevice(rid, platform: Platform.isAndroid ? 'android' : 'ios');
+          currentUser ??= user;
+        }
+      } else if (rid.isNotEmpty && registrationId?.isEmpty == true) {
+        registrationId = rid;
+        final user = ApiService.getCurrentUser();
+        final token = ApiService.getToken();
+        if (user != null && token != null) {
+          await ApiService.registerPushDevice(rid, platform: Platform.isAndroid ? 'android' : 'ios');
+          currentUser ??= user;
+        }
+      }
+    } catch (e) {
+      print('刷新推送注册失败: $e');
+    }
+  }
+
+  static Future<void> suggestSystemOptimizations() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _pushUtilsChannel.invokeMethod('requestIgnoreBatteryOptimizations');
+    } catch (_) {}
+    try {
+      await _pushUtilsChannel.invokeMethod('openNotificationSettings');
+    } catch (_) {}
   }
 }
