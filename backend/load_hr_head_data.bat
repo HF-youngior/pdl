@@ -7,7 +7,11 @@ echo.
 echo 正在为 hr_head 用户添加 2025年10月份的数据...
 echo.
 
+<<<<<<< Updated upstream
 mysql -h rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com -u pdl123 -pPdl1234567 enterprise_management < migrations\2025-10-hr-head-data-compatible.sql
+=======
+mysql -u root -pZs462581379 < migrations\2025-10-hr-head-data-compatible.sql
+>>>>>>> Stashed changes
 
 echo.
 if %ERRORLEVEL% EQU 0 (
@@ -24,5 +28,4 @@ if %ERRORLEVEL% EQU 0 (
 
 echo.
 pause
-
 

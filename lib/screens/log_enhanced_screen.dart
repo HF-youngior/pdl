@@ -12,6 +12,7 @@ import '../models/user.dart';
 import '../services/api_service.dart';
 import '../services/task_service.dart';
 import '../services/geocoding_service.dart';
+import '../utils/coordinate_converter.dart';
 import 'package:testflutterproject/models/log_task_update.dart';
 
 class LogEnhancedScreen extends StatefulWidget {
@@ -1366,18 +1367,26 @@ class _AddLogDialogState extends State<_AddLogDialog> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // 先设置坐标
+      // 将WGS84坐标转换为GCJ-02坐标（高德地图使用的坐标系）
+      final converted = CoordinateConverter.wgs84ToGcj02(
+        position.latitude,
+        position.longitude,
+      );
+      final convertedLat = converted['latitude']!;
+      final convertedLon = converted['longitude']!;
+
+      // 先设置转换后的坐标
       setState(() {
-        _latitude = position.latitude;
-        _longitude = position.longitude;
-        _locationName = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+        _latitude = convertedLat;
+        _longitude = convertedLon;
+        _locationName = '${convertedLat.toStringAsFixed(6)}, ${convertedLon.toStringAsFixed(6)}';
       });
 
-      // 尝试将坐标转换为地址
+      // 尝试将坐标转换为地址（使用转换后的GCJ-02坐标）
       try {
         final address = await GeocodingService.reverseGeocodeCached(
-          position.latitude,
-          position.longitude,
+          convertedLat,
+          convertedLon,
         );
         if (address != null && mounted) {
           setState(() {
@@ -2321,18 +2330,26 @@ class _EditLogDialogState extends State<_EditLogDialog> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // 先设置坐标
+      // 将WGS84坐标转换为GCJ-02坐标（高德地图使用的坐标系）
+      final converted = CoordinateConverter.wgs84ToGcj02(
+        position.latitude,
+        position.longitude,
+      );
+      final convertedLat = converted['latitude']!;
+      final convertedLon = converted['longitude']!;
+
+      // 先设置转换后的坐标
       setState(() {
-        _latitude = position.latitude;
-        _longitude = position.longitude;
-        _locationName = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+        _latitude = convertedLat;
+        _longitude = convertedLon;
+        _locationName = '${convertedLat.toStringAsFixed(6)}, ${convertedLon.toStringAsFixed(6)}';
       });
 
-      // 尝试将坐标转换为地址
+      // 尝试将坐标转换为地址（使用转换后的GCJ-02坐标）
       try {
         final address = await GeocodingService.reverseGeocodeCached(
-          position.latitude,
-          position.longitude,
+          convertedLat,
+          convertedLon,
         );
         if (address != null && mounted) {
           setState(() {

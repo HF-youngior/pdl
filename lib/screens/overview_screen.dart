@@ -17,6 +17,7 @@ class OverviewScreen extends StatefulWidget {
 class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _taskSearchController = TextEditingController();
 
   final Map<String, int> _rolePriority = {
     'admin': 0,
@@ -36,7 +37,8 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
 
   // 员工数据
   Map<String, dynamic>? _userStatistics;
-  String _statisticsPeriod = 'daily'; // daily, weekly, monthly
+  String _statisticsPeriod = 'today'; // today, week, all, custom
+  DateTime? _customSelectedDate;
   bool _loadingStatistics = false;
 
   // 日志数据
@@ -50,6 +52,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
 
   // 公司任务数据
   List<Task> _companyTasks = [];
+  List<Task> _filteredCompanyTasks = [];
   DateTime? _selectedTaskDate;
   bool _loadingTasks = false;
 
@@ -62,6 +65,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _searchController.addListener(_onSearchChanged);
+    _taskSearchController.addListener(_onTaskSearchChanged);
     _loadInitialUsers();
     _loadCompanyTasks();
     ApiService.trackAction('admin_overview_access', category: 'admin_action');
@@ -71,6 +75,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
+    _taskSearchController.dispose();
     super.dispose();
   }
 
@@ -117,6 +122,19 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
       return;
     }
     _searchUsers(keyword);
+  }
+
+  void _onTaskSearchChanged() {
+    final query = _taskSearchController.text.toLowerCase();
+    setState(() {
+      _filteredCompanyTasks = _companyTasks.where((task) {
+        return task.title.toLowerCase().contains(query) ||
+               (task.description?.toLowerCase().contains(query) ?? false) ||
+               task.assigneeName.toLowerCase().contains(query) ||
+               task.department.toLowerCase().contains(query) ||
+               task.getStatusText().toLowerCase().contains(query);
+      }).toList();
+    });
   }
 
   Future<void> _searchUsers(String keyword) async {
@@ -196,8 +214,10 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
     );
   }
 
-  Future<void> _loadUserStatistics({bool silent = false}) async {
+  Future<void> _loadUserStatistics({bool silent = false, bool forceRefresh = false}) async {
     if (_selectedUser == null) return;
+    
+    print('DEBUG: Starting to load user statistics for userId=${_selectedUser!.id}, period=$_statisticsPeriod, forceRefresh=$forceRefresh');
     
     if (!silent) {
       setState(() {
@@ -206,14 +226,31 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
     }
     
     try {
+      // 如果是强制刷新，先清除当前数据
+      if (forceRefresh && _userStatistics != null) {
+        setState(() {
+          _userStatistics = null;
+        });
+        
+        // 等待一帧，确保UI更新
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      
       final stats = await ApiService.getUserStatistics(
         _selectedUser!.id,
         _statisticsPeriod,
       );
-      setState(() {
-        _userStatistics = stats;
-      });
+      print('DEBUG: Received statistics: $stats');
+      
+      // 强制更新UI
+      if (mounted) {
+        setState(() {
+          _userStatistics = stats;
+          print('DEBUG: UI updated with new statistics');
+        });
+      }
     } catch (e) {
+      print('DEBUG: Error loading user statistics: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('加载统计数据失败: $e')),
@@ -300,6 +337,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
       final tasks = await ApiService.getAllCompanyTasks(date: dateStr);
       setState(() {
         _companyTasks = tasks;
+        _filteredCompanyTasks = tasks;
         _loadingTasks = false;
       });
       
@@ -328,6 +366,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
     
     try {
       final tree = await ApiService.getTaskTree(taskId);
+      print('任务树数据: $tree'); // 添加调试信息
       setState(() {
         _taskTree = tree;
       });
@@ -337,6 +376,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
         category: 'admin_action',
         metadata: {'task_id': taskId});
     } catch (e) {
+      print('加载任务树错误: $e'); // 添加调试信息
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('加载任务树失败: $e')),
@@ -452,7 +492,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
         setState(() {
           _statisticsPeriod = period;
         });
-        _loadUserStatistics();
+        _loadUserStatistics(forceRefresh: true);
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -472,11 +512,87 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
     );
   }
 
+  Widget _buildDateSelectionButton() {
+    final isSelected = _statisticsPeriod == 'custom';
+    return GestureDetector(
+      onTap: () async {
+        final DateTime? picked = await showDatePicker(
+          context: context,
+          initialDate: _customSelectedDate ?? DateTime.now(),
+          firstDate: DateTime(2020),
+          lastDate: DateTime.now(),
+        );
+        if (picked != null) {
+          setState(() {
+            _statisticsPeriod = 'custom';
+            _customSelectedDate = picked;
+          });
+          _loadUserStatistics(forceRefresh: true);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? Theme.of(context).primaryColor : Colors.grey[200],
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          _customSelectedDate != null ? 
+            '${_customSelectedDate!.month}/${_customSelectedDate!.day}' : 
+            '选定日期',
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.grey[700],
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _navigateToTaskList(String taskType) {
+    if (_selectedUser == null) return;
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => UserTaskListScreen(
+          userId: _selectedUser!.id,
+          userName: _selectedUser!.name,
+          taskType: taskType,
+          period: _statisticsPeriod,
+          customDate: _customSelectedDate,
+        ),
+      ),
+    );
+  }
+
   Widget _buildCompanyTasksTab() {
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(16.0),
+          child: TextField(
+            controller: _taskSearchController,
+            decoration: InputDecoration(
+              hintText: '搜索任务（标题、描述、负责人、部门、状态）',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _taskSearchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _taskSearchController.clear();
+                      },
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Row(
             children: [
               Expanded(
@@ -519,12 +635,18 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
         Expanded(
           child: _loadingTasks
               ? const Center(child: CircularProgressIndicator())
-              : _companyTasks.isEmpty
-                  ? const Center(child: Text('暂无任务'))
+              : _filteredCompanyTasks.isEmpty
+                  ? Center(
+                      child: Text(
+                        _taskSearchController.text.isNotEmpty
+                            ? '没有找到匹配的任务'
+                            : '暂无任务',
+                      ),
+                    )
                   : ListView.builder(
-                      itemCount: _companyTasks.length,
+                      itemCount: _filteredCompanyTasks.length,
                       itemBuilder: (context, index) {
-                        final task = _companyTasks[index];
+                        final task = _filteredCompanyTasks[index];
                         return Card(
                           margin: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -567,6 +689,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
   }
 
   Widget _buildTaskTreeNode(Map<String, dynamic> node) {
+    print('构建任务树节点: $node'); // 添加调试信息
     final hasSubtasks =
         node['subtasks'] != null && (node['subtasks'] as List).isNotEmpty;
 
@@ -656,11 +779,51 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
                           ),
                           Row(
                             children: [
-                              _buildPeriodButton('每天', 'daily'),
+                              IconButton(
+                                onPressed: () {
+                                  print('DEBUG: Refresh button pressed');
+                                  // 强制刷新统计数据
+                                  _loadUserStatistics(forceRefresh: true);
+                                },
+                                icon: const Icon(Icons.refresh),
+                                tooltip: '刷新数据',
+                              ),
                               const SizedBox(width: 8),
-                              _buildPeriodButton('每周', 'weekly'),
-                              const SizedBox(width: 8),
-                              _buildPeriodButton('每月', 'monthly'),
+                              SizedBox(
+                                width: 120,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _statisticsPeriod,
+                                      isExpanded: true,
+                                      items: const [
+                                        DropdownMenuItem(value: 'today', child: Text('今日')),
+                                        DropdownMenuItem(value: 'week', child: Text('近七天')),
+                                        DropdownMenuItem(value: 'all', child: Text('全部')),
+                                      ],
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          print('DEBUG: Dropdown changed to $value');
+                                          setState(() {
+                                            _statisticsPeriod = value;
+                                            print('DEBUG: State updated, _statisticsPeriod=$_statisticsPeriod');
+                                          });
+                                          
+                                          // 使用Future.microtask确保setState完成后再调用_loadUserStatistics
+                                          Future.microtask(() {
+                                            _loadUserStatistics(forceRefresh: true);
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ],
@@ -668,9 +831,7 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
                       const SizedBox(height: 16),
                       _loadingStatistics
                           ? const Center(child: CircularProgressIndicator())
-                          : _userStatistics == null
-                              ? const Center(child: Text('暂无数据'))
-                              : _buildStatisticsContent(),
+                          : _buildStatisticsContent(),
                     ],
                   ),
                 ),
@@ -722,6 +883,9 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
 
   Widget _buildStatisticsContent() {
     final stats = _userStatistics ?? {};
+    print('DEBUG: Building statistics content with data: $stats');
+    print('DEBUG: totalTasks: ${stats['totalTasks']}, inProgressTasks: ${stats['inProgressTasks']}, completedTasks: ${stats['completedTasks']}, completionRate: ${stats['completionRate']}');
+    
     return Column(
       children: [
         Row(
@@ -732,15 +896,17 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
                 _formatInt(stats['totalTasks']),
                 Icons.assignment,
                 Colors.blue,
+                onTap: () => _navigateToTaskList('all'),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: _buildStatCard(
-                '已完成',
-                _formatInt(stats['completedTasks']),
-                Icons.check_circle,
-                Colors.green,
+                '进行中',
+                _formatInt(stats['inProgressTasks']),
+                Icons.hourglass_empty,
+                Colors.orange,
+                onTap: () => _navigateToTaskList('in_progress'),
               ),
             ),
           ],
@@ -750,10 +916,11 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
           children: [
             Expanded(
               child: _buildStatCard(
-                '进行中',
-                _formatInt(stats['inProgressTasks']),
-                Icons.hourglass_empty,
-                Colors.orange,
+                '已完成',
+                _formatInt(stats['completedTasks']),
+                Icons.check_circle,
+                Colors.green,
+                onTap: () => _navigateToTaskList('completed'),
               ),
             ),
             const SizedBox(width: 12),
@@ -771,42 +938,47 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
+  Widget _buildStatCard(String title, String value, IconData icon, Color color, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: color,
+                if (onTap != null)
+                  Icon(Icons.arrow_forward_ios, color: color, size: 12),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1014,13 +1186,9 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
       _loadingTaskTree = true;
     });
 
-    await _loadTaskTree(task.id, silent: true);
+    await _loadTaskTree(task.id);
 
     if (!mounted) return;
-
-    setState(() {
-      _loadingTaskTree = false;
-    });
 
     await showModalBottomSheet(
       context: context,
@@ -1077,10 +1245,18 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
                 ),
               ),
               const SizedBox(height: 16),
+              const Text(
+                '任务树结构',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
               if (_loadingTaskTree)
                 const Center(child: CircularProgressIndicator())
               else if (_taskTree == null)
-                const Text('暂无任务树数据')
+                const Text('无')
               else
                 _buildTaskTreeNode(_taskTree!),
             ],
@@ -1172,13 +1348,642 @@ class _OverviewScreenState extends State<OverviewScreen> with SingleTickerProvid
       case 'pending':
         return Colors.grey;
       case 'cancelled':
-        return Colors.red;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   String _getStatusText(String? status) {
+    switch (status) {
+      case 'completed':
+        return '已完成';
+      case 'in_progress':
+        return '进行中';
+      case 'pending':
+        return '待处理';
+      case 'cancelled':
+        return '已完成';
+      default:
+        return status ?? '未知';
+    }
+  }
+}
+
+// 用户任务列表页面
+class UserTaskListScreen extends StatefulWidget {
+  final String userId;
+  final String userName;
+  final String taskType; // all, completed, in_progress
+  final String period; // today, week, all, custom
+  final DateTime? customDate;
+
+  const UserTaskListScreen({
+    super.key,
+    required this.userId,
+    required this.userName,
+    required this.taskType,
+    required this.period,
+    this.customDate,
+  });
+
+  @override
+  State<UserTaskListScreen> createState() => _UserTaskListScreenState();
+}
+
+class _UserTaskListScreenState extends State<UserTaskListScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  List<Task> _allTasks = [];
+  List<Task> _filteredTasks = [];
+  bool _isLoading = true;
+  String _sortOption = 'date'; // date, priority, status
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+    _loadTasks();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredTasks = _allTasks.where((task) {
+        return task.title.toLowerCase().contains(query) ||
+               (task.description?.toLowerCase().contains(query) ?? false) ||
+               (task.status?.toLowerCase().contains(query) ?? false);
+      }).toList();
+    });
+  }
+
+  Future<void> _loadTasks() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      List<Task> tasks;
+      
+      // 根据时间范围获取任务
+      switch (widget.period) {
+        case 'today':
+          tasks = await _getTodayTasks();
+          break;
+        case 'week':
+          tasks = await _getWeekTasks();
+          break;
+        case 'custom':
+          tasks = await _getCustomDateTasks(widget.customDate!);
+          break;
+        case 'all':
+        default:
+          tasks = await _getAllTasks();
+          break;
+      }
+
+      // 根据任务类型过滤
+      if (widget.taskType != 'all') {
+        if (widget.taskType == 'in_progress' && (widget.period == 'today' || widget.period == 'week')) {
+          // 对于今日/本周任务，"进行中"包括所有非"已完成"且非"已取消"的任务
+          tasks = tasks.where((task) => 
+            task.status != 'completed' && task.status != 'cancelled'
+          ).toList();
+        } else {
+          // 其他情况，按原始状态过滤
+          tasks = tasks.where((task) => task.status == widget.taskType).toList();
+        }
+      }
+
+      setState(() {
+        _allTasks = tasks;
+        _filteredTasks = tasks;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载任务失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<List<Task>> _getAllTasks() async {
+    // 获取用户的所有任务
+    final allTasks = await ApiService.getTasks();
+    return allTasks.where((task) => task.assigneeId == widget.userId).toList();
+  }
+
+  Future<List<Task>> _getTodayTasks() async {
+    final allTasks = await _getAllTasks();
+    final today = DateTime.now();
+    final todayStart = DateTime(today.year, today.month, today.day);
+    final todayEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
+    
+    return allTasks.where((task) {
+      // 使用与后端统计API相同的逻辑：基于start_time和end_time判断
+      final startTime = task.startTime;
+      final endTime = task.endTime;
+      
+      // 检查任务是否在今天的时间范围内
+      if (startTime != null && endTime != null) {
+        // 任务有开始和结束时间，检查是否与今天有重叠
+        return (startTime.isBefore(todayEnd) && endTime.isAfter(todayStart)) ||
+               (startTime.isAfter(todayStart) && startTime.isBefore(todayEnd)) ||
+               (endTime.isAfter(todayStart) && endTime.isBefore(todayEnd));
+      } else if (startTime != null) {
+        // 只有开始时间，检查是否在今天
+        return startTime.isAfter(todayStart) && startTime.isBefore(todayEnd);
+      } else if (endTime != null) {
+        // 只有结束时间，检查是否在今天
+        return endTime.isAfter(todayStart) && endTime.isBefore(todayEnd);
+      }
+      
+      return false;
+    }).toList();
+  }
+
+  Future<List<Task>> _getWeekTasks() async {
+    final allTasks = await _getAllTasks();
+    final now = DateTime.now();
+    final dayOfWeek = now.weekday;
+    final diff = dayOfWeek - 1; // 周一为第1天
+    final weekStart = DateTime(now.year, now.month, now.day - diff);
+    final weekEnd = DateTime(weekStart.year, weekStart.month, weekStart.day + 6, 23, 59, 59);
+    
+    return allTasks.where((task) {
+      // 使用与后端统计API相同的逻辑：基于start_time和end_time判断
+      final startTime = task.startTime;
+      final endTime = task.endTime;
+      
+      // 检查任务是否在本周的时间范围内
+      if (startTime != null && endTime != null) {
+        // 任务有开始和结束时间，检查是否与本周有重叠
+        return (startTime.isBefore(weekEnd) && endTime.isAfter(weekStart)) ||
+               (startTime.isAfter(weekStart) && startTime.isBefore(weekEnd)) ||
+               (endTime.isAfter(weekStart) && endTime.isBefore(weekEnd));
+      } else if (startTime != null) {
+        // 只有开始时间，检查是否在本周
+        return startTime.isAfter(weekStart) && startTime.isBefore(weekEnd);
+      } else if (endTime != null) {
+        // 只有结束时间，检查是否在本周
+        return endTime.isAfter(weekStart) && endTime.isBefore(weekEnd);
+      }
+      
+      return false;
+    }).toList();
+  }
+
+  Future<List<Task>> _getCustomDateTasks(DateTime date) async {
+    final allTasks = await _getAllTasks();
+    final dateStart = DateTime(date.year, date.month, date.day);
+    final dateEnd = DateTime(date.year, date.month, date.day, 23, 59, 59);
+    
+    return allTasks.where((task) {
+      // 使用与后端统计API相同的逻辑：基于start_time和end_time判断
+      final startTime = task.startTime;
+      final endTime = task.endTime;
+      
+      // 检查任务是否在指定日期的时间范围内
+      if (startTime != null && endTime != null) {
+        // 任务有开始和结束时间，检查是否与指定日期有重叠
+        return (startTime.isBefore(dateEnd) && endTime.isAfter(dateStart)) ||
+               (startTime.isAfter(dateStart) && startTime.isBefore(dateEnd)) ||
+               (endTime.isAfter(dateStart) && endTime.isBefore(dateEnd));
+      } else if (startTime != null) {
+        // 只有开始时间，检查是否在指定日期
+        return startTime.isAfter(dateStart) && startTime.isBefore(dateEnd);
+      } else if (endTime != null) {
+        // 只有结束时间，检查是否在指定日期
+        return endTime.isAfter(dateStart) && endTime.isBefore(dateEnd);
+      }
+      
+      return false;
+    }).toList();
+  }
+
+  void _sortTasks(String option) {
+    setState(() {
+      _sortOption = option;
+      
+      switch (option) {
+        case 'date':
+          _filteredTasks.sort((a, b) {
+            if (a.createdAt == null && b.createdAt == null) return 0;
+            if (a.createdAt == null) return 1;
+            if (b.createdAt == null) return -1;
+            return b.createdAt.compareTo(a.createdAt);
+          });
+          break;
+        case 'priority':
+          _filteredTasks.sort((a, b) {
+            final priorityOrder = {'high': 0, 'medium': 1, 'low': 2};
+            final aPriority = priorityOrder[a.priority] ?? 3;
+            final bPriority = priorityOrder[b.priority] ?? 3;
+            return aPriority.compareTo(bPriority);
+          });
+          break;
+        case 'status':
+          _filteredTasks.sort((a, b) {
+            final statusOrder = {'pending': 0, 'in_progress': 1, 'completed': 2, 'cancelled': 3};
+            final aStatus = statusOrder[a.status] ?? 4;
+            final bStatus = statusOrder[b.status] ?? 4;
+            return aStatus.compareTo(bStatus);
+          });
+          break;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${widget.userName}的任务'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: '搜索任务...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.sort),
+            onSelected: _sortTasks,
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'date',
+                child: Text('按日期排序'),
+              ),
+              const PopupMenuItem(
+                value: 'priority',
+                child: Text('按优先级排序'),
+              ),
+              const PopupMenuItem(
+                value: 'status',
+                child: Text('按状态排序'),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _filteredTasks.isEmpty
+              ? Center(
+                  child: Text(
+                    _searchController.text.isNotEmpty
+                        ? '没有找到匹配的任务'
+                        : '暂无任务',
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: _filteredTasks.length,
+                  itemBuilder: (context, index) {
+                    final task = _filteredTasks[index];
+                    return TaskCard(
+                      task: task,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => TaskDetailScreen(task: task),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+// 任务卡片组件
+class TaskCard extends StatelessWidget {
+  final Task task;
+  final VoidCallback onTap;
+
+  const TaskCard({
+    super.key,
+    required this.task,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final priorityColor = {
+      'high': Colors.red,
+      'medium': Colors.orange,
+      'low': Colors.green,
+    }[task.priority] ?? Colors.grey;
+
+    final statusColor = {
+      'pending': Colors.grey,
+      'in_progress': Colors.blue,
+      'completed': Colors.green,
+      'cancelled': Colors.red,
+    }[task.status] ?? Colors.grey;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      task.title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: priorityColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: priorityColor.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      _formatPriority(task.priority),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: priorityColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (task.description != null && task.description!.isNotEmpty)
+                Text(
+                  task.description!,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: statusColor.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      _formatStatus(task.status),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: statusColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  if (task.createdAt != null)
+                    Text(
+                      _formatDateTime(task.createdAt),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatPriority(String? priority) {
+    switch (priority) {
+      case 'high':
+        return '高优先级';
+      case 'medium':
+        return '中优先级';
+      case 'low':
+        return '低优先级';
+      default:
+        return priority ?? '未设置';
+    }
+  }
+
+  String _formatStatus(String? status) {
+    switch (status) {
+      case 'completed':
+        return '已完成';
+      case 'in_progress':
+        return '进行中';
+      case 'pending':
+        return '待处理';
+      case 'cancelled':
+        return '已取消';
+      default:
+        return status ?? '未知';
+    }
+  }
+
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      return DateFormat('yyyy-MM-dd HH:mm').format(date);
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    return DateFormat('yyyy-MM-dd HH:mm').format(dateTime);
+  }
+}
+
+// 任务详情页面
+class TaskDetailScreen extends StatelessWidget {
+  final Task task;
+
+  const TaskDetailScreen({super.key, required this.task});
+
+  @override
+  Widget build(BuildContext context) {
+    final priorityColor = {
+      'high': Colors.red,
+      'medium': Colors.orange,
+      'low': Colors.green,
+    }[task.priority] ?? Colors.grey;
+
+    final statusColor = {
+      'pending': Colors.grey,
+      'in_progress': Colors.blue,
+      'completed': Colors.green,
+      'cancelled': Colors.red,
+    }[task.status] ?? Colors.grey;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('任务详情'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              task.title,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: priorityColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: priorityColor.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    _formatPriority(task.priority),
+                    style: TextStyle(
+                      color: priorityColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: statusColor.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    _formatStatus(task.status),
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            if (task.description != null && task.description!.isNotEmpty) ...[
+              const Text(
+                '任务描述',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                task.description!,
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 24),
+            ],
+            _buildDetailRow('创建时间', task.createdAt != null 
+                ? DateFormat('yyyy-MM-dd HH:mm').format(task.createdAt)
+                : '未知'),
+            _buildDetailRow('截止时间', task.deadline != null 
+                ? DateFormat('yyyy-MM-dd').format(task.deadline!)
+                : '未设置'),
+            _buildDetailRow('创建者', task.assigneeName ?? '未知'),
+            _buildDetailRow('负责人', task.assigneeName),
+            // 更新时间字段不存在于Task模型中，暂时注释掉
+            // if (task.updatedAt != null)
+            //   _buildDetailRow('更新时间', 
+            //       DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(task.updatedAt!))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 16),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatPriority(String? priority) {
+    switch (priority) {
+      case 'high':
+        return '高优先级';
+      case 'medium':
+        return '中优先级';
+      case 'low':
+        return '低优先级';
+      default:
+        return priority ?? '未设置';
+    }
+  }
+
+  String _formatStatus(String? status) {
     switch (status) {
       case 'completed':
         return '已完成';

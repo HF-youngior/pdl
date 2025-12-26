@@ -47,6 +47,8 @@ class _ViewScreenState extends State<ViewScreen> {
           duration: Duration(seconds: 2),
         ),
       );
+      // 刷新日历视图，确保甘特图也更新
+      _refreshCalendar?.call();
     }
   }
 
@@ -71,6 +73,8 @@ class _ViewScreenState extends State<ViewScreen> {
           duration: Duration(seconds: 2),
         ),
       );
+      // 刷新日历视图，确保甘特图也更新
+      _refreshCalendar?.call();
     }
   }
 
@@ -93,6 +97,8 @@ class _ViewScreenState extends State<ViewScreen> {
           duration: Duration(seconds: 2),
         ),
       );
+      // 刷新日历视图，确保甘特图也更新
+      _refreshCalendar?.call();
     }
   }
 
@@ -105,44 +111,12 @@ class _ViewScreenState extends State<ViewScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-            child: GestureDetector(
-              onTap: () => _openDateSelector?.call(),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blue.shade400, Colors.cyan.shade300],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.shade300.withOpacity(0.35),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(Icons.filter_alt_rounded, size: 16, color: Colors.white),
-                    SizedBox(width: 6),
-                    Text(
-                      '跳转',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          IconButton(
+            tooltip: '跳转到指定日期',
+            onPressed: () {
+              _openDateSelector?.call();
+            },
+            icon: const Icon(Icons.calendar_today),
           ),
           IconButton(
             tooltip: '刷新',

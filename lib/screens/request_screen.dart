@@ -28,6 +28,8 @@ class _RequestScreenState extends State<RequestScreen> {
   String? _selectedAssigneeId;
   DateTime? _selectedDeadline;
   String? _selectedRelatedTaskId;
+  DateTime? _selectedRequestStartTime;
+  DateTime? _selectedRequestEndTime;
   
   List<User> _availableUsers = [];
   List<Map<String, dynamic>> _availableTasks = [];
@@ -58,6 +60,9 @@ class _RequestScreenState extends State<RequestScreen> {
       // related_task_id 需要从API返回的JSON中获取，Task模型中没有这个字段
       // 暂时设为null，后续可以通过API获取
       _selectedRelatedTaskId = null;
+      // 从任务对象中获取邀约时间
+      _selectedRequestStartTime = widget.task!.requestStartTime;
+      _selectedRequestEndTime = widget.task!.requestEndTime;
     }
     
     _loadUsers();
@@ -199,6 +204,84 @@ class _RequestScreenState extends State<RequestScreen> {
     }
   }
 
+  // 选择邀约开始时间
+  Future<void> _selectRequestStartTime() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedRequestStartTime ?? DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+
+    if (picked != null) {
+      final TimeOfDay? time = await showTimePicker(
+        context: context,
+        initialTime: const TimeOfDay(hour: 9, minute: 0),
+      );
+
+      if (time != null) {
+        setState(() {
+          _selectedRequestStartTime = DateTime(
+            picked.year,
+            picked.month,
+            picked.day,
+            time.hour,
+            time.minute,
+          );
+          // 如果结束时间早于开始时间，自动设置结束时间为开始时间+1小时
+          if (_selectedRequestEndTime != null && _selectedRequestEndTime!.isBefore(_selectedRequestStartTime!)) {
+            _selectedRequestEndTime = _selectedRequestStartTime!.add(const Duration(hours: 1));
+          }
+        });
+      }
+    }
+  }
+
+  // 选择邀约结束时间
+  Future<void> _selectRequestEndTime() async {
+    if (_selectedRequestStartTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先选择邀约开始时间'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedRequestEndTime ?? _selectedRequestStartTime!.add(const Duration(hours: 1)),
+      firstDate: _selectedRequestStartTime!,
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+
+    if (picked != null) {
+      final TimeOfDay? time = await showTimePicker(
+        context: context,
+        initialTime: picked.isAtSameMomentAs(_selectedRequestStartTime!) 
+            ? TimeOfDay.fromDateTime(_selectedRequestStartTime!.add(const Duration(hours: 1))) 
+            : const TimeOfDay(hour: 18, minute: 0),
+      );
+
+      if (time != null) {
+        setState(() {
+          _selectedRequestEndTime = DateTime(
+            picked.year,
+            picked.month,
+            picked.day,
+            time.hour,
+            time.minute,
+          );
+          // 确保结束时间不早于开始时间
+          if (_selectedRequestEndTime!.isBefore(_selectedRequestStartTime!)) {
+            _selectedRequestEndTime = _selectedRequestStartTime!.add(const Duration(hours: 1));
+          }
+        });
+      }
+    }
+  }
+
   // 提交邀约请求
   Future<void> _submitRequest() async {
     if (!_formKey.currentState!.validate()) {
@@ -232,10 +315,20 @@ class _RequestScreenState extends State<RequestScreen> {
     });
 
     try {
-      // 格式化deadline
+      // 格式化时间字段
       String? deadlineStr;
       if (_selectedDeadline != null) {
         deadlineStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(_selectedDeadline!);
+      }
+      
+      String? requestStartStr;
+      if (_selectedRequestStartTime != null) {
+        requestStartStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(_selectedRequestStartTime!);
+      }
+      
+      String? requestEndStr;
+      if (_selectedRequestEndTime != null) {
+        requestEndStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(_selectedRequestEndTime!);
       }
 
       // 如果是编辑模式，调用更新接口
@@ -247,6 +340,8 @@ class _RequestScreenState extends State<RequestScreen> {
           description: _descriptionController.text.trim(),
           deadline: deadlineStr,
           relatedTaskId: _selectedRelatedTaskId,
+          requestStartTime: requestStartStr,
+          requestEndTime: requestEndStr,
         );
 
         if (mounted) {
@@ -266,6 +361,8 @@ class _RequestScreenState extends State<RequestScreen> {
           description: _descriptionController.text.trim(),
           deadline: deadlineStr,
           relatedTaskId: _selectedRelatedTaskId,
+          requestStartTime: requestStartStr,
+          requestEndTime: requestEndStr,
         );
 
         if (mounted) {
@@ -447,6 +544,102 @@ class _RequestScreenState extends State<RequestScreen> {
                     style: TextStyle(
                       color: _selectedDeadline != null ? Colors.black87 : Colors.grey,
                     ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // 添加邀约时间选择
+              _buildSectionTitle('邀约时间（可选）'),
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: BorderSide(
+                    color: _selectedRequestStartTime != null 
+                        ? Theme.of(context).primaryColor 
+                        : Colors.grey.shade300,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SwitchListTile(
+                              title: const Text('设置邀约时间'),
+                              value: _selectedRequestStartTime != null,
+                              onChanged: (bool value) {
+                                setState(() {
+                                  if (!value) {
+                                    // 取消选择时清空时间
+                                    _selectedRequestStartTime = null;
+                                    _selectedRequestEndTime = null;
+                                  } else {
+                                    // 默认设置为明天上午9点到下午5点
+                                    final now = DateTime.now();
+                                    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+                                    _selectedRequestStartTime = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 9, 0);
+                                    _selectedRequestEndTime = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 17, 0);
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_selectedRequestStartTime != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: InkWell(
+                                onTap: _selectRequestStartTime,
+                                child: InputDecorator(
+                                  decoration: const InputDecoration(
+                                    labelText: '开始时间',
+                                    border: OutlineInputBorder(),
+                                    suffixIcon: Icon(Icons.access_time),
+                                  ),
+                                  child: Text(
+                                    _selectedRequestStartTime != null
+                                        ? DateFormat('yyyy-MM-dd HH:mm').format(_selectedRequestStartTime!.toLocal())
+                                        : '点击选择开始时间',
+                                    style: TextStyle(
+                                      color: _selectedRequestStartTime != null ? Colors.black87 : Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: InkWell(
+                                onTap: _selectRequestEndTime,
+                                child: InputDecorator(
+                                  decoration: const InputDecoration(
+                                    labelText: '结束时间',
+                                    border: OutlineInputBorder(),
+                                    suffixIcon: Icon(Icons.access_time),
+                                  ),
+                                  child: Text(
+                                    _selectedRequestEndTime != null
+                                        ? DateFormat('yyyy-MM-dd HH:mm').format(_selectedRequestEndTime!.toLocal())
+                                        : '点击选择结束时间',
+                                    style: TextStyle(
+                                      color: _selectedRequestEndTime != null ? Colors.black87 : Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),

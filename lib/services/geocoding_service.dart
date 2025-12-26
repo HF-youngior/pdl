@@ -2,78 +2,33 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 /// 逆地理编码服务
-/// 使用OpenStreetMap的Nominatim API将GPS坐标转换为地址
+/// 使用高德地图API将GPS坐标转换为地址
 class GeocodingService {
+  static const String _baseUrl = 'https://restapi.amap.com/v3';
+  static const String _webApiKey = 'b5372dbe5fedfd2481830b7b2dc7a7fa'; // Web服务API Key
+
   /// 将经纬度转换为地址
   /// 返回格式化的地址字符串，如果失败则返回null
   static Future<String?> reverseGeocode(double latitude, double longitude) async {
     try {
-      // 使用OpenStreetMap Nominatim API（免费，无需API key）
-      // 注意：请遵守使用政策，不要过于频繁请求
-      final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?'
-        'format=json&'
-        'lat=$latitude&'
-        'lon=$longitude&'
-        'zoom=18&'
-        'addressdetails=1',
-      );
+      final url = Uri.parse('$_baseUrl/geocode/regeo').replace(queryParameters: {
+        'key': _webApiKey,
+        'location': '$longitude,$latitude', // 高德地图API使用经度,纬度的顺序
+        'poitype': '',
+        'radius': '1000',
+        'extensions': 'all',
+        'batch': 'false',
+        'roadlevel': '0',
+      });
 
-      final response = await http.get(
-        url,
-        headers: {
-          'User-Agent': 'FlutterApp/1.0', // Nominatim要求设置User-Agent
-        },
-      );
+      final response = await http.get(url);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final address = data['address'];
-
-        if (address != null) {
-          // 构建地址字符串，优先使用详细地址
-          final parts = <String>[];
-
-          // 街道地址
-          if (address['road'] != null) {
-            parts.add(address['road']);
-          }
-          if (address['house_number'] != null) {
-            parts.insert(0, address['house_number']);
-          }
-
-          // 区域信息
-          if (address['neighbourhood'] != null || address['suburb'] != null) {
-            parts.add(address['neighbourhood'] ?? address['suburb']);
-          }
-
-          // 城市/区县
-          if (address['city'] != null) {
-            parts.add(address['city']);
-          } else if (address['town'] != null) {
-            parts.add(address['town']);
-          } else if (address['county'] != null) {
-            parts.add(address['county']);
-          }
-
-          // 省份/州
-          if (address['state'] != null) {
-            parts.add(address['state']);
-          }
-
-          // 国家
-          if (address['country'] != null) {
-            parts.add(address['country']);
-          }
-
-          if (parts.isNotEmpty) {
-            return parts.join(', ');
-          }
-
-          // 如果没有详细地址，使用显示名称
-          if (data['display_name'] != null) {
-            return data['display_name'] as String;
-          }
+        
+        if (data['status'] == '1' && data['regeocode'] != null) {
+          final regeocode = data['regeocode'];
+          return regeocode['formatted_address'] as String?;
         }
       }
 

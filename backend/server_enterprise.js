@@ -13,6 +13,85 @@ const swaggerDocument = require('./swagger.json');
 require('dotenv').config();
 // const { useDefault, Segment } = require('segmentit');
 // const segmenter = useDefault(new Segment());
+const { sendPush } = require('./push_jiguang');
+
+// 高德地图API配置 - 用于经纬度转地址
+const AMAP_API_KEY = process.env.AMAP_API_KEY || 'your_amap_api_key_here';
+const AMAP_GEOCODE_URL = 'https://restapi.amap.com/v3/geocode/regeo';
+
+// 经纬度转中文地址函数
+async function convertToAddress(latitude, longitude) {
+  if (!latitude || !longitude) return null;
+
+  try {
+    const response = await axios.get(AMAP_GEOCODE_URL, {
+      params: {
+        key: AMAP_API_KEY,
+        location: `${longitude},${latitude}`, // 注意：高德API使用经度,纬度的顺序
+        poitype: '',
+        radius: 1000,
+        extensions: 'all',
+        batch: 'false',
+        roadlevel: 0
+      }
+    });
+
+    if (response.data.status === '1' && response.data.regeocode) {
+      const addressComponent = response.data.regeocode.addressComponent;
+      const formattedAddress = response.data.regeocode.formatted_address;
+
+      // 构建详细地址信息
+      const addressInfo = {
+        formatted_address: formattedAddress,
+        country: addressComponent.country || '',
+        province: addressComponent.province || '',
+        city: addressComponent.city || addressComponent.district || '',
+        district: addressComponent.district || '',
+        township: addressComponent.township || '',
+        street: addressComponent.streetNumber?.street || '',
+        street_number: addressComponent.streetNumber?.number || ''
+      };
+
+      return addressInfo;
+    } else {
+      console.warn('经纬度转地址失败:', response.data.info);
+      // 如果是API Key平台不匹配的错误，返回原始坐标信息
+      if (response.data.infocode === '10009') {
+        console.warn('API Key平台不匹配，请在高德地图控制台添加Web服务API Key');
+        return {
+          formatted_address: `纬度: ${latitude}, 经度: ${longitude}`,
+          country: '',
+          province: '',
+          city: '',
+          district: '',
+          township: '',
+          street: '',
+          street_number: '',
+          note: 'API Key平台不匹配，显示原始坐标'
+        };
+      }
+      return null;
+    }
+  } catch (error) {
+    console.error('经纬度转地址异常:', error.message);
+    // 如果是API Key平台不匹配的错误，返回原始坐标信息
+    if (error.response && error.response.data && error.response.data.infocode === '10009') {
+      console.warn('API Key平台不匹配，请在高德地图控制台添加Web服务API Key');
+      return {
+        formatted_address: `纬度: ${latitude}, 经度: ${longitude}`,
+        country: '',
+        province: '',
+        city: '',
+        district: '',
+        township: '',
+        street: '',
+        street_number: '',
+        note: 'API Key平台不匹配，显示原始坐标'
+      };
+    }
+    return null;
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -30,6 +109,20 @@ const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.c
 app.use(cors());
 app.use(express.json());
 
+// 全局CSP配置：允许内联样式和脚本，解决页面格式错误问题
+app.use((req, res, next) => {
+  // 设置宽松的CSP策略以允许内联样式和脚本
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; " +
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; " +
+    "img-src 'self' data: https: http:; " +
+    "font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com data:; " +
+    "connect-src 'self' https: http:;"
+  );
+  next();
+});
+
 // 静态文件服务 - 提供Web管理端
 app.use('/web_admin', express.static('../web_admin'));
 
@@ -42,7 +135,32 @@ app.use('/', express.static(publicDir));
 
 // Swagger UI 文档（基于 OpenAPI）
 // 访问地址示例：http://localhost:8080/swagger
-app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// 配置Swagger UI选项，允许内联样式
+const swaggerOptions = {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: '企业管理系统 API 文档',
+  customfavIcon: '/favicon.ico',
+  swaggerOptions: {
+    persistAuthorization: true,
+    displayRequestDuration: true
+  }
+};
+
+// 中间件：移除或放宽CSP策略以允许内联样式
+app.use('/swagger', (req, res, next) => {
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self' https://cdn.jsdelivr.net;");
+  next();
+});
+
+app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerDocument, swaggerOptions));
+
+// 提供Swagger JSON文件下载端点
+app.get('/swagger.json', (req, res) => {
+  const swaggerJsonPath = path.join(__dirname, 'swagger.json');
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', 'attachment; filename="swagger.json"');
+  res.sendFile(swaggerJsonPath);
+});
 
 // 确保uploads目录存在
 const uploadsDir = path.join(publicDir, 'uploads');
@@ -85,6 +203,7 @@ const upload = multer({
   }
 });
 
+// 数据库连接配置
 // 数据库连接 - 云数据库配置
 const dbConfig = {
   host: process.env.DB_HOST || 'rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com',
@@ -126,10 +245,16 @@ function shiftToBeijing(date) {
 }
 
 // 将数据库中的时间统一转换为北京时间 ISO 字符串
+// mysql2配置了timezone: '+08:00'，会将数据库时间（假设为+08:00时区）转换为Date对象
+// Date对象内部存储的是UTC时间戳，我们需要加8小时偏移来得到正确的北京时间
 function formatDateTimeForBeijing(dateTime) {
   const date = normalizeDateInput(dateTime);
   if (!date) return null;
-  const beijingDate = shiftToBeijing(date);
+  // Date对象内部存储UTC时间戳，加8小时偏移得到北京时间
+  const utcMillis = date.getTime();
+  const beijingMillis = utcMillis + (8 * 60 * 60 * 1000);
+  const beijingDate = new Date(beijingMillis);
+  // 使用UTC方法获取，因为Date对象内部是UTC时间戳
   const year = beijingDate.getUTCFullYear();
   const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
   const day = String(beijingDate.getUTCDate()).padStart(2, '0');
@@ -156,7 +281,10 @@ function formatDateTimeForMySQL(dateTime) {
 function formatDateOnlyForBeijing(dateTime) {
   const date = normalizeDateInput(dateTime);
   if (!date) return null;
-  const beijingDate = shiftToBeijing(date);
+  // Date对象内部存储UTC时间戳，加8小时偏移得到北京时间，然后获取日期部分
+  const utcMillis = date.getTime();
+  const beijingMillis = utcMillis + (8 * 60 * 60 * 1000);
+  const beijingDate = new Date(beijingMillis);
   const year = beijingDate.getUTCFullYear();
   const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
   const day = String(beijingDate.getUTCDate()).padStart(2, '0');
@@ -301,14 +429,14 @@ async function createTables() {
     // 任务通知表
     `CREATE TABLE IF NOT EXISTS task_notifications (
       id VARCHAR(36) PRIMARY KEY,
-      task_id VARCHAR(36) NULL,
+      task_id VARCHAR(36) NOT NULL,
       from_user_id VARCHAR(36) NOT NULL,
       to_user_id VARCHAR(36) NOT NULL,
-      notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes', 'deadline_warning', 'focus_invite') NOT NULL,
+      notification_type ENUM('task_assigned', 'task_progress_update', 'task_completed', 'task_cancelled', 'special_notes', 'deadline_warning') NOT NULL,
       message TEXT NOT NULL,
       is_read BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
+      FOREIGN KEY (task_id) REFERENCES tasks(id),
       FOREIGN KEY (from_user_id) REFERENCES users(id),
       FOREIGN KEY (to_user_id) REFERENCES users(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
@@ -412,6 +540,20 @@ async function createTables() {
       INDEX idx_user_analysis_date (user_id, analysis_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='性格分析表，存储AI性格分析结果';`,
 
+    `CREATE TABLE IF NOT EXISTS task_assignees (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      task_id VARCHAR(36) NOT NULL,
+      assignee_id VARCHAR(36) NOT NULL,
+      assignee_name VARCHAR(100) NOT NULL,
+      progress_percentage INT DEFAULT 0,
+      status VARCHAR(50) DEFAULT 'pending',
+      assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      completed_at TIMESTAMP NULL,
+      UNIQUE KEY task_assignee_unique (task_id, assignee_id),
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+      FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
     `CREATE TABLE IF NOT EXISTS log_task_linkage (
       id INT AUTO_INCREMENT PRIMARY KEY,
       log_id VARCHAR(36) NOT NULL,
@@ -450,7 +592,19 @@ async function createTables() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       INDEX idx_points_user_created (user_id, created_at),
       INDEX idx_points_type (type)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='积分流水表（获取/消耗记录）';`
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='积分流水表（获取/消耗记录）';`,
+
+    `CREATE TABLE IF NOT EXISTS user_devices (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      registration_id VARCHAR(128) NOT NULL,
+      platform VARCHAR(20) DEFAULT 'android',
+      last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_registration (registration_id),
+      INDEX idx_user_id (user_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='极光推送设备注册表';`
   ];
 
   for (const table of tables) {
@@ -496,6 +650,8 @@ async function ensureSchemaCompatibility() {
     // tasks表邀约相关字段
     try { await db.execute("ALTER TABLE tasks ADD COLUMN is_request BOOLEAN DEFAULT FALSE"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN request_type VARCHAR(50) NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE tasks ADD COLUMN request_start_time TIMESTAMP NULL"); } catch(e){}
+    try { await db.execute("ALTER TABLE tasks ADD COLUMN request_end_time TIMESTAMP NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN request_response VARCHAR(20) NULL"); } catch(e){}
     try { await db.execute("ALTER TABLE tasks ADD COLUMN related_task_id VARCHAR(36) NULL"); } catch(e){}
     
@@ -1294,6 +1450,53 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.post('/api/push/register', authenticateToken, async (req, res) => {
+  try {
+    const { registrationId, platform } = req.body || {};
+    if (!registrationId || typeof registrationId !== 'string') {
+      return res.status(400).json({ error: 'registrationId 必填' });
+    }
+    await db.execute(
+      `INSERT INTO user_devices (user_id, registration_id, platform, last_seen)
+       VALUES (?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE user_id = VALUES(user_id),
+                               platform = VALUES(platform),
+                               last_seen = NOW()`,
+      [req.user.id, registrationId.trim(), (platform || 'android').trim()]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('注册推送设备失败:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+app.post('/api/push/broadcast-logout', authenticateToken, async (req, res) => {
+  try {
+    const { excludeRegistrationId } = req.body || {};
+    const [rows] = await db.execute(
+      'SELECT registration_id FROM user_devices WHERE user_id = ?',
+      [req.user.id]
+    );
+    let sent = 0;
+    for (const row of rows) {
+      const regId = row.registration_id;
+      if (excludeRegistrationId && regId === excludeRegistrationId) continue;
+      const ok = await sendPush(
+        regId,
+        '账号通知',
+        '该账号在另一设备退出登录',
+        { type: 'account_logout', userId: String(req.user.id) }
+      );
+      if (ok) sent++;
+    }
+    res.json({ ok: true, sent });
+  } catch (error) {
+    console.error('广播登出通知失败:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 获取用户信息
 app.get('/api/user/profile', authenticateToken, async (req, res) => {
   try {
@@ -1348,8 +1551,6 @@ app.post('/api/user/focus-duration', authenticateToken, async (req, res) => {
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
-
-// 注意：旧的接口已删除，真正的协同专注通知接口在下方（第5648行）
 
 // 获取部门列表
 app.get('/api/departments', async (req, res) => {
@@ -1593,6 +1794,41 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
     res.json({ message: '密码修改成功' });
   } catch (error) {
     console.error('修改密码错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 重置密码（忘记密码功能，仅用于紧急情况，不验证旧密码）
+// 注意：此接口不进行身份验证，仅用于应急情况，存在安全风险
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { username, newPassword } = req.body;
+
+    if (!username || !newPassword) {
+      return res.status(400).json({ error: '请提供用户名和新密码' });
+    }
+
+    // 查找用户
+    const [users] = await db.execute(
+      'SELECT id FROM users WHERE username = ? AND is_active = TRUE',
+      [username.trim()]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: '用户不存在或已被删除' });
+    }
+
+    const userId = users[0].id;
+
+    // 更新密码（使用bcrypt加密）
+    const newHashed = await hashPassword(newPassword.trim());
+    await db.execute('UPDATE users SET password = ? WHERE id = ?', [newHashed, userId]);
+
+    console.log(`⚠️ 密码重置: 用户 ${username} (ID: ${userId}) 通过忘记密码功能重置了密码`);
+
+    res.json({ message: '密码重置成功，请使用新密码登录' });
+  } catch (error) {
+    console.error('重置密码错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
   }
 });
@@ -1914,13 +2150,29 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
     const [rows] = await db.execute(query, params);
 
     // 处理时区 - 将所有时间字段转换为北京时间格式
-    const tasksWithTimezone = rows.map(task => ({
-      ...task,
-      start_time: formatDateTimeForBeijing(task.start_time),
-      end_time: formatDateTimeForBeijing(task.end_time),
-      deadline: formatDateTimeForBeijing(task.deadline),
-      created_at: formatDateTimeForBeijing(task.created_at),
-      updated_at: formatDateTimeForBeijing(task.updated_at)
+    const tasksWithTimezone = await Promise.all(rows.map(async (task) => {
+      const taskWithTimezone = {
+        ...task,
+        start_time: formatDateTimeForBeijing(task.start_time),
+        end_time: formatDateTimeForBeijing(task.end_time),
+        deadline: formatDateTimeForBeijing(task.deadline),
+        created_at: formatDateTimeForBeijing(task.created_at),
+        updated_at: formatDateTimeForBeijing(task.updated_at),
+        request_start_time: formatDateTimeForBeijing(task.request_start_time),
+        request_end_time: formatDateTimeForBeijing(task.request_end_time)
+      };
+
+      // 检查是否为多负责人任务
+      const [assignees] = await db.execute(
+        `SELECT assignee_id, assignee_name, progress_percentage, status FROM task_assignees WHERE task_id = ?`,
+        [task.id]
+      );
+
+      if (assignees.length > 0) {
+        taskWithTimezone.assignees = assignees;
+      }
+
+      return taskWithTimezone;
     }));
 
     res.json(tasksWithTimezone);
@@ -1971,8 +2223,20 @@ app.get('/api/tasks/:id', authenticateToken, async (req, res) => {
       deadline: formatDateTimeForBeijing(rows[0].deadline),
       created_at: formatDateTimeForBeijing(rows[0].created_at),
       updated_at: formatDateTimeForBeijing(rows[0].updated_at),
+      request_start_time: formatDateTimeForBeijing(rows[0].request_start_time),
+      request_end_time: formatDateTimeForBeijing(rows[0].request_end_time),
       related_task_id: rows[0].related_task_id // 确保返回related_task_id字段
     };
+
+    // 检查是否为多负责人任务
+    const [assignees] = await db.execute(
+      `SELECT assignee_id, assignee_name, progress_percentage, status FROM task_assignees WHERE task_id = ?`,
+      [id]
+    );
+
+    if (assignees.length > 0) {
+      taskWithTimezone.assignees = assignees;
+    }
 
     res.json(taskWithTimezone);
   } catch (error) {
@@ -1988,6 +2252,7 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       title,
       description,
       assignee_id,
+      assignee_ids, // 支持多个负责人
       department_id,
       priority,
       deadline,
@@ -2001,12 +2266,24 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       ? req.body.attachments.filter(item => typeof item === 'string' && item.trim().length > 0)
       : [];
 
+    // 处理多负责人逻辑
+    let assigneeIds = [];
+    if (assignee_ids && Array.isArray(assignee_ids) && assignee_ids.length > 0) {
+      // 使用多负责人列表
+      assigneeIds = assignee_ids;
+    } else if (assignee_id) {
+      // 使用单个负责人
+      assigneeIds = [assignee_id];
+    } else {
+      return res.status(400).json({ error: '必须指定至少一个责任人' });
+    }
+
     // 参数验证
     if (!title || !title.trim()) {
       return res.status(400).json({ error: '任务名称不能为空' });
     }
-    if (!assignee_id) {
-      return res.status(400).json({ error: '必须指定责任人' });
+    if (assigneeIds.length === 0) {
+      return res.status(400).json({ error: '必须指定至少一个责任人' });
     }
     // department_id 可以为空，将从被分配人信息中获取
 
@@ -2015,19 +2292,19 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: '员工无权创建任务' });
     }
 
-    // 获取被分配人信息（包括部门ID）
-    const [assigneeRows] = await db.execute(
+    // 获取第一个被分配人信息（用于主负责人和部门信息）
+    const [firstAssigneeRows] = await db.execute(
       'SELECT name, department_id FROM users WHERE id = ?',
-      [assignee_id]
+      [assigneeIds[0]]
     );
 
-    if (assigneeRows.length === 0) {
-      return res.status(400).json({ error: '被分配人不存在' });
+    if (firstAssigneeRows.length === 0) {
+      return res.status(400).json({ error: '第一个被分配人不存在' });
     }
 
-    const assignee_name = assigneeRows[0].name;
+    const firstAssigneeName = firstAssigneeRows[0].name;
     // 如果前端没有传递 department_id，从用户信息中获取
-    const final_department_id = department_id || assigneeRows[0].department_id;
+    const final_department_id = department_id || firstAssigneeRows[0].department_id;
 
     if (!final_department_id) {
       return res.status(400).json({ error: '无法确定任务部门，请确保用户有部门信息' });
@@ -2045,10 +2322,11 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
     const progress_percentage = req.body.progress_percentage !== undefined ? req.body.progress_percentage : 0;
     const status = req.body.status || 'pending';
 
+    // 创建主任务记录（使用第一个负责人作为主负责人）
     await db.execute(
       `INSERT INTO tasks (
-        id, title, description, parent_task_id, assignee_id, assignee_name, 
-        department_id, priority, deadline, created_by, start_time, end_time, 
+        id, title, description, parent_task_id, assignee_id, assignee_name,
+        department_id, priority, deadline, created_by, start_time, end_time,
         location, is_all_day, progress_percentage, status, attachments
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -2056,8 +2334,8 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
         title,
         cleanValue(description),
         cleanValue(parent_task_id),
-        assignee_id,
-        assignee_name,
+        assigneeIds[0], // 第一个负责人作为主负责人
+        firstAssigneeName,
         final_department_id,
         priority || 'p1',
         cleanValue(deadline),
@@ -2066,14 +2344,32 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
         cleanValue(end_time),
         cleanValue(location),
         is_all_day || false,
-        progress_percentage,
+        0, // 初始进度为0
         status,
         attachments.length ? JSON.stringify(attachments) : JSON.stringify([])
       ]
     );
 
-    // 创建任务分配通知
-    await createNotification(taskId, req.user.id, assignee_id, 'task_assigned', `您收到了新任务：${title}`);
+    // 为每个负责人创建分配记录
+    for (const assigneeId of assigneeIds) {
+      // 获取负责人信息
+      const [assigneeInfo] = await db.execute(
+        'SELECT name FROM users WHERE id = ?',
+        [assigneeId]
+      );
+
+      if (assigneeInfo.length > 0) {
+        // 插入分配记录
+        await db.execute(
+          `INSERT INTO task_assignees (task_id, assignee_id, assignee_name)
+           VALUES (?, ?, ?)`,
+          [taskId, assigneeId, assigneeInfo[0].name]
+        );
+
+        // 为每个负责人创建任务分配通知
+        await createNotification(taskId, req.user.id, assigneeId, 'task_assigned', `您收到了新任务：${title}`);
+      }
+    }
 
     // 创建任务时，如果截止时间在24小时内，立刻发送截止时间通知
     if (cleanValue(deadline)) {
@@ -2159,12 +2455,32 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
     const finalNotes = updateData.special_notes ?? null;
     const finalCompletedAt = updateData.completed_at ?? null;
 
-    await db.execute(
-      `UPDATE tasks SET 
-       status = ?, progress_percentage = ?, special_notes = ?, completed_at = ?
-       WHERE id = ?`,
-      [status, finalProgress, finalNotes, finalCompletedAt, id]
+    // 检查是否为多负责人任务
+    const [assigneeCount] = await db.execute(
+      `SELECT COUNT(*) as count FROM task_assignees WHERE task_id = ?`,
+      [id]
     );
+
+    if (assigneeCount[0].count > 0) {
+      // 多负责人任务：更新该用户在任务分配表中的进度
+      await db.execute(
+        `UPDATE task_assignees SET
+         status = ?, progress_percentage = ?, completed_at = ?
+         WHERE task_id = ? AND assignee_id = ?`,
+        [status, finalProgress, finalCompletedAt, id, req.user.id]
+      );
+
+      // 更新主任务的总体进度
+      await updateMultiAssigneeTaskProgress(id);
+    } else {
+      // 单负责人任务：更新主任务进度
+      await db.execute(
+        `UPDATE tasks SET
+         status = ?, progress_percentage = ?, special_notes = ?, completed_at = ?
+         WHERE id = ?`,
+        [status, finalProgress, finalNotes, finalCompletedAt, id]
+      );
+    }
 
     // 如果这个任务有父任务，更新父任务的进度
     if (task.parent_task_id) {
@@ -2233,8 +2549,8 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
 
   // 更新任务（完整更新，仅允许被分配人编辑）
   app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+      const { id } = req.params;
     const {
       title,
       description,
@@ -2607,7 +2923,9 @@ app.post('/api/tasks/request', authenticateToken, async (req, res) => {
       assignee_id,
       description,
       deadline,
-      related_task_id
+      related_task_id,
+      request_start_time,
+      request_end_time
     } = req.body;
 
     // 允许的请求类型
@@ -2716,6 +3034,32 @@ app.post('/api/tasks/request', authenticateToken, async (req, res) => {
       }
     }
 
+    // 格式化邀约时间
+    let formattedRequestStartTime = null;
+    let formattedRequestEndTime = null;
+    if (request_start_time) {
+      try {
+        const requestStartTimeDate = new Date(request_start_time);
+        if (isNaN(requestStartTimeDate.getTime())) {
+          return res.status(400).json({ error: '邀约开始时间格式无效' });
+        }
+        formattedRequestStartTime = requestStartTimeDate.toISOString().slice(0, 19).replace('T', ' ');
+      } catch (e) {
+        return res.status(400).json({ error: '邀约开始时间格式无效' });
+      }
+    }
+    if (request_end_time) {
+      try {
+        const requestEndTimeDate = new Date(request_end_time);
+        if (isNaN(requestEndTimeDate.getTime())) {
+          return res.status(400).json({ error: '邀约结束时间格式无效' });
+        }
+        formattedRequestEndTime = requestEndTimeDate.toISOString().slice(0, 19).replace('T', ' ');
+      } catch (e) {
+        return res.status(400).json({ error: '邀约结束时间格式无效' });
+      }
+    }
+
     // 计算默认结束时间（如果没有deadline，默认3天后）
     const defaultEndTime = formattedDeadline
       ? new Date(formattedDeadline)
@@ -2727,8 +3071,8 @@ app.post('/api/tasks/request', authenticateToken, async (req, res) => {
         id, title, description, assignee_id, assignee_name,
         department_id, priority, deadline, created_by,
         start_time, end_time, is_all_day, progress_percentage, status,
-        is_request, request_type, related_task_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        is_request, request_type, related_task_id, request_start_time, request_end_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         taskId,
         taskTitle,
@@ -2746,7 +3090,9 @@ app.post('/api/tasks/request', authenticateToken, async (req, res) => {
         'pending', // 状态为pending（待处理）
         true, // 标记为邀约任务
         request_type.trim(),
-        cleanValue(related_task_id)
+        cleanValue(related_task_id),
+        formattedRequestStartTime,
+        formattedRequestEndTime
       ]
     );
 
@@ -2786,7 +3132,9 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
       assignee_id,
       description,
       deadline,
-      related_task_id
+      related_task_id,
+      request_start_time,
+      request_end_time
     } = req.body;
 
     // 获取任务信息
@@ -2917,6 +3265,32 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
       }
     }
 
+    // 格式化邀约时间
+    let formattedRequestStartTime = null;
+    let formattedRequestEndTime = null;
+    if (request_start_time) {
+      try {
+        const requestStartTimeDate = new Date(request_start_time);
+        if (isNaN(requestStartTimeDate.getTime())) {
+          return res.status(400).json({ error: '邀约开始时间格式无效' });
+        }
+        formattedRequestStartTime = requestStartTimeDate.toISOString().slice(0, 19).replace('T', ' ');
+      } catch (e) {
+        return res.status(400).json({ error: '邀约开始时间格式无效' });
+      }
+    }
+    if (request_end_time) {
+      try {
+        const requestEndTimeDate = new Date(request_end_time);
+        if (isNaN(requestEndTimeDate.getTime())) {
+          return res.status(400).json({ error: '邀约结束时间格式无效' });
+        }
+        formattedRequestEndTime = requestEndTimeDate.toISOString().slice(0, 19).replace('T', ' ');
+      } catch (e) {
+        return res.status(400).json({ error: '邀约结束时间格式无效' });
+      }
+    }
+
     // 生成任务标题
     const taskTitle = `邀约请求：${request_type}`;
 
@@ -2935,7 +3309,9 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
         department_id = ?,
         deadline = ?,
         request_type = ?,
-        related_task_id = ?
+        related_task_id = ?,
+        request_start_time = ?,
+        request_end_time = ?
       WHERE id = ?`,
       [
         taskTitle,
@@ -2946,6 +3322,8 @@ app.put('/api/tasks/:id/request', authenticateToken, async (req, res) => {
         formattedDeadline,
         request_type.trim(),
         cleanValue(related_task_id),
+        formattedRequestStartTime,
+        formattedRequestEndTime,
         id
       ]
     );
@@ -3084,7 +3462,7 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
     console.log(`[获取通知] 用户ID: ${userId}`);
-    
+
     const [rows] = await db.execute(
       `SELECT tn.*, t.title as task_title, t.deadline as task_deadline, u.name as from_user_name
        FROM task_notifications tn
@@ -3092,11 +3470,12 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
        LEFT JOIN users u ON tn.from_user_id = u.id
        WHERE tn.to_user_id = ?
        ORDER BY tn.created_at DESC`,
-      [userId]
+      [req.user.id]
     );
 
+
     console.log(`[获取通知] 找到 ${rows.length} 条通知`);
-    
+
     // 将时间字段转换为北京时间格式
     const formattedRows = rows.map(row => {
       const formatted = { ...row };
@@ -3106,12 +3485,12 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
       if (row.task_deadline) {
         formatted.task_deadline = formatDateTimeForBeijing(row.task_deadline);
       }
-      
+
       // 调试日志：打印 focus_invite 类型的通知
       if (row.notification_type === 'focus_invite') {
         console.log(`[获取通知] focus_invite 通知: id=${row.id}, message="${row.message}", is_read=${row.is_read}`);
       }
-      
+
       return formatted;
     });
 
@@ -3270,15 +3649,58 @@ app.put('/api/notifications/mark-all-read', authenticateToken, async (req, res) 
   }
 });
 
+// 标记通知为未读
+app.put('/api/notifications/:id/unread', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.execute(
+      'UPDATE task_notifications SET is_read = FALSE WHERE id = ? AND to_user_id = ?',
+      [id, req.user.id]
+    );
+    res.json({ message: '通知已标记为未读' });
+  } catch (error) {
+    console.error('标记通知未读错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
+// 批量/全部标记通知为未读
+app.put('/api/notifications/mark-all-unread', authenticateToken, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.notification_ids)
+      ? req.body.notification_ids.filter(id => typeof id === 'string' && id.trim().length > 0)
+      : [];
+
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(',');
+      await db.execute(
+        `UPDATE task_notifications SET is_read = FALSE WHERE to_user_id = ? AND id IN (${placeholders})`,
+        [req.user.id, ...ids]
+      );
+    } else {
+      await db.execute(
+        'UPDATE task_notifications SET is_read = FALSE WHERE to_user_id = ?',
+        [req.user.id]
+      );
+    }
+
+    res.json({ message: '通知已全部标记为未读' });
+  } catch (error) {
+    console.error('批量标记通知未读错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // ==================== 签到相关API ====================
 
 // 获取用户积分（兼容是否带 /api 前缀的两种路由）
 app.get(['/api/checkin/points', '/checkin/points'], authenticateToken, async (req, res) => {
   try {
-    const userId = req.query.userId || req.user.id;
-    
+    // 使用字符串比较确保类型一致
+    const userId = req.query.userId ? String(req.query.userId) : String(req.user.id);
+
     // 验证权限：只能查询自己的积分，或者管理员/创始人可以查询其他人的
-    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+    if (userId !== String(req.user.id) && !['admin', 'founder'].includes(req.user.role)) {
       return res.status(403).json({ error: '无权查询该用户的积分' });
     }
 
@@ -3298,15 +3720,42 @@ app.get(['/api/checkin/points', '/checkin/points'], authenticateToken, async (re
   }
 });
 
+// 获取服务器当前日期（北京时间），用于前端日期判断
+app.get(['/api/checkin/today', '/checkin/today'], authenticateToken, async (req, res) => {
+  try {
+    // 直接使用UTC时间戳，加上8小时偏移，然后计算北京时间的日期
+    // 这样可以确保无论服务器在什么时区，都能正确返回北京时间
+    const now = Date.now(); // 当前UTC时间戳（毫秒）
+    const beijingMillis = now + (8 * 60 * 60 * 1000); // 加上8小时
+    const beijingDate = new Date(beijingMillis);
+
+    const year = beijingDate.getUTCFullYear();
+    const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(beijingDate.getUTCDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
+
+    res.json({
+      today: todayStr,
+      year: year,
+      month: parseInt(month),
+      day: parseInt(day)
+    });
+  } catch (error) {
+    console.error('获取服务器日期错误:', error);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 获取签到记录（按月查询，兼容是否带 /api 前缀）
 app.get(['/api/checkin/records', '/checkin/records'], authenticateToken, async (req, res) => {
   try {
-    const userId = req.query.userId || req.user.id;
+    // 使用字符串比较确保类型一致
+    const userId = req.query.userId ? String(req.query.userId) : String(req.user.id);
     const year = parseInt(req.query.year) || new Date().getFullYear();
     const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
     
-    // 验证权限
-    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
+    // 验证权限：所有用户都可以查询自己的签到记录，管理员/创始人可以查询其他人的
+    if (userId !== String(req.user.id) && !['admin', 'founder'].includes(req.user.role)) {
       return res.status(403).json({ error: '无权查询该用户的签到记录' });
     }
 
@@ -3466,20 +3915,47 @@ app.get('/api/checkin/consecutive', authenticateToken, async (req, res) => {
   }
 });
 
-// 每日签到
-app.post('/api/checkin', authenticateToken, async (req, res) => {
+// 每日签到（支持带/不带/api前缀）
+app.post(['/api/checkin', '/checkin'], authenticateToken, async (req, res) => {
   try {
-    const userId = req.body.userId || req.user.id;
-    
-    // 验证权限：只能为自己签到，或者管理员/创始人可以为其他人签到
-    if (userId !== req.user.id && !['admin', 'founder'].includes(req.user.role)) {
-      return res.status(403).json({ error: '无权为该用户签到' });
+    // 确定目标用户ID：所有用户都可以为自己签到，管理员/创始人可以为其他用户签到
+    const currentUserId = String(req.user.id);
+    const requestedUserId = req.body.userId ? String(req.body.userId) : null;
+    let userId;
+
+    // 如果没有指定 userId 或指定的 userId 与当前用户相同，则为当前用户签到
+    if (!requestedUserId || requestedUserId === currentUserId) {
+      userId = currentUserId;
+    } else {
+      // 尝试为其他用户签到
+      if (!['admin', 'founder'].includes(req.user.role)) {
+        return res.status(403).json({ error: '无权为该用户签到，只能为自己签到' });
+      }
+      // 管理员/创始人可以为其他用户签到，验证目标用户是否存在
+      userId = requestedUserId;
+      const [targetUserRows] = await db.execute(
+        'SELECT id, is_active FROM users WHERE id = ?',
+        [userId]
+      );
+      if (targetUserRows.length === 0) {
+        return res.status(404).json({ error: '目标用户不存在' });
+      }
+      if (!targetUserRows[0].is_active) {
+        return res.status(403).json({ error: '目标用户已被禁用' });
+      }
     }
 
+    console.log(`签到请求: userId=${userId}, currentUserId=${currentUserId}, role=${req.user.role}`);
+
     // 获取今天的日期（北京时间）
-    const today = new Date();
-    const beijingDate = shiftToBeijing(today);
-    const todayStr = formatDateOnlyForBeijing(beijingDate);
+    // 直接计算当前北京时间的日期：UTC时间戳 + 8小时
+    const now = Date.now(); // 当前UTC时间戳（毫秒）
+    const beijingMillis = now + (8 * 60 * 60 * 1000); // 加上8小时得到北京时间
+    const beijingDate = new Date(beijingMillis);
+    const year = beijingDate.getUTCFullYear();
+    const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(beijingDate.getUTCDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
 
     // 检查今天是否已经签到
     const [existing] = await db.execute(
@@ -3493,10 +3969,14 @@ app.post('/api/checkin', authenticateToken, async (req, res) => {
 
     // 计算连续签到天数（用于可能的奖励）
     // 先检查昨天是否签到
-    const yesterday = new Date(beijingDate);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = formatDateOnlyForBeijing(yesterday);
-    
+    const yesterdayMillis = now - (24 * 60 * 60 * 1000); // 减去24小时（UTC时间）
+    const yesterdayBeijingMillis = yesterdayMillis + (8 * 60 * 60 * 1000); // 加上8小时得到北京时间
+    const yesterdayDate = new Date(yesterdayBeijingMillis);
+    const yesterdayYear = yesterdayDate.getUTCFullYear();
+    const yesterdayMonth = String(yesterdayDate.getUTCMonth() + 1).padStart(2, '0');
+    const yesterdayDay = String(yesterdayDate.getUTCDate()).padStart(2, '0');
+    const yesterdayStr = `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}`;
+
     const [lastCheckin] = await db.execute(
       `SELECT checkin_date
        FROM checkin_records
@@ -3600,11 +4080,14 @@ app.post('/api/checkin', authenticateToken, async (req, res) => {
     } catch (error) {
       await connection.rollback();
       connection.release();
+      console.error('签到事务错误:', error);
       throw error;
     }
   } catch (error) {
     console.error('签到错误:', error);
-    res.status(500).json({ error: error.message || '服务器内部错误' });
+    console.error('错误堆栈:', error.stack);
+    const errorMessage = error.message || '服务器内部错误';
+    res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -3728,13 +4211,23 @@ app.post('/api/upload-images', authenticateToken, upload.array('images', 10), as
 });
 
 // 创建个人日志
-function convertPersonalLogForResponse(log, taskUpdates = []) {
+async function convertPersonalLogForResponse(log, taskUpdates = []) {
   if (!log) return null;
+
+  // 如果有经纬度信息，转换为中文地址
+  let locationAddress = null;
+  if (log.location_latitude && log.location_longitude) {
+    const addressInfo = await convertToAddress(log.location_latitude, log.location_longitude);
+    // 提取格式化地址作为字符串，同时保留完整信息供前端使用
+    locationAddress = addressInfo ? addressInfo.formatted_address : null;
+  }
+
   return {
     ...log,
     created_at: formatDateTimeForBeijing(log.created_at),
     updated_at: formatDateTimeForBeijing(log.updated_at),
     log_date: log.log_date ? formatDateOnlyForBeijing(log.log_date) : null,
+    location_address: locationAddress,
     taskUpdates
   };
 }
@@ -3850,7 +4343,8 @@ app.post('/api/personal-logs', authenticateToken, async (req, res) => {
     }));
 
     const logRecord = rows[0];
-    return res.status(201).json(convertPersonalLogForResponse(logRecord, taskUpdates));
+    const response = await convertPersonalLogForResponse(logRecord, taskUpdates);
+    return res.status(201).json(response);
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('创建个人日志错误:', error);
@@ -3878,7 +4372,7 @@ app.get('/api/personal-logs', authenticateToken, async (req, res) => {
         [log.id]
       );
 
-      return convertPersonalLogForResponse(log, links.map(link => ({
+      return await convertPersonalLogForResponse(log, links.map(link => ({
         taskId: link.task_id,
         taskName: link.task_name,
         progress_percentage: link.progress_percentage,
@@ -4036,7 +4530,7 @@ app.put('/api/personal-logs/:id', authenticateToken, async (req, res) => {
       progress_percentage: link.progress_percentage,
       task_status: link.task_status
     }));
-    return res.status(200).json(convertPersonalLogForResponse(newLogRows[0], finalLinks));
+    return res.status(200).json(await convertPersonalLogForResponse(newLogRows[0], finalLinks));
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('更新个人日志错误:', error);
@@ -4143,6 +4637,40 @@ async function createNotification(taskId, fromUserId, toUserId, type, message) {
     );
     
     console.log(`   [createNotification] ✅ 通知已插入数据库: ${notificationId}`);
+
+    // 通过极光推送发送到接收者的所有设备（后台/锁屏可见）
+    try {
+      const [devices] = await db.execute(
+        'SELECT registration_id FROM user_devices WHERE user_id = ?',
+        [toUserId]
+      );
+      const titleMap = {
+        task_assigned: '新任务分配',
+        task_completed: '任务完成',
+        task_progress_update: '任务进度更新',
+        task_cancelled: '任务取消',
+        special_notes: '特别备注',
+        deadline_warning: '截止时间提醒',
+        focus_invite: '专注邀约'
+      };
+      const title = titleMap[type] || '通知';
+      let sentCount = 0;
+      for (const row of devices) {
+        const regId = row.registration_id;
+        if (!regId) continue;
+        const ok = await sendPush(regId, title, message, {
+          type,
+          notificationId,
+          taskId: finalTaskId || '',
+          toUserId: String(toUserId)
+        });
+        if (ok) sentCount++;
+      }
+      console.log(`   [createNotification] 已通过极光推送发送到设备: ${sentCount}/${devices.length}`);
+    } catch (pushErr) {
+      console.error('   [createNotification] 极光推送发送失败:', pushErr?.message || pushErr);
+    }
+
     return notificationId;
   } catch (error) {
     console.error('创建通知失败:', error);
@@ -4250,6 +4778,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         t.is_all_day,
         t.assignee_name,
         t.attachments,
+        t.request_start_time,
+        t.request_end_time,
         DATE_FORMAT(COALESCE(t.start_time, t.deadline), '%Y-%m-%d') as task_date
       FROM tasks t
       WHERE t.assignee_id = ?
@@ -4328,7 +4858,13 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
     }
     
     // 填充任务数据（处理跨天任务）
-    tasks.forEach(task => {
+    for (const task of tasks) {
+      // 获取多负责人信息
+      const [assignees] = await db.execute(
+        `SELECT assignee_id, assignee_name, progress_percentage, status FROM task_assignees WHERE task_id = ?`,
+        [task.id]
+      );
+
       // 既有开始又有结束：按天展开
       if (task.start_time && task.end_time) {
         const rangeStart = new Date(task.start_time);
@@ -4346,7 +4882,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
           if (calendar[key]) {
             const exists = calendar[key].tasks.some(t => t.id === task.id);
             if (!exists) {
-              calendar[key].tasks.push({
+              const taskObj = {
                 id: task.id,
                 title: task.title,
                 description: task.description,
@@ -4358,8 +4894,16 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
                 deadline: formatDateTimeForBeijing(task.deadline),
                 is_all_day: task.is_all_day,
                 assignee_name: task.assignee_name,
-                attachments: safeParseJSON(task.attachments) || []
-              });
+                attachments: safeParseJSON(task.attachments) || [],
+                request_start_time: formatDateTimeForBeijing(task.request_start_time),
+                request_end_time: formatDateTimeForBeijing(task.request_end_time)
+              };
+
+              if (assignees.length > 0) {
+                taskObj.assignees = assignees;
+              }
+
+              calendar[key].tasks.push(taskObj);
               calendar[key].hasData = true;
             }
           }
@@ -4376,7 +4920,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         if (calendar[key]) {
           const exists = calendar[key].tasks.some(t => t.id === task.id);
           if (!exists) {
-            calendar[key].tasks.push({
+            const taskObj = {
               id: task.id,
               title: task.title,
               description: task.description,
@@ -4388,8 +4932,16 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
               deadline: formatDateTimeForBeijing(task.deadline),
               is_all_day: task.is_all_day,
               assignee_name: task.assignee_name,
-              attachments: safeParseJSON(task.attachments) || []
-            });
+              attachments: safeParseJSON(task.attachments) || [],
+              request_start_time: formatDateTimeForBeijing(task.request_start_time),
+              request_end_time: formatDateTimeForBeijing(task.request_end_time)
+            };
+
+            if (assignees.length > 0) {
+              taskObj.assignees = assignees;
+            }
+
+            calendar[key].tasks.push(taskObj);
             calendar[key].hasData = true;
           }
         }
@@ -4400,7 +4952,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         if (calendar[key]) {
           const exists = calendar[key].tasks.some(t => t.id === task.id);
           if (!exists) {
-            calendar[key].tasks.push({
+            const taskObj = {
               id: task.id,
               title: task.title,
               description: task.description,
@@ -4412,16 +4964,33 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
               deadline: formatDateTimeForBeijing(task.deadline),
               is_all_day: task.is_all_day,
               assignee_name: task.assignee_name,
-              attachments: safeParseJSON(task.attachments) || []
-            });
+              attachments: safeParseJSON(task.attachments) || [],
+              request_start_time: formatDateTimeForBeijing(task.request_start_time),
+              request_end_time: formatDateTimeForBeijing(task.request_end_time)
+            };
+
+            if (assignees.length > 0) {
+              taskObj.assignees = assignees;
+            }
+
+            calendar[key].tasks.push(taskObj);
             calendar[key].hasData = true;
           }
         }
       }
-    });
-    
+    }
+
     // 填充日志数据
-    logs.forEach(log => {
+    const processedLogs = await Promise.all(logs.map(async log => {
+      // 如果有经纬度信息，转换为中文地址
+      let locationAddress = null;
+      if (log.location_latitude && log.location_longitude) {
+        locationAddress = await convertToAddress(log.location_latitude, log.location_longitude);
+      }
+      return { ...log, location_address: locationAddress };
+    }));
+
+    processedLogs.forEach(log => {
       if (log.log_date) {
         const dateKey = log.log_date;
         console.log(`  日志 "${log.title}" 的日期: ${dateKey}, 日历中是否存在: ${!!calendar[dateKey]}`);
@@ -4442,7 +5011,8 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
             images,
             location_name: log.location_name,
             location_latitude: log.location_latitude,
-            location_longitude: log.location_longitude
+            location_longitude: log.location_longitude,
+            location_address: log.location_address
           });
           calendar[dateKey].hasData = true;
         }
@@ -4510,6 +5080,8 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         t.is_all_day,
         t.assignee_name,
         t.attachments,
+        t.request_start_time,
+        t.request_end_time,
         DATE_FORMAT(COALESCE(t.start_time, t.deadline), '%Y-%m-%d') as task_date
       FROM tasks t
       WHERE t.assignee_id = ?
@@ -4576,11 +5148,15 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
     const pendingTasks = tasks.filter(t => t.status === 'pending').length;
     const completedLogs = logs.filter(l => l.is_completed === 1).length;
     
-    // 返回简化的数据格式
-    res.json({
-      month: `${year}-${String(month).padStart(2, '0')}`,
-      userId: userId,
-      logs: logs.map(log => ({
+    // 处理日志数据，添加地址转换
+    const processedLogs = await Promise.all(logs.map(async log => {
+      // 如果有经纬度信息，转换为中文地址
+      let locationAddress = null;
+      if (log.location_latitude && log.location_longitude) {
+        locationAddress = await convertToAddress(log.location_latitude, log.location_longitude);
+      }
+
+      return {
         id: log.id,
         title: log.title,
         content: log.content,
@@ -4595,7 +5171,46 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         location_name: log.location_name,
         location_latitude: log.location_latitude,
         location_longitude: log.location_longitude
+      };
+    }));
+
+    // 获取每个任务的多负责人信息
+      tasks: await Promise.all(tasks.map(async (task) => {
+        const [assignees] = await db.execute(
+          `SELECT assignee_id, assignee_name, progress_percentage, status FROM task_assignees WHERE task_id = ?`,
+          [task.id]
+        );
+
+        const taskObj = {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          status: task.status,
+          priority: task.priority,
+          color: task.color,
+          startTime: task.start_time,
+          endTime: task.end_time,
+          deadline: task.deadline,
+          isAllDay: task.is_all_day === 1,
+          assigneeName: task.assignee_name,
+          date: task.task_date,
+          attachments: safeParseJSON(task.attachments) || [],
+          requestStartTime: task.request_start_time,
+          requestEndTime: task.request_end_time
+        };
+
+        if (assignees.length > 0) {
+          taskObj.assignees = assignees;
+        }
+
+        return taskObj;
       })),
+
+    // 返回简化的数据格式
+    res.json({
+      month: `${year}-${String(month).padStart(2, '0')}`,
+      userId: userId,
+      logs: processedLogs,
       tasks: tasks.map(task => ({
         id: task.id,
         title: task.title,
@@ -4611,6 +5226,7 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         date: task.task_date,
         attachments: safeParseJSON(task.attachments) || []
       })),
+
       statistics: {
         totalTasks: tasks.length,
         completedTasks: completedTasks,
@@ -4718,11 +5334,47 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
       date
     ]);
     
+    // 处理日志数据，添加地址转换
+    const processedLogs = await Promise.all(logs.map(async l => {
+      // 如果有经纬度信息，转换为中文地址
+      let locationAddress = null;
+      if (l.location_latitude && l.location_longitude) {
+        locationAddress = await convertToAddress(l.location_latitude, l.location_longitude);
+      }
+
+      const images = safeParseJSON(l.images) || [];
+      const keywords = normalizeKeywordList(l.keywords);
+      return {
+        id: l.id,
+        title: l.title,
+        content: l.content,
+        category: l.category,
+        quadrant: l.quadrant,
+        is_completed: l.is_completed,
+        created_at: formatDateTimeForBeijing(l.created_at),
+        log_date: l.log_date
+          ? formatDateOnlyForBeijing(l.log_date)
+          : formatDateOnlyForBeijing(l.created_at),
+        weather: l.weather,
+        keywords,
+        images,
+        location_name: l.location_name,
+        location_latitude: l.location_latitude,
+        location_longitude: l.location_longitude,
+        location_address: locationAddress
+      };
+    }));
+
     console.log(`[日期详情] 用户 ${req.user.id} 请求 ${date} 的数据: ${tasks.length} 个任务, ${logs.length} 个日志`);
     
-    res.json({
-      date: date,
-      tasks: tasks.map(t => ({
+    // 获取每个任务的多负责人信息
+    const tasksWithAssignees = await Promise.all(tasks.map(async (t) => {
+      const [assignees] = await db.execute(
+        `SELECT assignee_id, assignee_name, progress_percentage, status FROM task_assignees WHERE task_id = ?`,
+        [t.id]
+      );
+
+      const taskObj = {
         id: t.id,
         title: t.title,
         description: t.description,
@@ -4736,8 +5388,21 @@ app.get('/api/calendar/day-detail', authenticateToken, async (req, res) => {
         assignee_name: t.assignee_name,
         department_name: t.department_name,
         creator_name: t.creator_name,
-        attachments: safeParseJSON(t.attachments) || []
-      })),
+        attachments: safeParseJSON(t.attachments) || [],
+        request_start_time: formatDateTimeForBeijing(t.request_start_time),
+        request_end_time: formatDateTimeForBeijing(t.request_end_time)
+      };
+
+      if (assignees.length > 0) {
+        taskObj.assignees = assignees;
+      }
+
+      return taskObj;
+    }));
+
+    res.json({
+      date: date,
+      tasks: tasksWithAssignees,
       logs: logs.map(l => {
         const images = safeParseJSON(l.images) || [];
         const keywords = normalizeKeywordList(l.keywords);
@@ -4858,6 +5523,61 @@ function generateAiAnalysis(mbtiType, testScores, personalityTraits) {
     ],
     career_advice: `基于您的${mbtiType}性格类型，建议考虑从事需要${template.strengths[0]}和${template.strengths[1]}的工作`
   };
+}
+
+// 计算多负责人任务的总进度
+async function calculateMultiAssigneeTaskProgress(taskId) {
+  try {
+    // 获取所有分配给该任务的负责人
+    const [assignees] = await db.execute(
+      `SELECT progress_percentage FROM task_assignees WHERE task_id = ?`,
+      [taskId]
+    );
+
+    if (assignees.length === 0) {
+      return 0; // 如果没有分配负责人，返回0进度
+    }
+
+    // 计算平均进度
+    const totalProgress = assignees.reduce((sum, assignee) => sum + (assignee.progress_percentage || 0), 0);
+    const averageProgress = totalProgress / assignees.length;
+
+    return Math.round(averageProgress);
+  } catch (error) {
+    console.error('计算多负责人任务进度错误:', error);
+    return 0;
+  }
+}
+
+// 更新多负责人任务的总体进度
+async function updateMultiAssigneeTaskProgress(taskId) {
+  try {
+    const overallProgress = await calculateMultiAssigneeTaskProgress(taskId);
+
+    // 更新主任务的总体进度
+    await db.execute(
+      `UPDATE tasks SET progress_percentage = ? WHERE id = ?`,
+      [overallProgress, taskId]
+    );
+
+    // 根据总体进度更新任务状态
+    let newStatus = 'pending';
+    if (overallProgress >= 100) {
+      newStatus = 'completed';
+    } else if (overallProgress > 0) {
+      newStatus = 'in_progress';
+    }
+
+    await db.execute(
+      `UPDATE tasks SET status = ? WHERE id = ?`,
+      [newStatus, taskId]
+    );
+
+    return overallProgress;
+  } catch (error) {
+    console.error('更新多负责人任务进度错误:', error);
+    throw error;
+  }
 }
 
 function generateWorkSuggestions(mbtiType, aiAnalysis) {
@@ -5361,11 +6081,10 @@ app.get('/api/admin/search-users', authenticateToken, checkPermission(['admin'])
   }
 });
 
-// 获取员工统计数据（每天/每周/每月任务完成情况）
 app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin']), async (req, res) => {
   try {
-    const { userId, period } = req.query; // period: 'daily', 'weekly', 'monthly'
-    
+    const { userId, period } = req.query; // period: 'daily', 'weekly', 'monthly', 'all'
+
     if (!userId) {
       return res.status(400).json({ error: '请提供userId参数' });
     }
@@ -5388,50 +6107,97 @@ app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
         break;
+      case 'all':
+        // 获取所有任务，不限制时间范围
+        startDate = null;
+        endDate = null;
+        break;
       default:
-        return res.status(400).json({ error: 'period参数必须是daily、weekly或monthly' });
+        return res.status(400).json({ error: 'period参数必须是daily、weekly、monthly或all' });
     }
     
     // 获取任务统计
-    const taskQuery = `
-      SELECT 
-        COUNT(*) as total_tasks,
-        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_tasks,
-        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_tasks,
-        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_tasks
-      FROM tasks
-      WHERE assignee_id = ?
-      AND (
-        (start_time >= ? AND start_time <= ?) OR
-        (end_time >= ? AND end_time <= ?) OR
-        (start_time <= ? AND end_time >= ?)
-      )
-    `;
-    
-    const [taskStats] = await db.execute(taskQuery, [
-      userId,
-      startDate, endDate,
-      startDate, endDate,
-      startDate, endDate
-    ]);
+    let taskQuery, queryParams;
+
+    if (period === 'all') {
+      // 获取所有任务的统计
+      taskQuery = `
+        SELECT
+          COUNT(*) as total_tasks,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_tasks,
+          SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_tasks,
+          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_tasks
+        FROM tasks
+        WHERE assignee_id = ?
+      `;
+      queryParams = [userId];
+    } else {
+      // 获取指定时间范围内的任务统计
+      // 对于今日/本周任务，将非"已完成"状态的任务归类为"进行中"
+      taskQuery = `
+        SELECT
+          COUNT(*) as total_tasks,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_tasks,
+          SUM(CASE WHEN status = 'completed' THEN 0 ELSE 1 END) as in_progress_tasks
+        FROM tasks
+        WHERE assignee_id = ?
+        AND (
+          (start_time >= ? AND start_time <= ?) OR
+          (end_time >= ? AND end_time <= ?) OR
+          (start_time <= ? AND end_time >= ?)
+        )
+      `;
+      queryParams = [
+        userId,
+        startDate, endDate,
+        startDate, endDate,
+        startDate, endDate
+      ];
+    }
+
+    const [taskStats] = await db.execute(taskQuery, queryParams);
     
     const stats = taskStats[0] || {};
     const total = parseInt(stats.total_tasks) || 0;
     const completed = parseInt(stats.completed_tasks) || 0;
     const completionRate = total > 0 ? (completed / total * 100).toFixed(1) : '0.0';
     
-    res.json({
-      period,
-      totalTasks: total,
-      completedTasks: completed,
-      pendingTasks: parseInt(stats.pending_tasks) || 0,
-      inProgressTasks: parseInt(stats.in_progress_tasks) || 0,
-      cancelledTasks: parseInt(stats.cancelled_tasks) || 0,
-      completionRate: parseFloat(completionRate),
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-    });
+    let responseData;
+
+    if (period === 'all') {
+      // 对于全部任务，保持原有的状态分类
+      responseData = {
+        period,
+        totalTasks: total,
+        completedTasks: completed,
+        pendingTasks: parseInt(stats.pending_tasks) || 0,
+        inProgressTasks: parseInt(stats.in_progress_tasks) || 0,
+        cancelledTasks: parseInt(stats.cancelled_tasks) || 0,
+        completionRate: parseFloat(completionRate),
+      };
+    } else {
+      // 对于今日/本周任务，将非"已完成"状态的任务归类为"进行中"
+      const inProgress = total - completed - (parseInt(stats.cancelled_tasks) || 0);
+      responseData = {
+        period,
+        totalTasks: total,
+        completedTasks: completed,
+        pendingTasks: 0, // 对于今日/本周任务，不显示pending状态
+        inProgressTasks: inProgress, // 所有非"已完成"且非"已取消"的任务都算作"进行中"
+        cancelledTasks: parseInt(stats.cancelled_tasks) || 0,
+        completionRate: parseFloat(completionRate),
+      };
+    }
+
+    // 只有在不是'all'的情况下才添加日期范围
+    if (period !== 'all' && startDate && endDate) {
+      responseData.startDate = startDate.toISOString();
+      responseData.endDate = endDate.toISOString();
+    }
+
+    res.json(responseData);
   } catch (error) {
     console.error('获取员工统计数据错误:', error);
     res.status(500).json({ error: '服务器内部错误' });
@@ -5807,6 +6573,20 @@ async function startServer() {
     }
   } catch (e) {
     console.error('重置管理员密码失败:', e);
+  }
+
+  // 将 hr_head 账号密码重置为 hr123
+  try {
+    const hrHeadHash = await hashPassword('hr123');
+    const [result] = await db.execute(
+      `UPDATE users SET password = ? WHERE username = 'hr_head'`,
+      [hrHeadHash]
+    );
+    if (result?.affectedRows > 0) {
+      console.log(`🔐 hr_head 密码已重置为 hr123，rows=${result.affectedRows}`);
+    }
+  } catch (e) {
+    console.error('重置 hr_head 密码失败:', e);
   }
 
   // 读取证书文件（请确保 private.key 和 certificate.crt 位于启动目录）

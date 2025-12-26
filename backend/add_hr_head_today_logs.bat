@@ -9,9 +9,9 @@ chcp 65001 >nul
 :: ================================================
 
 :: 可配置参数
-set DB_HOST=rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com
+set DB_HOST=rm-2ze22f1xm8vvw4m44to.mysql.rds.aliyuncs.com
 set DB_PORT=3306
-set DB_USER=pdl123
+set DB_USER=pdl
 set DB_PASSWORD=Pdl1234567
 set SCRIPT_DIR=%~dp0
 

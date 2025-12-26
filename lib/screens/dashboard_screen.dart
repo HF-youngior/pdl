@@ -26,6 +26,7 @@ import '../models/deadline_reminder.dart';
 import '../models/notification.dart' show TaskNotification;
 import '../utils/time_utils.dart';
 import 'notification_center_screen.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class DashboardScreen extends StatefulWidget {
   final User user;
@@ -78,15 +79,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadBadgeCount();
     _loadPreviewData();
     _settings.addListener(_onSettingsChanged);
-    _startDeadlineReminderMonitor();
-    _startNotificationPolling();
+    if (!kIsWeb) {
+      _startDeadlineReminderMonitor();
+      _startNotificationPolling();
+    }
     // 初始化时加载未读通知数量
     _loadUnreadNotificationCount();
   }
 
   /// 加载未读通知数量
   Future<void> _loadUnreadNotificationCount() async {
-    if (_isGuestUser || ApiService.getToken() == null) return;
+    if (kIsWeb || _isGuestUser || ApiService.getToken() == null) return;
 
     try {
       final notifications = await NotificationService.getNotifications();
@@ -148,6 +151,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _startNotificationPolling() {
+    if (kIsWeb) return;
     _notificationPollingTimer?.cancel();
     if (_isGuestUser) return;
     _checkNotifications();
@@ -156,6 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _scheduleNextNotificationCheck() {
+    if (kIsWeb) return;
     if (!mounted || _isGuestUser) return;
     _checkNotifications();
     _notificationPollingTimer = Timer(const Duration(seconds: 5), _scheduleNextNotificationCheck);
@@ -176,7 +181,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!mounted) return;
 
       debugPrint('[通知检查] 获取到 ${notifications.length} 条通知');
-      
+
       // 调试：打印 focus_invite 类型的通知
       final focusInviteNotifications = notifications.where((n) => n.notificationType == 'focus_invite').toList();
       if (focusInviteNotifications.isNotEmpty) {
@@ -189,7 +194,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // 更新未读通知数量（必须在筛选之前更新，确保数量准确）
       final unreadCount = notifications.where((n) => !n.isRead).length;
       debugPrint('[通知检查] 未读通知数量: $unreadCount');
-      
+
       if (mounted) {
         setState(() {
           _unreadNotificationCount = unreadCount;
@@ -229,6 +234,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _showNotificationDialog(List<TaskNotification> notifications) async {
+    if (kIsWeb) return;
     if (!mounted || notifications.isEmpty) return;
 
     // 如果只有一个通知，显示简化版本
@@ -304,6 +310,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     },
                     child: const Text('查看详情'),
                   ),
+                  if (!kIsWeb)
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => NotificationCenterScreen(user: widget.user),
+                          ),
+                        );
+                      },
+                      child: const Text('查看详情'),
+                    ),
                   if (notification.taskId.isNotEmpty)
                     TextButton(
                       onPressed: () async {
@@ -348,8 +367,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         context: context,
         barrierDismissible: true,
         builder: (context) {
+          bool toggledAllRead = false;
           return StatefulBuilder(
-            builder: (context, setState) {
+            builder: (context, setDialogState) {
               return AlertDialog(
                 title: const Text('新通知'),
                 content: SizedBox(
@@ -383,7 +403,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         leading: Checkbox(
                           value: isRead,
                           onChanged: (value) {
-                            setState(() {
+                            setDialogState(() {
                               readStatus[notification.id] = value ?? false;
                             });
                             if (readStatus[notification.id] == true) {
@@ -421,30 +441,85 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 actions: [
+                  if (!kIsWeb)
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        // 打开通知中心查看详情
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => NotificationCenterScreen(user: widget.user),
+                          ),
+                        );
+                      },
+                      child: const Text('查看详情'),
+                    ),
                   TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      // 打开通知中心查看详情
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => NotificationCenterScreen(user: widget.user),
-                        ),
-                      );
-                    },
-                    child: const Text('查看详情'),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      for (final notification in notifications) {
-                        if (!(readStatus[notification.id] ?? false)) {
-                          readStatus[notification.id] = true;
-                          NotificationService.markAsRead(notification.id);
+                    onPressed: () async {
+                      if (!toggledAllRead) {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('确认全部已读'),
+                            content: const Text('确定将列表中所有未读通知标记为已读吗？'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: const Text('取消'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                child: const Text('确认'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          final ids = notifications.map((n) => n.id).toList();
+                          final ok = await NotificationService.markAllRead(ids: ids);
+                          if (ok) {
+                            for (final id in ids) {
+                              readStatus[id] = true;
+                            }
+                            setDialogState(() {
+                              toggledAllRead = true;
+                            });
+                          }
+                        }
+                      } else {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('确认全部取消已读'),
+                            content: const Text('确定将列表中所有通知恢复为未读吗？'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: const Text('取消'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                child: const Text('确认'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          final ids = notifications.map((n) => n.id).toList();
+                          final ok = await NotificationService.markAllUnread(ids: ids);
+                          if (ok) {
+                            for (final id in ids) {
+                              readStatus[id] = false;
+                            }
+                            setDialogState(() {
+                              toggledAllRead = false;
+                            });
+                          }
                         }
                       }
-                      setState(() {});
                     },
-                    child: const Text('全部已读'),
+                    child: Text(toggledAllRead ? '全部取消' : '全部已读'),
                   ),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
@@ -481,6 +556,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _showDeadlineReminderDialog(List<DeadlineReminder> reminders) async {
+    if (kIsWeb) return;
     if (!mounted || reminders.isEmpty) return;
 
     // 如果只有一个提醒，显示简化版本
@@ -719,6 +795,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
   }
+  // 刷新所有数据
+  Future<void> _refreshData() async {
+    await Future.wait([
+      _loadPreviewData(),
+      _loadBadgeCount(),
+      _loadUnreadNotificationCount(),
+    ]);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('刷新成功'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -733,244 +826,227 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: const Icon(Icons.checkroom_outlined),
             onPressed: _openThemeColorPicker,
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.notifications),
-                  onPressed: _openNotificationsPanel,
-                ),
-                if (_settings.notificationsEnabled && _unreadNotificationCount > 0)
-                  Positioned(
-                    right: 10,
-                    top: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      constraints: const BoxConstraints(minWidth: 18),
-                      child: Text(
-                        _unreadNotificationCount > 99
-                            ? '99+'
-                            : _unreadNotificationCount.toString(),
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.center,
+          IconButton(
+            tooltip: '刷新',
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshData,
+          ),
+          if (!kIsWeb)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications),
+                    onPressed: _openNotificationsPanel,
+                  ),
+                  if (_settings.notificationsEnabled && _unreadNotificationCount > 0)
+                    Positioned(
+                      right: 10,
+                      top: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 18),
+                        child: Text(
+                          _unreadNotificationCount > 99 ? '99+' : _unreadNotificationCount.toString(),
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
         ],
       ),
       body: Stack(
+        clipBehavior: Clip.none, // 允许子元素超出 Stack 边界显示
         children: [
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Theme.of(context).primaryColor.withOpacity(0.1),
-                    Colors.white,
-                  ],
-                ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Theme.of(context).primaryColor.withOpacity(0.1),
+                  Colors.white,
+                ],
               ),
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      // 用户信息卡片 + Loopy 装扮展示
-                      Card(
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              CircleAvatar(
-                                radius: 30,
-                                backgroundColor: Theme.of(context).primaryColor,
-                                child: Text(
-                                  widget.user.name.isNotEmpty
-                                      ? widget.user.name[0]
-                                      : 'U',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    // 用户信息卡片 + Loopy 装扮展示
+                    Card(
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 30,
+                              backgroundColor: Theme.of(context).primaryColor,
+                              child: Text(
+                                widget.user.name.isNotEmpty ? widget.user.name[0] : 'U',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      widget.user.name,
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.user.name,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      widget.user.position,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey[600],
-                                      ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    widget.user.position,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey[600],
                                     ),
-                                    Text(
-                                      widget.user.department,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey[600],
-                                      ),
+                                  ),
+                                  Text(
+                                    widget.user.department,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_settings.getEquippedLoopyAssetPath(widget.user.id) != null)
+                              Container(
+                                width: 80,
+                                height: 80,
+                                margin: const EdgeInsets.only(left: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.pinkAccent.withOpacity(0.25),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
                                     ),
                                   ],
                                 ),
-                              ),
-                              // Loopy 图像显示逻辑
-                              if (_settings.equippedLoopyAssetPath != null)
-                                Container(
-                                  width: 80,
-                                  height: 80,
-                                  margin: const EdgeInsets.only(left: 8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.pinkAccent.withOpacity(0.25),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: Image.asset(
-                                    _settings.equippedLoopyAssetPath!,
-                                    fit: BoxFit.cover,
-                                  ),
+                                clipBehavior: Clip.antiAlias,
+                                child: Image.asset(
+                                  _settings.getEquippedLoopyAssetPath(widget.user.id)!,
+                                  fit: BoxFit.cover,
                                 ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // 四个象限布局 (GridView)
-                      Expanded(
-                        child: GridView.count(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                          children: [
-                            // 左上：公司重要展示
-                            QuadrantWidget(
-                              title: '公司重要展示',
-                              subtitle: '10大重要事项',
-                              icon: Icons.business_center,
-                              color: Colors.blue,
-                              previewItems: _isLoadingPreview
-                                  ? null
-                                  : _companyImportantItems,
-                              onTap: () {
-                                Navigator.of(context)
-                                    .push(
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        CompanyImportantScreen(
-                                            user: widget.user),
-                                  ),
-                                )
-                                    .then((_) => _loadPreviewData()); // 返回时刷新数据
-                              },
-                            ),
-                            // 右上：公司派发任务
-                            QuadrantWidget(
-                              title: '公司派发任务',
-                              subtitle: '10大任务',
-                              icon: Icons.assignment,
-                              color: Colors.green,
-                              previewItems:
-                              _isLoadingPreview ? null : _companyTasks,
-                              onTap: () {
-                                Navigator.of(context)
-                                    .push(
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        CompanyTasksEnhancedScreen(
-                                            user: widget.user),
-                                  ),
-                                )
-                                    .then((_) => _loadPreviewData()); // 返回时刷新数据
-                              },
-                            ),
-                            // 左下：个人重要展示
-                            QuadrantWidget(
-                              title: '个人重要展示',
-                              subtitle: '10大重要事项',
-                              icon: Icons.person_pin,
-                              color: Colors.orange,
-                              previewItems: _isLoadingPreview
-                                  ? null
-                                  : (_personalPreviewItems.isNotEmpty
-                                  ? _personalPreviewItems
-                                  : _personalImportantItems),
-                              onTap: () {
-                                Navigator.of(context)
-                                    .push(
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        PersonalResumeScreen(
-                                            user: widget.user),
-                                  ),
-                                )
-                                    .then((_) => _loadPreviewData()); // 返回时刷新数据
-                              },
-                            ),
-                            // 右下：个人日志
-                            QuadrantWidget(
-                              title: '个人日志',
-                              icon: Icons.description,
-                              color: Colors.purple,
-                              previewItems:
-                              _isLoadingPreview ? null : _personalLogs,
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        LogEnhancedScreen(user: widget.user),
-                                  ),
-                                );
-                              },
-                            ),
+                              ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 四个象限布局
+                    Expanded(
+                      child: GridView.count(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        children: [
+                          // 左上：公司重要展示
+                          QuadrantWidget(
+                            title: '公司重要展示',
+                            subtitle: '10大重要事项',
+                            icon: Icons.business_center,
+                            color: Colors.blue,
+                            previewItems: _isLoadingPreview ? null : _companyImportantItems,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => CompanyImportantScreen(user: widget.user),
+                                ),
+                              ).then((_) => _loadPreviewData()); // 返回时刷新数据
+                            },
+                          ),
+                          // 右上：公司派发任务
+                          QuadrantWidget(
+                            title: '公司派发任务',
+                            subtitle: '10大任务',
+                            icon: Icons.assignment,
+                            color: Colors.green,
+                            previewItems: _isLoadingPreview ? null : _companyTasks,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => CompanyTasksEnhancedScreen(user: widget.user),
+                                ),
+                              ).then((_) => _loadPreviewData()); // 返回时刷新数据
+                            },
+                          ),
+                          // 左下：个人重要展示
+                          QuadrantWidget(
+                            title: '个人重要展示',
+                            subtitle: '10大重要事项',
+                            icon: Icons.person_pin,
+                            color: Colors.orange,
+                            previewItems: _isLoadingPreview
+                                ? null
+                                : (_personalPreviewItems.isNotEmpty
+                                    ? _personalPreviewItems
+                                    : _personalImportantItems),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => PersonalResumeScreen(user: widget.user),
+                                ),
+                              ).then((_) => _loadPreviewData()); // 返回时刷新数据
+                            },
+                          ),
+                          // 右下：个人日志
+                          QuadrantWidget(
+                            title: '个人日志',
+                            icon: Icons.description,
+                            color: Colors.purple,
+                            previewItems: _isLoadingPreview ? null : _personalLogs,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => LogEnhancedScreen(user: widget.user),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
 
-          // 悬浮番茄球
+
+
+
+          // 可拖拽的番茄专注悬浮按钮（放在最后以确保显示在最上层）
           PomodoroFloatingButton(
             onTap: _openPomodoroScreen,
           ),
@@ -1090,6 +1166,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _openNotificationsPanel() async {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Web端暂不显示通知中心')),
+      );
+      return;
+    }
     // 打开通知中心页面
     Navigator.push(
       context,

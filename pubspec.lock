@@ -238,7 +238,7 @@ packages:
     source: hosted
     version: "1.5.0"
   http_parser:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: http_parser
       sha256: "178d74305e7866013777bab2c3d8726205dc5a4dd935297175b19a23a2e66571"
@@ -317,6 +317,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "0.20.2"
+  jpush_flutter:
+    dependency: "direct main"
+    description:
+      name: jpush_flutter
+      sha256: b18c3317c355e5834246ca45fee2a3a377a1569425d2ce0ae03852df6f06c3c8
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "3.4.0"
   leak_tracker:
     dependency: transitive
     description:

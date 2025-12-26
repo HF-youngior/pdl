@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:path/path.dart' as path;
 import 'package:mime/mime.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../models/important_item.dart';
 import '../models/task.dart';
@@ -58,15 +59,32 @@ class ApiService {
   }
   
   static String? _authToken;
+  static User? _currentUser;
+  static const String _tokenKey = 'auth_token';
+  static const String _userKey = 'current_user_json';
   
+  // 缓存实例，避免频繁获取
+  static SharedPreferences? _prefsInstance;
+
+  static Future<SharedPreferences> _getPrefs() async {
+    _prefsInstance ??= await SharedPreferences.getInstance();
+    return _prefsInstance!;
+  }
+
   // 设置认证token
   static void setAuthToken(String token) {
     _authToken = token;
+    _getPrefs().then((prefs) {
+      prefs.setString(_tokenKey, token);
+    });
   }
   
   // 清除认证token
   static void clearAuthToken() {
     _authToken = null;
+    _getPrefs().then((prefs) {
+      prefs.remove(_tokenKey);
+    });
   }
   
   // 获取认证token
@@ -74,6 +92,32 @@ class ApiService {
     return _authToken;
   }
   
+  static void setCurrentUser(User user) {
+    _currentUser = user;
+    _getPrefs().then((prefs) {
+      prefs.setString(_userKey, jsonEncode(user.toJson()));
+    });
+  }
+  
+  static User? getCurrentUser() {
+    return _currentUser;
+  }
+
+  static Future<void> restoreAuthState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_tokenKey);
+    final userJson = prefs.getString(_userKey);
+    if (token != null && token.isNotEmpty) {
+      _authToken = token;
+      TaskService.setAuthToken(token);
+    }
+    if (userJson != null && userJson.isNotEmpty) {
+      try {
+        final map = jsonDecode(userJson) as Map<String, dynamic>;
+        _currentUser = User.fromJson(map);
+      } catch (_) {}
+    }
+  }
   // 获取认证头（公开方法，供其他服务使用）
   static Map<String, String> getAuthHeaders() {
     final headers = {'Content-Type': 'application/json'};
@@ -103,12 +147,64 @@ class ApiService {
           // 同时设置TaskService的token
           TaskService.setAuthToken(data['token']);
         }
-        return User.fromJson(data['user']);
+        final user = User.fromJson(data['user']);
+        setCurrentUser(user);
+        return user;
       }
       return null;
     } catch (e) {
       print('登录错误: $e');
       return null;
+    }
+  }
+
+  static Future<User?> getCurrentUserProfile() async {
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$baseUrl/user/profile'),
+        headers: getAuthHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return User.fromJson(data);
+      }
+      return null;
+    } catch (e) {
+      print('获取当前用户资料失败: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> registerPushDevice(String registrationId, {String platform = 'android'}) async {
+    try {
+      final response = await httpClient.post(
+        Uri.parse('$baseUrl/push/register'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'registrationId': registrationId,
+          'platform': platform,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('注册推送设备失败: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> broadcastLogout({String? excludeRegistrationId}) async {
+    try {
+      final response = await httpClient.post(
+        Uri.parse('$baseUrl/push/broadcast-logout'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'excludeRegistrationId': excludeRegistrationId,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('广播登出通知失败: $e');
+      return false;
     }
   }
 
@@ -132,6 +228,30 @@ class ApiService {
       }
     } catch (e) {
       print('修改密码错误: $e');
+      return {'success': false, 'message': '网络错误，请稍后重试'};
+    }
+  }
+
+  // 重置密码（忘记密码功能，仅用于紧急情况）
+  static Future<Map<String, dynamic>> resetPassword(String username, String newPassword) async {
+    try {
+      final response = await httpClient.post(
+        Uri.parse('$baseUrl/auth/reset-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'username': username,
+          'newPassword': newPassword,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? '密码重置成功'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? '密码重置失败'};
+      }
+    } catch (e) {
+      print('重置密码错误: $e');
       return {'success': false, 'message': '网络错误，请稍后重试'};
     }
   }
@@ -459,33 +579,6 @@ class ApiService {
     return null;
   }
 
-  // 发送协同专注邀请通知
-  static Future<bool> inviteFocus({
-    required String senderId,
-    required String senderName,
-    required List<String> targetUserIds,
-  }) async {
-    try {
-      final response = await httpClient.post(
-        Uri.parse('$baseUrl/notify/invite-focus'),
-        headers: getAuthHeaders(),
-        body: jsonEncode({
-          'senderId': senderId,
-          'senderName': senderName,
-          'targetUserIds': targetUserIds,
-        }),
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['success'] == true;
-      }
-      return false;
-    } catch (e) {
-      print('发送协同专注邀请错误: $e');
-      return false;
-    }
-  }
-
   // 创建向上邀约请求
   static Future<bool> createRequest({
     required String requestType,
@@ -493,6 +586,8 @@ class ApiService {
     required String description,
     String? deadline,
     String? relatedTaskId,
+    String? requestStartTime,
+    String? requestEndTime,
   }) async {
     try {
       final response = await httpClient.post(
@@ -504,6 +599,8 @@ class ApiService {
           'description': description,
           'deadline': deadline,
           'related_task_id': relatedTaskId,
+          'request_start_time': requestStartTime,
+          'request_end_time': requestEndTime,
         }),
       );
       return response.statusCode == 201;
@@ -543,6 +640,8 @@ class ApiService {
     required String description,
     String? deadline,
     String? relatedTaskId,
+    String? requestStartTime,
+    String? requestEndTime,
   }) async {
     try {
       final response = await httpClient.put(
@@ -554,6 +653,8 @@ class ApiService {
           'description': description,
           'deadline': deadline,
           'related_task_id': relatedTaskId,
+          'request_start_time': requestStartTime,
+          'request_end_time': requestEndTime,
         }),
       );
       return response.statusCode == 200;
@@ -586,14 +687,39 @@ class ApiService {
   // 获取员工统计数据
   static Future<Map<String, dynamic>?> getUserStatistics(String userId, String period) async {
     try {
+      // 将前端的period转换为后端期望的格式
+      String backendPeriod;
+      switch (period) {
+        case 'today':
+          backendPeriod = 'daily';
+          break;
+        case 'week':
+          backendPeriod = 'weekly';
+          break;
+        case 'all':
+          backendPeriod = 'all'; // 后端需要特殊处理
+          break;
+        default:
+          backendPeriod = 'daily';
+      }
+      
+      print('DEBUG: Fetching statistics for userId=$userId, period=$period (backend: $backendPeriod)');
       final response = await httpClient.get(
-        Uri.parse('$baseUrl/admin/user-statistics?userId=$userId&period=$period'),
+        Uri.parse('$baseUrl/admin/user-statistics?userId=$userId&period=$backendPeriod'),
         headers: getAuthHeaders(),
       );
+      print('DEBUG: API Response status: ${response.statusCode}');
+      print('DEBUG: API Response body: ${response.body}');
+      
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        print('DEBUG: Parsed data: $data');
+        print('DEBUG: totalTasks: ${data['totalTasks']}, inProgressTasks: ${data['inProgressTasks']}, completedTasks: ${data['completedTasks']}, completionRate: ${data['completionRate']}');
+        return data;
+      } else {
+        print('DEBUG: API request failed with status: ${response.statusCode}');
+        return null;
       }
-      return null;
     } catch (e) {
       print('获取员工统计数据错误: $e');
       return null;
@@ -823,6 +949,45 @@ class ApiService {
         rethrow;
       }
       throw Exception('图片上传失败: $e');
+    }
+  }
+
+  // 发送专注邀请
+  static Future<bool> inviteFocus({
+    required String senderId,
+    required String senderName,
+    required List<String> targetUserIds,
+  }) async {
+    try {
+      final response = await httpClient.post(
+        Uri.parse('$baseUrl/notify/invite-focus'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'senderId': senderId,
+          'senderName': senderName,
+          'targetUserIds': targetUserIds,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // 检查返回的 success 字段和 sent 数量
+        final success = data['success'] == true;
+        final sent = data['sent'] ?? 0;
+        if (success && sent > 0) {
+          print('专注邀请发送成功: 已发送给 $sent 位用户');
+          return true;
+        } else {
+          print('专注邀请发送失败: success=$success, sent=$sent');
+          return false;
+        }
+      } else {
+        final errorBody = response.body;
+        print('邀请失败: ${response.statusCode} - $errorBody');
+        return false;
+      }
+    } catch (e) {
+      print('发送专注邀请出错: $e');
+      return false;
     }
   }
 }

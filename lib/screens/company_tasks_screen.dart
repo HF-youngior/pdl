@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../models/user.dart';
 import '../utils/time_utils.dart';
 import 'task_edit_screen.dart';
+import 'request_screen.dart';
 
 class CompanyTasksScreen extends StatefulWidget {
   final User user;
@@ -19,6 +20,7 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
   bool _isLoading = true;
   String? _error;
   String _filterStatus = 'all';
+  String _taskTypeFilter = 'all'; // 新增：任务类型筛选 ('all', 'assigned', 'created_by_me')
   Set<String> _previousTaskIds = {}; // 用于跟踪之前的任务ID，检测新任务
   Map<String, String?> _previousRequestResponses = {}; // 用于跟踪之前的邀约回复状态
   DateTime? _lastLoadTime; // 上次加载时间，用于检测新任务
@@ -79,12 +81,10 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
         final newTasks = tasks.where((task) => !_previousTaskIds.contains(task.id)).toList();
         final newRequests = newTasks.where((task) => 
           task.isRequest && 
-          (task.requestResponse == null || task.requestResponse?.isEmpty == true) &&
-          task.assigneeId == widget.user.id
+          (task.requestResponse == null || task.requestResponse?.isEmpty == true)
         ).toList();
         final newRegularTasks = newTasks.where((task) => 
-          !task.isRequest && 
-          task.assigneeId == widget.user.id
+          !task.isRequest
         ).toList();
         
         // 检测邀约回复（用户发送的邀约被处理了）
@@ -216,6 +216,29 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
       filtered = _tasks.where((task) => task.status == _filterStatus).toList();
     }
     
+    // 应用任务类型筛选
+    switch (_taskTypeFilter) {
+      case 'assigned':
+        // 显示分配给当前用户的所有任务（包括接收的邀约）
+        filtered = filtered.where((task) => task.assigneeId == widget.user.id).toList();
+        break;
+      case 'created_by_me':
+        // 显示当前用户创建的所有任务（包括发出的邀约）
+        filtered = filtered.where((task) => task.createdBy == widget.user.id).toList();
+        break;
+      default:
+        // 对于管理员，显示所有任务；对于普通用户，显示与自己相关的任务
+        if (widget.user.role == 'admin' || widget.user.role == 'founder') {
+          // 管理员可以看到所有任务，包括向上邀约
+        } else {
+          // 普通用户只能看到与自己相关的任务（包括自己创建的和分配给自己的）
+          filtered = filtered.where((task) => 
+            task.assigneeId == widget.user.id || task.createdBy == widget.user.id
+          ).toList();
+        }
+        break;
+    }
+    
     // 确保排序：未处理的邀约始终在最上方，已处理的邀约按正常排序
     int compareTasks(Task a, Task b) {
       // 判断是否为未处理的邀约（isRequest为true且requestResponse为null）
@@ -304,13 +327,24 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
         return '进行中';
       case 'completed':
         return '已完成';
-      case 'cancelled':
-        return '已取消';
       default:
         return status;
     }
   }
-
+  
+  String _getTaskTypeFilterText(String filterType) {
+    switch (filterType) {
+      case 'all':
+        return '全部任务';
+      case 'assigned':
+        return '分配给我的';
+      case 'created_by_me':
+        return '我创建的';
+      default:
+        return '全部任务';
+    }
+  }
+  
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending':
@@ -320,17 +354,17 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
       case 'completed':
         return Colors.green;
       case 'cancelled':
-        return Colors.red;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('公司十大任务派发'),
+        title: Text('公司十大任务派发 - ${_getTaskTypeFilterText(_taskTypeFilter)}'),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         actions: [
@@ -349,6 +383,62 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
               },
               tooltip: '创建任务',
             ),
+          // 向上邀约按钮
+          IconButton(
+            icon: const Icon(Icons.arrow_upward),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => RequestScreen(
+                    currentUser: widget.user,
+                  ),
+                ),
+              );
+            },
+            tooltip: '向上邀约',
+          ),
+          // 任务类型筛选按钮
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.filter_alt),
+            tooltip: '任务类型筛选',
+            onSelected: (String value) {
+              setState(() {
+                _taskTypeFilter = value;
+              });
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'all',
+                child: Row(
+                  children: [
+                    Icon(Icons.list, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text('全部任务'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'assigned',
+                child: Row(
+                  children: [
+                    Icon(Icons.assignment, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text('分配给我的'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'created_by_me',
+                child: Row(
+                  children: [
+                    Icon(Icons.create, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Text('我创建的'),
+                  ],
+                ),
+              ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadTasks,
@@ -378,7 +468,7 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
                         const SizedBox(width: 8),
                         _buildFilterChip('completed', '已完成'),
                         const SizedBox(width: 8),
-                        _buildFilterChip('cancelled', '已取消'),
+                        _buildFilterChip('cancelled', '已完成')
                       ],
                     ),
                   ),
@@ -493,16 +583,36 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          task.title,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        child: Row(
+                          children: [
+                            // 向上邀约图标
+                            if (task.isRequest) ...[
+                              Icon(
+                                Icons.arrow_upward,
+                                size: 16,
+                                color: task.requestResponse == null || task.requestResponse!.isEmpty
+                                    ? Colors.orange
+                                    : (task.requestResponse == 'approve' 
+                                        ? Colors.green 
+                                        : Colors.red),
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+                            Expanded(
+                              child: Text(
+                                task.title,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: task.isRequest ? Colors.black87 : null, // 为向上邀约任务标题添加颜色强调
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       // 邀约标识
-                      if (task.isRequest && (task.requestResponse == null || task.requestResponse?.isEmpty == true))
+                      if (task.isRequest)
                         Container(
                           margin: const EdgeInsets.only(right: 8),
                           padding: const EdgeInsets.symmetric(
@@ -510,17 +620,33 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.1),
+                            color: task.requestResponse == null || task.requestResponse!.isEmpty
+                                ? Colors.orange.withOpacity(0.1)  // 未处理的邀约
+                                : (task.requestResponse == 'approve' 
+                                    ? Colors.green.withOpacity(0.1)   // 已批准
+                                    : Colors.red.withOpacity(0.1)), // 已拒绝
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.orange,
+                              color: task.requestResponse == null || task.requestResponse!.isEmpty
+                                  ? Colors.orange
+                                  : (task.requestResponse == 'approve' 
+                                      ? Colors.green 
+                                      : Colors.red),
                               width: 1,
                             ),
                           ),
-                          child: const Text(
-                            '邀约',
+                          child: Text(
+                            task.requestResponse == null || task.requestResponse!.isEmpty
+                                ? '向上邀约'
+                                : (task.requestResponse == 'approve' 
+                                    ? '邀约已批' 
+                                    : '邀约已拒'),
                             style: TextStyle(
-                              color: Colors.orange,
+                              color: task.requestResponse == null || task.requestResponse!.isEmpty
+                                  ? Colors.orange
+                                  : (task.requestResponse == 'approve' 
+                                      ? Colors.green 
+                                      : Colors.red),
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
@@ -602,6 +728,93 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 4),
+                  
+                  // 邀约时间信息（仅对邀约任务显示）
+                  if (task.isRequest && task.requestStartTime != null && task.requestEndTime != null) ...[
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 16,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '邀约时间: ${_formatDateTime(task.requestStartTime!)} 至 ${_formatDateTime(task.requestEndTime!)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                  
+                  // 邀约类型信息（仅对邀约任务显示）
+                  if (task.isRequest && task.requestType != null) ...[
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '邀约类型: ${task.requestType!}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                  
+                  // 邀约状态信息（仅对邀约任务显示）
+                  if (task.isRequest && task.requestResponse != null) ...[
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          size: 16,
+                          color: task.requestResponse == 'approve' ? Colors.green : Colors.red,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '状态: ${task.requestResponse == 'approve' ? '已批准' : '已拒绝'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: task.requestResponse == 'approve' ? Colors.green : Colors.red,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                  ] else if (task.isRequest) ...[
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.pending,
+                          size: 16,
+                          color: Colors.orange,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '状态: 待处理',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                  
                   const SizedBox(height: 8),
                   
                   // 状态和截止时间
@@ -645,15 +858,27 @@ class _CompanyTasksScreenState extends State<CompanyTasksScreen> {
                       children: [
                         TextButton.icon(
                           onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => TaskEditScreen(
-                                  currentUser: widget.user,
-                                  task: task,
-                                  onSave: _saveTask,
+                            // 对于向上邀约任务，使用专门的RequestScreen进行编辑
+                            if (task.isRequest) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => RequestScreen(
+                                    currentUser: widget.user,
+                                    task: task,
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
+                            } else {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => TaskEditScreen(
+                                    currentUser: widget.user,
+                                    task: task,
+                                    onSave: _saveTask,
+                                  ),
+                                ),
+                              );
+                            }
                           },
                           icon: const Icon(Icons.edit, size: 16),
                           label: const Text('编辑'),

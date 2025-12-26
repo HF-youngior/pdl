@@ -1384,15 +1384,15 @@ class _PomodoroFocusScreenState extends State<PomodoroFocusScreen> {
 
         // 其他角色：筛选同级或下级用户
         // 同级：parent_id 相同且不为 null
-        final isPeer = currentUser.parentId != null && 
+        final isPeer = currentUser.parentId != null &&
                        user.parentId == currentUser.parentId;
-        
+
         // 下级：parent_id 指向当前用户
         final isDirectSubordinate = user.parentId == currentUser.id;
-        
+
         // 间接下级：同部门且角色等级更低
         final userRank = _roleRank(user.role);
-        final isIndirectSubordinate = userRank < currentUserRank && 
+        final isIndirectSubordinate = userRank < currentUserRank &&
                                       user.departmentId != null &&
                                       currentUser.departmentId != null &&
                                       user.departmentId == currentUser.departmentId;

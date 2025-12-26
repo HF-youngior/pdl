@@ -16,7 +16,8 @@
     { "name": "日志与个人信息", "description": "个人日志、个人信息、系统日志" },
     { "name": "MBTI", "description": "MBTI 测评记录与统计" },
     { "name": "AI 分析", "description": "AI 文本分析与人格分析" },
-    { "name": "文档", "description": "API 文档页面接口" }
+    { "name": "文档", "description": "API 文档页面接口" },
+    { "name": "系统管理", "description": "管理员相关接口，包括用户搜索、统计、任务管理等" }
   ],
   "servers": [
     {
@@ -1527,6 +1528,538 @@
         "tags": ["AI 分析"],
         "responses": {
           "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/user/focus-duration": {
+      "post": {
+        "summary": "记录用户专注时长",
+        "tags": ["认证与用户"],
+        "description": "更新用户的累计专注时长，每次专注结束后调用此接口累加时长",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["duration"],
+                "properties": {
+                  "duration": {
+                    "type": "number",
+                    "description": "专注时长（秒），必须大于0",
+                    "example": 1500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "专注时长已更新" },
+                    "durationAdded": { "type": "number", "description": "本次添加的时长（秒）" },
+                    "totalFocusDuration": { "type": "number", "description": "累计总专注时长（秒）" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string", "example": "duration 必须为大于0的数字" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/search-users": {
+      "get": {
+        "summary": "搜索用户",
+        "tags": ["系统管理"],
+        "description": "根据关键词搜索用户，支持按姓名、职位、部门名称、用户名搜索",
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "搜索关键词，支持姓名、职位、部门名称、用户名"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "username": { "type": "string" },
+                      "name": { "type": "string" },
+                      "position": { "type": "string" },
+                      "role": { "type": "string" },
+                      "department_id": { "type": "string" },
+                      "department_name": { "type": "string" },
+                      "parent_id": { "type": "string" },
+                      "parent_name": { "type": "string" },
+                      "created_at": { "type": "string", "format": "date-time" },
+                      "last_login_at": { "type": "string", "format": "date-time" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/user-statistics": {
+      "get": {
+        "summary": "获取用户统计数据",
+        "tags": ["系统管理"],
+        "description": "获取指定用户在指定时间段内的任务完成统计",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "用户ID"
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["daily", "weekly", "monthly"]
+            },
+            "description": "统计周期：daily=每日，weekly=每周，monthly=每月"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "period": { "type": "string", "example": "daily" },
+                    "totalTasks": { "type": "integer", "description": "总任务数" },
+                    "completedTasks": { "type": "integer", "description": "已完成任务数" },
+                    "pendingTasks": { "type": "integer", "description": "待处理任务数" },
+                    "inProgressTasks": { "type": "integer", "description": "进行中任务数" },
+                    "cancelledTasks": { "type": "integer", "description": "已取消任务数" },
+                    "completionRate": { "type": "number", "description": "完成率（百分比）" },
+                    "startDate": { "type": "string", "format": "date-time" },
+                    "endDate": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/user-logs": {
+      "get": {
+        "summary": "获取用户日志",
+        "tags": ["系统管理"],
+        "description": "获取指定用户的个人日志，可按日期筛选",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "用户ID"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "日期筛选，格式 YYYY-MM-DD，不传则返回所有日志"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "user_id": { "type": "string" },
+                      "title": { "type": "string" },
+                      "content": { "type": "string" },
+                      "category": { "type": "string" },
+                      "log_date": { "type": "string", "format": "date-time" },
+                      "task_title": { "type": "string" },
+                      "created_at": { "type": "string", "format": "date-time" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/user-mbti-history": {
+      "get": {
+        "summary": "获取用户MBTI测试历史",
+        "tags": ["系统管理"],
+        "description": "获取指定用户的所有MBTI测评记录",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "用户ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "mbti_type": { "type": "string" },
+                      "test_date": { "type": "string", "format": "date" },
+                      "test_scores": { "type": "object" },
+                      "personality_traits": { "type": "object" },
+                      "confidence_score": { "type": "number" },
+                      "created_at": { "type": "string", "format": "date-time" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/all-tasks": {
+      "get": {
+        "summary": "获取公司所有任务",
+        "tags": ["系统管理"],
+        "description": "获取公司所有任务列表，可按日期筛选",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "日期筛选，格式 YYYY-MM-DD，返回该日期范围内的任务"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "title": { "type": "string" },
+                      "description": { "type": "string" },
+                      "status": { "type": "string" },
+                      "priority": { "type": "string" },
+                      "assignee_id": { "type": "string" },
+                      "assignee_name": { "type": "string" },
+                      "created_by": { "type": "string" },
+                      "creator_name": { "type": "string" },
+                      "department_id": { "type": "string" },
+                      "department_name": { "type": "string" },
+                      "start_time": { "type": "string", "format": "date-time" },
+                      "end_time": { "type": "string", "format": "date-time" },
+                      "deadline": { "type": "string", "format": "date-time" },
+                      "created_at": { "type": "string", "format": "date-time" },
+                      "completed_at": { "type": "string", "format": "date-time" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/task-tree": {
+      "get": {
+        "summary": "获取任务树",
+        "tags": ["系统管理"],
+        "description": "获取指定任务的完整层级结构（包括父任务和所有子任务）",
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "任务ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string" },
+                    "title": { "type": "string" },
+                    "description": { "type": "string" },
+                    "status": { "type": "string" },
+                    "parentTask": {
+                      "type": "object",
+                      "description": "父任务（如果存在）"
+                    },
+                    "subtasks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "子任务列表"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "任务不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/tracking": {
+      "post": {
+        "summary": "数据埋点",
+        "tags": ["系统管理"],
+        "description": "记录用户操作行为，用于数据分析和统计",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "description": "操作动作",
+                    "example": "click_button"
+                  },
+                  "category": {
+                    "type": "string",
+                    "description": "操作分类",
+                    "example": "admin_tracking"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "description": "附加元数据",
+                    "properties": {
+                      "description": { "type": "string" },
+                      "page": { "type": "string" },
+                      "element": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "记录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "logId": { "type": "string", "description": "日志ID" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/invite-focus": {
+      "post": {
+        "summary": "发送专注邀请通知",
+        "tags": ["通知"],
+        "description": "发送\"陪我专注\"邀请通知给指定用户，用于协同专注功能",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["targetUserIds"],
+                "properties": {
+                  "senderId": {
+                    "type": "string",
+                    "description": "发送者ID（可选，默认使用当前登录用户）"
+                  },
+                  "senderName": {
+                    "type": "string",
+                    "description": "发送者名称（可选，默认使用当前登录用户名称）"
+                  },
+                  "targetUserIds": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "目标用户ID数组",
+                    "example": ["user-001", "user-002"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "发送成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "message": { "type": "string", "example": "邀请已发送" },
+                    "sentCount": { "type": "integer", "description": "成功发送的通知数量" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string", "example": "targetUserIds 不能为空" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string", "example": "无权以其它用户身份发送邀请" }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

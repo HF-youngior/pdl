@@ -281,12 +281,12 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
       case 'completed':
         return '已完成';
       case 'cancelled':
-        return '已取消';
+        return '已完成';
       default:
         return status;
     }
   }
-
+  
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending':
@@ -296,12 +296,12 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
       case 'completed':
         return Colors.green;
       case 'cancelled':
-        return Colors.red;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   double _calculateProgress(Task task) {
     // 使用任务的真实进度
     return task.progressPercentage / 100.0;
@@ -609,6 +609,7 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
               builder: (context) => TaskDetailScreen(
                 task: task,
                 currentUser: widget.user,
+                showTaskTree: false,
               ),
             ),
           ).then((_) {
@@ -735,6 +736,30 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
                 ),
               ],
             ),
+            const SizedBox(height: 4),
+            
+            // 邀约时间信息（仅对邀约任务显示）
+            if (task.isRequest && task.requestStartTime != null && task.requestEndTime != null) ...[
+              Row(
+                children: [
+                  Icon(
+                    Icons.access_time,
+                    size: 16,
+                    color: Colors.grey[600],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '邀约时间: ${_formatDateTime(task.requestStartTime!)} 至 ${_formatDateTime(task.requestEndTime!)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+            ],
+            
             const SizedBox(height: 8),
             
             // 进度条
@@ -820,6 +845,7 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
                               builder: (context) => TaskDetailScreen(
                                 task: task,
                                 currentUser: widget.user,
+                                showTaskTree: false,
                               ),
                             ),
                           ).then((_) {
@@ -840,6 +866,7 @@ class _CompanyTasksEnhancedScreenState extends State<CompanyTasksEnhancedScreen>
                               builder: (context) => TaskDetailScreen(
                                 task: task,
                                 currentUser: widget.user,
+                                showTaskTree: false,
                               ),
                             ),
                           ).then((_) {

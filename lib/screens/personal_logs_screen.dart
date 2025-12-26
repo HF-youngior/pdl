@@ -256,7 +256,8 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
                               ),
                             ),
                           ],
-                          if (log.locationName != null && log.locationName!.isNotEmpty) ...[
+                          if ((log.locationAddress != null && log.locationAddress!.isNotEmpty) || 
+                              (log.locationName != null && log.locationName!.isNotEmpty)) ...[
                             const SizedBox(height: 6),
                             Row(
                               children: [
@@ -264,7 +265,7 @@ class _PersonalLogsScreenState extends State<PersonalLogsScreen> {
                                 const SizedBox(width: 4),
                                 Expanded(
                                   child: Text(
-                                    log.locationName!,
+                                    log.locationAddress ?? log.locationName!,
                                     style: TextStyle(fontSize: 13, color: Colors.grey[700]),
                                   ),
                                 ),

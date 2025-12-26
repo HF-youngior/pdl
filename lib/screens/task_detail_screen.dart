@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/task.dart';
 import '../models/user.dart';
@@ -7,15 +6,18 @@ import '../services/api_service.dart';
 import '../utils/time_utils.dart';
 import 'task_edit_screen.dart';
 import 'request_screen.dart';
+import 'dart:math' as math;
 
 class TaskDetailScreen extends StatefulWidget {
   final Task task;
   final User currentUser;
+  final bool showTaskTree;
 
   const TaskDetailScreen({
     super.key,
     required this.task,
     required this.currentUser,
+    this.showTaskTree = true,
   });
 
   @override
@@ -27,6 +29,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   List<Task> _subtasks = [];
   bool _isLoadingSubtasks = false;
   final TextEditingController _notesController = TextEditingController();
+  Map<String, dynamic>? _taskTree;
+  bool _isLoadingTaskTree = false;
 
   @override
   void initState() {
@@ -34,7 +38,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     _currentTask = widget.task;
     // 邀约任务不加载子任务
     if (!_currentTask!.isRequest) {
-    _loadSubtasks();
+      _loadSubtasks();
+      if (widget.showTaskTree) {
+        _loadTaskTree();
+      }
     }
   }
 
@@ -63,6 +70,28 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       print('加载子任务失败: $e');
       setState(() {
         _isLoadingSubtasks = false;
+      });
+    }
+  }
+
+  // 加载任务树
+  Future<void> _loadTaskTree() async {
+    if (_currentTask == null) return;
+    
+    setState(() {
+      _isLoadingTaskTree = true;
+    });
+
+    try {
+      final tree = await ApiService.getTaskTree(_currentTask!.id);
+      setState(() {
+        _taskTree = tree;
+        _isLoadingTaskTree = false;
+      });
+    } catch (e) {
+      print('加载任务树失败: $e');
+      setState(() {
+        _isLoadingTaskTree = false;
       });
     }
   }
@@ -106,8 +135,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('${actionText}邀约请求'),
-        content: Text('确定要${actionText}此邀约请求吗？'),
+        title: Text('$actionText邀约请求'),
+        content: Text('确定要$actionText此邀约请求吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -135,7 +164,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('邀约请求已${actionText}！'),
+            content: Text('邀约请求已$actionText！'),
             backgroundColor: Colors.green,
           ),
         );
@@ -186,7 +215,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${actionText}邀约请求失败: $e'),
+            content: Text('$actionText邀约请求失败: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -286,12 +315,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       case 'completed':
         return Colors.green;
       case 'cancelled':
-        return Colors.red;
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
-
+  
   // 获取状态文本
   String _getStatusText(String status) {
     switch (status) {
@@ -302,17 +331,712 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       case 'completed':
         return '已完成';
       case 'cancelled':
-        return '已取消';
+        return '已完成';
       default:
         return status;
     }
   }
-
+  
   // 格式化日期时间，带本地时区标签，便于与管理端对照
   String _formatDateTime(DateTime dateTime, {bool includeSeconds = false}) {
     return TimeUtils.formatDateTimeWithZone(
       dateTime,
       includeSeconds: includeSeconds,
+    );
+  }
+
+  // 构建任务树可视化
+  Widget _buildTaskTreeVisualization() {
+    if (_currentTask == null || _currentTask!.isRequest) {
+      return const SizedBox.shrink(); // 邀约任务不显示任务树
+    }
+
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.account_tree,
+                  color: Colors.blue,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '任务关系树',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const Spacer(),
+                if (_isLoadingTaskTree)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: _loadTaskTree,
+                    tooltip: '刷新任务树',
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_isLoadingTaskTree)
+              const Center(child: CircularProgressIndicator())
+            else if (_taskTree == null)
+              const Center(
+                child: Text(
+                  '无法加载任务关系树',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
+            else
+              _buildTaskTreeWidget(_taskTree!),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 构建任务树组件
+  Widget _buildTaskTreeWidget(Map<String, dynamic> treeData) {
+    // 如果任务树为空，显示提示信息
+    if (treeData.isEmpty) {
+      return const Center(
+        child: Text(
+          '此任务没有父任务或子任务',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    // 获取树的高度（用于计算画布大小）
+    final treeHeight = _calculateTreeHeight(treeData);
+    final treeWidth = _calculateTreeWidth(treeData);
+
+    return SizedBox(
+      height: math.max(300.0, treeHeight * 80.0),
+      width: double.infinity,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: math.max(MediaQuery.of(context).size.width - 32, treeWidth * 150.0),
+          child: CustomPaint(
+            painter: TaskTreePainter(treeData: treeData),
+            child: _buildTaskNodes(treeData),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 构建任务节点
+  Widget _buildTaskNodes(Map<String, dynamic> treeData) {
+    return _buildTaskNodeWidget(treeData, 0, 0);
+  }
+
+  Widget _buildTaskNodeWidget(Map<String, dynamic> nodeData, int level, int position) {
+    final isCurrentTask = nodeData['id'] == _currentTask!.id;
+    final nodeWidth = 140.0;
+    final nodeHeight = 60.0;
+    final horizontalSpacing = 160.0;
+    final verticalSpacing = 80.0;
+
+    // 计算节点位置
+    final left = position * horizontalSpacing;
+    final top = level * verticalSpacing;
+
+    // 构建子节点
+    final children = <Widget>[];
+    if (nodeData['subtasks'] != null && (nodeData['subtasks'] as List).isNotEmpty) {
+      final subtasks = nodeData['subtasks'] as List;
+      for (int i = 0; i < subtasks.length; i++) {
+        children.add(_buildTaskNodeWidget(
+          subtasks[i] as Map<String, dynamic>,
+          level + 1,
+          position + i,
+        ));
+      }
+    }
+
+    return Stack(
+      children: [
+        // 节点卡片
+        Positioned(
+          left: left,
+          top: top,
+          child: Container(
+            width: nodeWidth,
+            height: nodeHeight,
+            decoration: BoxDecoration(
+              color: isCurrentTask ? Colors.blue.shade100 : Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isCurrentTask ? Colors.blue : Colors.grey.shade300,
+                width: isCurrentTask ? 2 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    nodeData['title'] ?? '无标题',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isCurrentTask ? Colors.blue.shade800 : Colors.black87,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    nodeData['assignee_name'] ?? '未分配',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // 子节点
+        ...children,
+      ],
+    );
+  }
+
+  // 计算树的高度
+  int _calculateTreeHeight(Map<String, dynamic> node) {
+    if (node['subtasks'] == null || (node['subtasks'] as List).isEmpty) {
+      return 1;
+    }
+
+    int maxHeight = 0;
+    for (final subtask in node['subtasks'] as List) {
+      final height = _calculateTreeHeight(subtask as Map<String, dynamic>);
+      if (height > maxHeight) {
+        maxHeight = height;
+      }
+    }
+
+    return maxHeight + 1;
+  }
+
+  // 计算树的宽度
+  int _calculateTreeWidth(Map<String, dynamic> node) {
+    if (node['subtasks'] == null || (node['subtasks'] as List).isEmpty) {
+      return 1;
+    }
+
+    int totalWidth = 0;
+    for (final subtask in node['subtasks'] as List) {
+      totalWidth += _calculateTreeWidth(subtask as Map<String, dynamic>);
+    }
+
+    return math.max(1, totalWidth);
+  }
+
+  // 构建邀约信息
+  Widget _buildRequestInfo(Task task) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 创建者和被邀约人信息
+        Row(
+          children: [
+            Icon(
+              Icons.person,
+              color: Colors.grey[600],
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '创建者: ${task.createdBy}',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(
+              Icons.person_outline,
+              color: Colors.grey[600],
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '被邀约人: ${task.assigneeName}',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (task.deadline != null)
+          Row(
+            children: [
+              Icon(
+                Icons.schedule,
+                color: Colors.grey[600],
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '截止时间: ${_formatDateTime(task.deadline!)}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[700],
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  // 构建邀约处理结果
+  Widget _buildRequestResult(Task task) {
+    final isApproved = task.requestResponse == 'approve';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isApproved ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isApproved ? Colors.green : Colors.red,
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isApproved ? Icons.check_circle : Icons.cancel,
+                color: isApproved ? Colors.green : Colors.red,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isApproved ? '已批准' : '已反驳',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isApproved ? Colors.green : Colors.red,
+                ),
+              ),
+            ],
+          ),
+          if (task.specialNotes != null && task.specialNotes!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              '备注: ${task.specialNotes}',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[700],
+              ),
+            ),
+          ],
+          if (task.completedAt != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              '处理时间: ${_formatDateTime(task.completedAt!)}',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // 构建任务属性
+  Widget _buildTaskProperties(Task task) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 负责人
+        Row(
+          children: [
+            Icon(
+              Icons.person,
+              color: Colors.grey[600],
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '负责人: ${task.assigneeName}',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // 部门
+        Row(
+          children: [
+            Icon(
+              Icons.business,
+              color: Colors.grey[600],
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '部门: ${task.department}',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // 创建时间
+        Row(
+          children: [
+            Icon(
+              Icons.access_time,
+              color: Colors.grey[600],
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '创建时间: ${_formatDateTime(task.createdAt)}',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+        if (task.deadline != null) ...[
+          const SizedBox(height: 8),
+          // 截止时间
+          Row(
+            children: [
+              Icon(
+                Icons.schedule,
+                color: Colors.grey[600],
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '截止时间: ${_formatDateTime(task.deadline!)}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[700],
+                ),
+              ),
+            ],
+          ),
+        ],
+        if (task.location != null && task.location!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          // 地点
+          Row(
+            children: [
+              Icon(
+                Icons.location_on,
+                color: Colors.grey[600],
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '地点: ${task.location}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[700],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  // 构建子任务列表
+  Widget _buildSubtasksList() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.list_alt,
+                  color: Colors.blue,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '子任务列表',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const Spacer(),
+                if (_isLoadingSubtasks)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: _loadSubtasks,
+                    tooltip: '刷新子任务',
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_isLoadingSubtasks)
+              const Center(child: CircularProgressIndicator())
+            else if (_subtasks.isEmpty)
+              const Center(
+                child: Text(
+                  '暂无子任务',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _subtasks.length,
+                itemBuilder: (context, index) {
+                  final subtask = _subtasks[index];
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    elevation: 2,
+                    child: ListTile(
+                      title: Text(
+                        subtask.title,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (subtask.description.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              subtask.description,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[600],
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.person,
+                                size: 14,
+                                color: Colors.grey[600],
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                subtask.assigneeName,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              if (subtask.deadline != null) ...[
+                                Icon(
+                                  Icons.schedule,
+                                  size: 14,
+                                  color: Colors.grey[600],
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _formatDateTime(subtask.deadline!),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(subtask.status).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _getStatusText(subtask.status),
+                          style: TextStyle(
+                            color: _getStatusColor(subtask.status),
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => TaskDetailScreen(
+                              task: subtask,
+                              currentUser: widget.currentUser,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 构建邀约处理部分
+  Widget _buildRequestAction(Task task) {
+    // 只有被邀约人且未处理的邀约任务才显示处理部分
+    if (task.assigneeId != widget.currentUser.id || 
+        task.requestResponse != null || 
+        task.status == 'completed') {
+      return const SizedBox.shrink();
+    }
+
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.how_to_vote,
+                  color: Colors.blue,
+                  size: 24,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '处理邀约',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '请选择是否批准此邀约请求：',
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            // 备注输入框
+            TextField(
+              controller: _notesController,
+              decoration: const InputDecoration(
+                labelText: '备注（可选）',
+                border: OutlineInputBorder(),
+                hintText: '请输入处理此邀约的备注信息...',
+              ),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 16),
+            // 操作按钮
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _handleRequestResponse('approve'),
+                    icon: const Icon(Icons.check_circle),
+                    label: const Text('批准'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _handleRequestResponse('reject'),
+                    icon: const Icon(Icons.cancel),
+                    label: const Text('反驳'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -376,6 +1100,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             });
             // 刷新子任务列表
             await _loadSubtasks();
+            // 刷新任务树
+            if (!_currentTask!.isRequest) {
+              await _loadTaskTree();
+            }
           } catch (e) {
             print('刷新任务信息失败: $e');
           }
@@ -406,7 +1134,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                 vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.1),
+                                color: Colors.blue.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: Colors.blue,
@@ -429,8 +1157,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                 vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: _getStatusColor(task.status).withOpacity(0.1),
+                                color: _getStatusColor(task.status).withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: _getStatusColor(task.status),
+                                  width: 1.5,
+                                ),
                               ),
                               child: Text(
                                 _getStatusText(task.status),
@@ -441,131 +1173,26 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                 ),
                               ),
                             ),
-                            // 处理结果
-                            if (task.requestResponse != null) ...[
-                              const SizedBox(width: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: task.requestResponse == 'approve' 
-                                      ? Colors.green.withOpacity(0.1)
-                                      : Colors.red.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  task.requestResponse == 'approve' ? '已批准' : '已反驳',
-                                  style: TextStyle(
-                                    color: task.requestResponse == 'approve' ? Colors.green : Colors.red,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                         const SizedBox(height: 16),
                         
-                        // 请求内容
-                        if (task.description.isNotEmpty) ...[
-                          Text(
-                            '请求内容',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey[800],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            task.description,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                              height: 1.5,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // 邀约信息列表
-                        _buildInfoRow(
-                          icon: Icons.person_outline,
-                          label: '发起人',
-                          value: task.createdBy,
-                        ),
-                        const SizedBox(height: 8),
-                        _buildInfoRow(
-                          icon: Icons.person,
-                          label: '接收人',
-                          value: task.assigneeName,
-                        ),
-                        const SizedBox(height: 8),
+                        // 邀约信息
+                        _buildRequestInfo(task),
+                        
+                        // 处理结果（如果已处理）
                         if (task.requestResponse != null) ...[
-                          _buildInfoRow(
-                            icon: Icons.check_circle,
-                            label: '处理结果',
-                            value: task.requestResponse == 'approve' ? '已批准' : '已反驳',
-                          ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 16),
+                          _buildRequestResult(task),
                         ],
-                        if (task.completedAt != null) ...[
-                          _buildInfoRow(
-                            icon: Icons.access_time,
-                            label: '处理时间',
-                            value: _formatDateTime(task.completedAt!),
-                          ),
-                          const SizedBox(height: 8),
-                        ],
-                        _buildInfoRow(
-                          icon: Icons.access_time,
-                          label: '创建时间',
-                          value: _formatDateTime(task.createdAt),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                
-              // 备注信息卡片（邀约任务且已处理时显示）
-              if (task.isRequest && task.requestResponse != null)
-                Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '备注',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          task.specialNotes ?? '无',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[700],
-                            height: 1.5,
-                          ),
-                        ),
                       ],
                     ),
                   ),
                 ),
               
-              // 任务基本信息卡片（非邀约任务显示）
-              if (!task.isRequest)
+              const SizedBox(height: 16),
+              
+              // 任务基本信息
               Card(
                 elevation: 4,
                 shape: RoundedRectangleBorder(
@@ -576,488 +1203,181 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 优先级和状态
+                      // 任务标题和优先级
                       Row(
                         children: [
+                          Expanded(
+                            child: Text(
+                              task.title,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
+                              horizontal: 8,
+                              vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: _getPriorityColor(task.priority).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: _getPriorityColor(task.priority),
-                                width: 1.5,
-                              ),
+                              color: _getPriorityColor(task.priority).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               _getPriorityText(task.priority),
                               style: TextStyle(
                                 color: _getPriorityColor(task.priority),
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _getStatusColor(task.status).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              _getStatusText(task.status),
-                              style: TextStyle(
-                                color: _getStatusColor(task.status),
-                                fontSize: 14,
+                                fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       
                       // 任务描述
                       if (task.description.isNotEmpty) ...[
                         Text(
-                          '任务描述',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
                           task.description,
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: 16,
                             color: Colors.grey[700],
                             height: 1.5,
                           ),
                         ),
                         const SizedBox(height: 16),
                       ],
-
-                      if (task.attachments.isNotEmpty) ...[
-                        Text(
-                          '图片/附件',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          height: 90,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: task.attachments.length,
-                            itemBuilder: (context, index) {
-                              final path = task.attachments[index];
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: _buildAttachmentThumbnail(path),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-
-                      // 进度条
-                      Text(
-                        '完成进度',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[800],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              backgroundColor: Colors.grey[300],
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                progress == 1.0 ? Colors.green : Colors.blue,
-                              ),
-                              minHeight: 8,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            '${task.progressPercentage}%',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // 任务信息列表
-                      _buildInfoRow(
-                        icon: Icons.person,
-                        label: '负责人',
-                        value: task.assigneeName,
-                      ),
-                      const SizedBox(height: 8),
-                      _buildInfoRow(
-                        icon: Icons.business,
-                        label: '部门',
-                        value: task.department,
-                      ),
-                      const SizedBox(height: 8),
-                      if (task.startTime != null)
-                        _buildInfoRow(
-                          icon: Icons.play_arrow,
-                          label: '开始时间',
-                          value: _formatDateTime(task.startTime),
-                        ),
-                      if (task.startTime != null) const SizedBox(height: 8),
-                      if (task.deadline != null)
-                        _buildInfoRow(
-                          icon: Icons.schedule,
-                          label: '截止时间',
-                          value: _formatDateTime(task.deadline!),
-                        ),
-                      if (task.deadline != null) const SizedBox(height: 8),
-                      _buildInfoRow(
-                        icon: Icons.access_time,
-                        label: '创建时间',
-                        value: _formatDateTime(task.createdAt),
-                      ),
-                      if (task.location != null && task.location!.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        _buildInfoRow(
-                          icon: Icons.location_on,
-                          label: '地点',
-                          value: task.location!,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // 邀约处理（仅邀约任务且当前用户是被邀约人且未完成时显示）
-              if (_currentTask!.isRequest && 
-                  _currentTask!.assigneeId == widget.currentUser.id && 
-                  _currentTask!.status != 'completed')
-                Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '处理邀约',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: _notesController,
-                          decoration: const InputDecoration(
-                            labelText: '备注（可选）',
-                            hintText: '请输入备注信息...',
-                            border: OutlineInputBorder(),
-                          ),
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 16),
+                      
+                      // 任务进度条
+                      if (!task.isRequest) ...[
                         Row(
                           children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () => _handleRequestResponse('approve'),
-                                icon: const Icon(Icons.check_circle),
-                                label: const Text('批准'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                ),
+                            Icon(
+                              Icons.trending_up,
+                              color: Colors.grey[600],
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '任务进度',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[800],
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () => _handleRequestResponse('reject'),
-                                icon: const Icon(Icons.cancel),
-                                label: const Text('反驳'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                ),
+                            const Spacer(),
+                            Text(
+                              '${task.progressPercentage.toInt()}%',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[600],
                               ),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              const SizedBox(height: 16),
-
-              // 子任务列表（邀约任务不显示）
-              if (!_currentTask!.isRequest)
-                Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '子任务',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
+                        const SizedBox(height: 8),
+                        LinearProgressIndicator(
+                          value: progress,
+                          backgroundColor: Colors.grey.shade300,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            progress >= 1.0 ? Colors.green : Colors.blue,
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        if (_isLoadingSubtasks)
-                          const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16.0),
-                              child: CircularProgressIndicator(),
-                            ),
-                          )
-                        else if (_subtasks.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Center(
-                              child: Text(
-                                '暂无子任务',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                          )
-                        else
-                          ..._subtasks.map((subtask) => _buildSubtaskItem(subtask)),
+                        const SizedBox(height: 16),
                       ],
-                    ),
+                      
+                      // 任务属性
+                      _buildTaskProperties(task),
+                    ],
                   ),
                 ),
-
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoRow({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          size: 20,
-          color: Colors.grey[600],
-        ),
-        const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Colors.grey[700],
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[900],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAttachmentThumbnail(String path) {
-    if (path.startsWith('http')) {
-      return Image.network(
-        path,
-        width: 100,
-        height: 90,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _brokenThumbnail(),
-      );
-    }
-    final file = File(path);
-    if (file.existsSync()) {
-      return Image.file(
-        file,
-        width: 100,
-        height: 90,
-        fit: BoxFit.cover,
-      );
-    }
-    return _brokenThumbnail();
-  }
-
-  Widget _brokenThumbnail() {
-    return Container(
-      width: 100,
-      height: 90,
-      color: Colors.grey.shade200,
-      child: const Icon(Icons.broken_image, color: Colors.grey),
-    );
-  }
-
-  Widget _buildSubtaskItem(Task subtask) {
-    return InkWell(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => TaskDetailScreen(
-              task: subtask,
-              currentUser: widget.currentUser,
-            ),
-          ),
-        ).then((_) {
-          // 从子任务详情返回后刷新
-          _loadSubtasks();
-        });
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey[50],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: Colors.grey[300]!,
-            width: 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    subtask.title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(subtask.status).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _getStatusText(subtask.status),
-                    style: TextStyle(
-                      color: _getStatusColor(subtask.status),
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (subtask.description.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                subtask.description,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey[600],
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
+              
+              const SizedBox(height: 16),
+              
+              // 任务树可视化（非邀约任务且showTaskTree为true）
+              if (!task.isRequest && widget.showTaskTree)
+                _buildTaskTreeVisualization(),
+              
+              const SizedBox(height: 16),
+              
+              // 子任务列表（非邀约任务）
+              if (!task.isRequest)
+                _buildSubtasksList(),
+              
+              // 邀约处理部分（邀约任务专用）
+              if (task.isRequest)
+                _buildRequestAction(task),
             ],
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(
-                  Icons.person,
-                  size: 14,
-                  color: Colors.grey[600],
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  subtask.assigneeName,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                if (subtask.deadline != null) ...[
-                  Icon(
-                    Icons.schedule,
-                    size: 14,
-                    color: Colors.grey[600],
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _formatDateTime(subtask.deadline!),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
+// 任务树画笔类，用于绘制节点之间的连线
+class TaskTreePainter extends CustomPainter {
+  final Map<String, dynamic> treeData;
+  final double nodeWidth = 140.0;
+  final double nodeHeight = 60.0;
+  final double horizontalSpacing = 160.0;
+  final double verticalSpacing = 80.0;
+
+  TaskTreePainter({required this.treeData});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.grey
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+
+    _drawNodeConnections(canvas, paint, treeData, 0, 0);
+  }
+
+  void _drawNodeConnections(Canvas canvas, Paint paint, Map<String, dynamic> node, int level, int position) {
+    if (node['subtasks'] == null || (node['subtasks'] as List).isEmpty) {
+      return;
+    }
+
+    final parentCenterX = position * horizontalSpacing + nodeWidth / 2;
+    final parentBottomY = level * verticalSpacing + nodeHeight;
+
+    final subtasks = node['subtasks'] as List;
+    for (int i = 0; i < subtasks.length; i++) {
+      final subtask = subtasks[i] as Map<String, dynamic>;
+      final childCenterX = (position + i) * horizontalSpacing + nodeWidth / 2;
+      final childTopY = (level + 1) * verticalSpacing;
+
+      // 绘制从父节点底部到子节点顶部的连线
+      final path = Path();
+      path.moveTo(parentCenterX, parentBottomY);
+      
+      // 使用贝塞尔曲线使连线更平滑
+      final controlPoint1X = parentCenterX;
+      final controlPoint1Y = parentBottomY + (childTopY - parentBottomY) / 2;
+      final controlPoint2X = childCenterX;
+      final controlPoint2Y = parentBottomY + (childTopY - parentBottomY) / 2;
+      
+      path.cubicTo(
+        controlPoint1X, controlPoint1Y,
+        controlPoint2X, controlPoint2Y,
+        childCenterX, childTopY,
+      );
+      
+      canvas.drawPath(path, paint);
+
+      // 递归绘制子节点的连线
+      _drawNodeConnections(canvas, paint, subtask, level + 1, position + i);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return true;
+  }
+}

@@ -4,6 +4,8 @@ import '../models/mbti_test_session.dart';
 import '../models/mbti_test_result.dart';
 import '../data/mbti_questions.dart';
 import '../services/mbti_test_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class MbtiTestScreen extends StatefulWidget {
   final Function(MbtiTestResult)? onTestCompleted;
@@ -24,6 +26,7 @@ class _MbtiTestScreenState extends State<MbtiTestScreen>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
   bool _isLoading = false;
+  bool _nextWarned = false;
 
   @override
   void initState() {
@@ -41,6 +44,7 @@ class _MbtiTestScreenState extends State<MbtiTestScreen>
       CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
     );
     _fadeController.forward();
+    _loadProgress();
   }
 
   @override
@@ -63,21 +67,20 @@ class _MbtiTestScreenState extends State<MbtiTestScreen>
 
     setState(() {
       _session = _session.addAnswer(answer);
+      _nextWarned = false;
     });
 
-    _progressController.animateTo(_session.progressPercentage / 100);
+    final answeredPercent = _session.answeredQuestionsCount / MbtiQuestionsData.totalQuestions;
+    _progressController.animateTo(answeredPercent.clamp(0.0, 1.0));
+    _saveProgress();
 
     // 自动进入下一题或完成测试
     Future.delayed(const Duration(milliseconds: 300), () {
-      if (_session.isCompleted) {
-        // 测试已完成，计算并保存结果
+      final allAnswered = _session.answeredQuestionsCount >= MbtiQuestionsData.totalQuestions;
+      if (allAnswered) {
         _completeTest();
-      } else if (_session.currentQuestionIndex < MbtiQuestionsData.totalQuestions - 1) {
-        // 还有下一题
-        _nextQuestion();
       } else {
-        // 已到最后一题，完成测试
-        _completeTest();
+        _nextQuestion();
       }
     });
   }
@@ -95,9 +98,11 @@ class _MbtiTestScreenState extends State<MbtiTestScreen>
           currentQuestionIndex: _session.currentQuestionIndex + 1,
           totalQuestions: _session.totalQuestions,
         );
+        _nextWarned = false;
       });
       _fadeController.reset();
       _fadeController.forward();
+      _saveProgress();
     }
   }
 
@@ -114,13 +119,57 @@ class _MbtiTestScreenState extends State<MbtiTestScreen>
           currentQuestionIndex: _session.currentQuestionIndex - 1,
           totalQuestions: _session.totalQuestions,
         );
+        _nextWarned = false;
       });
       _fadeController.reset();
       _fadeController.forward();
+      _saveProgress();
     }
   }
 
   Future<void> _completeTest() async {
+    final unansweredNumbers = _getUnansweredQuestionNumbers();
+    if (unansweredNumbers.isNotEmpty) {
+      final firstUnanswered = unansweredNumbers.first;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('尚有题目未完成'),
+          content: Text('请返回作答。未答题号：${unansweredNumbers.join('、')}'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('知道了'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                setState(() {
+                  _session = MbtiTestSession(
+                    sessionId: _session.sessionId,
+                    startTime: _session.startTime,
+                    endTime: _session.endTime,
+                    answers: _session.answers,
+                    result: _session.result,
+                    isCompleted: false,
+                    currentQuestionIndex: firstUnanswered - 1,
+                    totalQuestions: _session.totalQuestions,
+                  );
+                  _nextWarned = false;
+                });
+                _fadeController.reset();
+                _fadeController.forward();
+              },
+              child: Text('跳转到第 $firstUnanswered 题'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
@@ -131,6 +180,7 @@ class _MbtiTestScreenState extends State<MbtiTestScreen>
       
       // 保存测试结果到后端
       await MbtiTestService.saveTestResult(result);
+      await _clearProgress();
 
       setState(() {
         _session = completedSession;
@@ -219,9 +269,9 @@ class _MbtiTestScreenState extends State<MbtiTestScreen>
             onPressed: () => Navigator.of(context).pop(),
             child: Text('确定'),
           ),
-        ],
-      ),
-    );
+         ],
+       ),
+     );
   }
 
   @override
@@ -258,18 +308,31 @@ class _MbtiTestScreenState extends State<MbtiTestScreen>
                 context: context,
                 builder: (context) => AlertDialog(
                   title: Text('退出测试'),
-                  content: Text('确定要退出测试吗？进度将不会保存。'),
+                  content: Text('确定要退出测试吗？是否保存当前进度以便下次继续？'),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
                       child: Text('取消'),
                     ),
                     TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).pop();
+                      onPressed: () async {
+                        await _saveProgress(forceIncomplete: true);
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                          Navigator.of(context).pop();
+                        }
                       },
-                      child: Text('确定'),
+                      child: Text('保存并退出'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await _clearProgress();
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      child: Text('不保存退出'),
                     ),
                   ],
                 ),
@@ -344,13 +407,13 @@ class _MbtiTestScreenState extends State<MbtiTestScreen>
             },
           ),
           SizedBox(height: 8),
-          Text(
-            '${(_session.progressPercentage).toStringAsFixed(1)}%',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 12,
-            ),
-          ),
+      Text(
+        '${((_session.answeredQuestionsCount / MbtiQuestionsData.totalQuestions) * 100).toStringAsFixed(1)}%',
+        style: TextStyle(
+          color: Colors.white70,
+          fontSize: 12,
+        ),
+      ),
         ],
       ),
     );
@@ -478,17 +541,51 @@ class _MbtiTestScreenState extends State<MbtiTestScreen>
               fontSize: 14,
             ),
           ),
-          ElevatedButton.icon(
-            onPressed: _session.currentQuestionIndex < MbtiQuestionsData.totalQuestions - 1
-                ? _nextQuestion
-                : null,
-            icon: Icon(Icons.arrow_forward),
-            label: Text('下一题'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[600],
-              foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            ),
+          Builder(
+            builder: (context) {
+              final currentQuestion = MbtiQuestionsData.questions[_session.currentQuestionIndex];
+              final isAnswered = _session.isQuestionAnswered(currentQuestion.questionNumber);
+              final disableNext = _nextWarned && !isAnswered;
+              return ElevatedButton.icon(
+                onPressed: disableNext
+                    ? null
+                    : () {
+                        if (isAnswered) {
+                          if (_session.currentQuestionIndex < MbtiQuestionsData.totalQuestions - 1) {
+                            _nextQuestion();
+                          } else {
+                            _completeTest();
+                          }
+                        } else {
+                          if (!_nextWarned) {
+                            setState(() {
+                              _nextWarned = true;
+                            });
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: Text('提示'),
+                                content: Text('此题还没作答'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).pop(),
+                                    child: Text('确定'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                        }
+                      },
+                icon: Icon(Icons.arrow_forward),
+                label: Text('下一题'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[600],
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -641,5 +738,112 @@ class _MbtiTestScreenState extends State<MbtiTestScreen>
         ),
       ),
     );
+  }
+}
+
+// 进度与校验相关辅助方法
+extension _MbtiProgressHelpers on _MbtiTestScreenState {
+  List<int> _getUnansweredQuestionNumbers() {
+    final total = MbtiQuestionsData.totalQuestions;
+    final answeredSet = _session.answers.map((a) => a.questionNumber).toSet();
+    final List<int> res = [];
+    for (int n = 1; n <= total; n++) {
+      if (!answeredSet.contains(n)) res.add(n);
+    }
+    return res;
+  }
+
+  void _goToFirstUnanswered() {
+    final unanswered = _getUnansweredQuestionNumbers();
+    if (unanswered.isEmpty) return;
+    final target = unanswered.first;
+    setState(() {
+      _session = MbtiTestSession(
+        sessionId: _session.sessionId,
+        startTime: _session.startTime,
+        endTime: _session.endTime,
+        answers: _session.answers,
+        result: _session.result,
+        isCompleted: false,
+        currentQuestionIndex: target - 1,
+        totalQuestions: _session.totalQuestions,
+      );
+    });
+    _fadeController.reset();
+    _fadeController.forward();
+    _saveProgress();
+  }
+
+  Future<void> _loadProgress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final answersJson = prefs.getString('mbti_answers');
+      final savedIndex = prefs.getInt('mbti_current_index');
+      final total = prefs.getInt('mbti_total_questions');
+      if (answersJson != null && savedIndex != null && total != null) {
+        final Map<String, dynamic> map = jsonDecode(answersJson);
+        MbtiTestSession session = MbtiTestSession.createNew(MbtiQuestionsData.totalQuestions);
+        for (final entry in map.entries) {
+          final qNum = int.tryParse(entry.key);
+          final opt = entry.value is int ? entry.value as int : int.tryParse(entry.value.toString());
+          if (qNum != null && opt != null) {
+            final idx = MbtiQuestionsData.getQuestionIndex(qNum);
+            if (idx >= 0) {
+              final q = MbtiQuestionsData.questions[idx];
+              session = session.addAnswer(MbtiTestAnswer(
+                questionNumber: q.questionNumber,
+                selectedOption: opt,
+                dimension: q.dimension,
+                answeredAt: DateTime.now(),
+              ));
+            }
+          }
+        }
+        setState(() {
+          _session = MbtiTestSession(
+            sessionId: session.sessionId,
+            startTime: session.startTime,
+            endTime: session.endTime,
+            answers: session.answers,
+            result: session.result,
+            isCompleted: false,
+            currentQuestionIndex: savedIndex.clamp(0, MbtiQuestionsData.totalQuestions - 1),
+            totalQuestions: MbtiQuestionsData.totalQuestions,
+          );
+          _nextWarned = false;
+        });
+        final answeredPercent = _session.answeredQuestionsCount / MbtiQuestionsData.totalQuestions;
+        _progressController.value = answeredPercent.clamp(0.0, 1.0);
+      }
+    } catch (e) {
+      // ignore load errors
+    }
+  }
+
+  Future<void> _saveProgress({bool forceIncomplete = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final Map<String, int> map = {
+        for (final a in _session.answers) a.questionNumber.toString(): a.selectedOption
+      };
+      await prefs.setString('mbti_answers', jsonEncode(map));
+      await prefs.setInt('mbti_current_index', _session.currentQuestionIndex);
+      await prefs.setInt('mbti_total_questions', MbtiQuestionsData.totalQuestions);
+      await prefs.setBool('mbti_incomplete', forceIncomplete || (_session.answeredQuestionsCount < MbtiQuestionsData.totalQuestions));
+    } catch (e) {
+      // ignore save errors
+    }
+  }
+
+  Future<void> _clearProgress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('mbti_answers');
+      await prefs.remove('mbti_current_index');
+      await prefs.remove('mbti_total_questions');
+      await prefs.remove('mbti_incomplete');
+    } catch (e) {
+      // ignore clear errors
+    }
   }
 }
