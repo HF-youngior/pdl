@@ -1,0 +1,546 @@
+{
+  "info": {
+    "_postman_id": "c8d8f2c4-1111-4b22-aaaa-123456789000",
+    "name": "PDL 任务与通知模块集成测试",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "使用 Node 后端 /api 进行任务和通知模块的基础集成测试（不包含邀约相关接口）。"
+  },
+  "item": [
+    {
+      "name": "1-认证与基础信息",
+      "item": [
+        {
+          "name": "1.1 登录获取 Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+            "mode": "raw",
+            "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"Admin@2025\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('登录成功', function () {",
+                "  pm.response.to.have.status(200);",
+                "  const json = pm.response.json();",
+                "  pm.expect(json).to.have.property('token');",
+                "  pm.expect(json).to.have.property('user');",
+                "});",
+                "",
+                "// 使用登录结果初始化集合级变量，供后续请求使用",
+                "const json = pm.response.json();",
+                "if (json && json.token) {",
+                "  pm.collectionVariables.set('token', json.token);",
+                "  if (json.user && json.user.id) {",
+                "    pm.collectionVariables.set('currentUserId', json.user.id);",
+                "  }",
+                "}"
+              ],
+              "type": "text/javascript"
+            }
+          }
+          ]
+        },
+        {
+          "name": "1.2 获取用户列表(用于选择 assignee_id)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('获取用户列表成功', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const users = pm.response.json();",
+                  "  pm.expect(users).to.be.an('array');",
+                  "});",
+                  "",
+                  "// 选一个非 admin 用户作为默认 assignee（如果存在）",
+                  "const users = pm.response.json();",
+                  "if (Array.isArray(users) && users.length > 0) {",
+                  "  let candidate = users.find(u => u.role === 'employee');",
+                  "  if (!candidate) {",
+                  "    candidate = users.find(u => u.role !== 'admin');",
+                  "  }",
+                  "  if (!candidate) {",
+                  "    candidate = users[0];",
+                  "  }",
+                  "  pm.collectionVariables.set('assigneeId', candidate.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2-任务模块",
+      "item": [
+        {
+          "name": "2.1 创建任务",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Swagger/Postman 集成测试任务 A\",\n  \"description\": \"通过 Postman 创建的任务，用于测试任务和通知模块\",\n  \"assignee_id\": \"{{assigneeId}}\",\n  \"priority\": \"p1\",\n  \"start_time\": \"2025-01-15 09:00:00\",\n  \"end_time\": \"2025-01-15 12:00:00\",\n  \"is_all_day\": false,\n  \"progress_percentage\": 0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('创建任务成功', function () {",
+                "  pm.response.to.have.status(201);",
+                "  const json = pm.response.json();",
+                "  pm.expect(json).to.have.property('id');",
+                "});",
+                "",
+                "// 把新建任务的 ID 写入集合变量，供后续用例使用",
+                "const json = pm.response.json();",
+                "if (json && json.id) {",
+                "  pm.collectionVariables.set('taskId', json.id);",
+                "}"
+              ],
+              "type": "text/javascript"
+            }
+          }
+          ]
+        },
+        {
+          "name": "2.2 获取任务列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('获取任务列表成功', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const tasks = pm.response.json();",
+                  "  pm.expect(tasks).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.3 获取单个任务详情",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('获取任务详情成功', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const task = pm.response.json();",
+                  "  pm.expect(task).to.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.4 更新任务状态为进行中",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\",\n  \"progress_percentage\": 30,\n  \"special_notes\": \"Postman 集成测试：将任务置为进行中\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "status"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('更新任务状态成功', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.5 更新任务状态为已完成",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"completed\",\n  \"progress_percentage\": 100,\n  \"special_notes\": \"Postman 集成测试：任务完成\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "status"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('任务完成状态更新成功', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.6 删除任务",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('删除任务成功', function () {",
+                  "  pm.expect([200, 204]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3-通知模块",
+      "item": [
+        {
+          "name": "3.1 获取通知列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('获取通知列表成功', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const list = pm.response.json();",
+                  "  pm.expect(list).to.be.an('array');",
+                  "});",
+                  "",
+                  "// 记录第一条未读通知的ID，供后续标记已读测试使用",
+                  "const list = pm.response.json();",
+                  "if (Array.isArray(list) && list.length > 0) {",
+                  "  const unread = list.find(n => n.is_read === 0 || n.is_read === false);",
+                  "  const target = unread || list[0];",
+                  "  if (target && target.id) {",
+                  "    pm.collectionVariables.set('notificationId', target.id);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.2 标记单条通知为已读",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/{{notificationId}}/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "{{notificationId}}",
+                "read"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('标记通知为已读成功', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.3 将所有通知标记为已读",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/mark-all-read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "mark-all-read"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('全部标记为已读成功', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "assigneeId",
+      "value": ""
+    },
+    {
+      "key": "taskId",
+      "value": ""
+    },
+    {
+      "key": "notificationId",
+      "value": ""
+    },
+    {
+      "key": "currentUserId",
+      "value": ""
+    }
+  ]
+}

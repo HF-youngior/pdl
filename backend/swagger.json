@@ -1,0 +1,1536 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "潘多拉企业管理系统 API",
+    "version": "1.0.0",
+    "description": "公司重要事项、任务、日历视图、签到积分、日志、AI 分析等接口文档（Swagger UI 版）"
+  },
+  "tags": [
+    { "name": "认证与用户", "description": "登录、用户、部门相关接口" },
+    { "name": "重要事项", "description": "重要事项库与公司重要事项管理" },
+    { "name": "任务模块", "description": "任务 CRUD、状态、邀约等接口" },
+    { "name": "日历视图", "description": "任务日历与视图相关接口" },
+    { "name": "通知", "description": "消息通知与提醒" },
+    { "name": "签到与积分", "description": "签到记录、积分、兑换相关接口" },
+    { "name": "文件上传", "description": "图片等文件上传接口" },
+    { "name": "日志与个人信息", "description": "个人日志、个人信息、系统日志" },
+    { "name": "MBTI", "description": "MBTI 测评记录与统计" },
+    { "name": "AI 分析", "description": "AI 文本分析与人格分析" },
+    { "name": "文档", "description": "API 文档页面接口" }
+  ],
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "本地开发环境"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "在 Authorization 头中传入 Bearer Token，例如：`Bearer xxx.yyy.zzz`"
+      }
+    },
+    "schemas": {
+      "CompanyImportantItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "priority": { "type": "string" },
+          "status": { "type": "string" },
+          "deadline": { "type": "string", "format": "date-time" },
+          "is_selected": { "type": "boolean" },
+          "created_by_name": { "type": "string" },
+          "updated_by_name": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/important-items": {
+      "get": {
+        "summary": "获取重要事项库列表（已选中）",
+        "tags": ["重要事项"],
+        "description": "返回所有被标记为已选中的重要事项，用于前端展示。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "title": { "type": "string" },
+                      "description": { "type": "string" },
+                      "is_selected": { "type": "boolean" },
+                      "created_by_name": { "type": "string" },
+                      "updated_by_name": { "type": "string" },
+                      "created_at": { "type": "string", "format": "date-time" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/company-important-items": {
+      "get": {
+        "summary": "获取公司十大重要事项（仅已选中）",
+        "tags": ["重要事项"],
+        "description": "返回已被选中用于展示的公司重要事项列表。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/CompanyImportantItem" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "创建或选中公司重要事项",
+        "tags": ["重要事项"],
+        "description": "支持两种方式：1）传入 item_id，将已有事项标记为选中；2）直接传入 title/description 等字段创建一条新事项。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "item_id": {
+                    "type": "string",
+                    "description": "从重要事项库选择的 ID"
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "直接创建时的标题"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "描述"
+                  },
+                  "priority": {
+                    "type": "string",
+                    "description": "优先级，例如 p0/p1"
+                  },
+                  "deadline": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "截止日期"
+                  }
+                }
+              },
+              "example": {
+                "item_id": "1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "从重要事项库选中成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "id": { "type": "string" }
+                  }
+                },
+                "example": {
+                  "message": "重要事项添加成功",
+                  "id": "1"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "直接创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "id": { "type": "string" }
+                  }
+                },
+                "example": {
+                  "message": "创建成功",
+                  "id": "generated-uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/company-important-items/all": {
+      "get": {
+        "summary": "获取所有公司重要事项（用于编辑）",
+        "tags": ["重要事项"],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/CompanyImportantItem" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/company-important-items/{id}/select": {
+      "put": {
+        "summary": "更新单个公司重要事项的选中状态",
+        "tags": ["重要事项"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "公司重要事项 ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "is_selected": {
+                    "type": "boolean",
+                    "description": "是否选中"
+                  }
+                },
+                "required": ["is_selected"]
+              },
+              "example": { "is_selected": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      }
+    },
+    "/api/company-important-items/batch-select": {
+      "put": {
+        "summary": "批量更新公司重要事项选中状态（设置十大重要事项）",
+        "tags": ["重要事项"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "selectedIds": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                },
+                "required": ["selectedIds"]
+              },
+              "example": {
+                "selectedIds": ["id1", "id2", "id3"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "批量更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "selectedCount": { "type": "integer" },
+                    "totalCount": { "type": "integer" }
+                  }
+                },
+                "example": {
+                  "message": "批量更新成功",
+                  "selectedCount": 3,
+                  "totalCount": 3
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/company-important-items/{id}": {
+      "put": {
+        "summary": "更新指定公司重要事项的信息",
+        "tags": ["重要事项"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "公司重要事项 ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "description": { "type": "string" },
+                  "priority": { "type": "string" },
+                  "status": { "type": "string" },
+                  "deadline": { "type": "string", "format": "date-time" }
+                }
+              },
+              "example": {
+                "title": "更新后的标题",
+                "description": "更新后的描述"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          },
+          "404": {
+            "description": "公司重要事项不存在"
+          }
+        }
+      },
+      "delete": {
+        "summary": "删除指定公司重要事项",
+        "tags": ["重要事项"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "公司重要事项 ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/api": {
+      "get": {
+        "summary": "API 文档首页",
+        "tags": ["文档"],
+        "description": "返回自定义 HTML API 文档页面。",
+        "responses": {
+          "200": {
+            "description": "HTML 文档页面"
+          }
+        }
+      }
+    },
+    "/api/old": {
+      "get": {
+        "summary": "旧版 API 文档页",
+        "tags": ["文档"],
+        "responses": {
+          "200": {
+            "description": "旧版 HTML 文档页面"
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "summary": "用户登录",
+        "tags": ["认证与用户"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                },
+                "required": ["username", "password"]
+              },
+              "example": {
+                "username": "admin",
+                "password": "admin123"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功，返回 JWT token"
+          }
+        }
+      }
+    },
+    "/api/user/profile": {
+      "get": {
+        "summary": "获取当前登录用户信息",
+        "tags": ["认证与用户"],
+        "responses": {
+          "200": { "description": "成功" },
+          "401": { "description": "未授权（缺少或无效的访问令牌）" }
+        }
+      }
+    },
+    "/api/departments": {
+      "get": {
+        "summary": "获取部门列表",
+        "tags": ["认证与用户"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "summary": "获取用户列表",
+        "tags": ["认证与用户"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      },
+      "post": {
+        "summary": "创建用户",
+        "tags": ["认证与用户"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" },
+                  "name": { "type": "string" },
+                  "position": { "type": "string" },
+                  "department_id": { "type": "string" },
+                  "role": {
+                    "type": "string",
+                    "description": "admin / founder / department_head / team_leader / employee"
+                  },
+                  "parent_id": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "上级用户 ID，可为空"
+                  }
+                },
+                "required": ["username", "password", "name", "position", "department_id", "role"]
+              },
+              "example": {
+                "username": "test_user",
+                "password": "Test@123",
+                "name": "测试用户",
+                "position": "产品经理",
+                "department_id": "dept-001",
+                "role": "employee",
+                "parent_id": "admin-001"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "创建成功" }
+        }
+      }
+    },
+    "/api/users/{id}": {
+      "put": {
+        "summary": "更新用户信息",
+        "tags": ["认证与用户"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": { "type": "string" },
+                  "name": { "type": "string" },
+                  "position": { "type": "string" },
+                  "department_id": { "type": "string" },
+                  "role": { "type": "string" },
+                  "parent_id": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              },
+              "example": {
+                "name": "张三",
+                "position": "高级产品经理",
+                "department_id": "dept-001",
+                "role": "employee",
+                "parent_id": "admin-001"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "更新成功" }
+        }
+      },
+      "delete": {
+        "summary": "删除用户",
+        "tags": ["认证与用户"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "删除成功" }
+        }
+      }
+    },
+    "/api/auth/change-password": {
+      "put": {
+        "summary": "修改密码",
+        "tags": ["认证与用户"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "oldPassword": { "type": "string" },
+                  "newPassword": { "type": "string" }
+                },
+                "required": ["oldPassword", "newPassword"]
+              },
+              "example": {
+                "oldPassword": "admin123",
+                "newPassword": "Admin@2025"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "修改成功" }
+        }
+      }
+    },
+    "/api/admin/dashboard-stats": {
+      "get": {
+        "summary": "获取仪表盘统计数据",
+        "tags": ["系统管理"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/tasks": {
+      "get": {
+        "summary": "获取任务列表",
+        "tags": ["任务模块"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      },
+      "post": {
+        "summary": "创建任务",
+        "tags": ["任务模块"],
+        "responses": {
+          "201": { "description": "创建成功" }
+        }
+      }
+    },
+    "/api/tasks/{id}": {
+      "get": {
+        "summary": "获取任务详情",
+        "tags": ["任务模块"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      },
+      "put": {
+        "summary": "更新任务",
+        "tags": ["任务模块"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "更新成功" }
+        }
+      },
+      "delete": {
+        "summary": "删除任务",
+        "tags": ["任务模块"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "删除成功" }
+        }
+      }
+    },
+    "/api/tasks/{id}/status": {
+      "put": {
+        "summary": "更新任务状态",
+        "tags": ["任务模块"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "更新成功" }
+        }
+      }
+    },
+    "/api/tasks/request": {
+      "post": {
+        "summary": "创建邀约任务",
+        "tags": ["任务模块"],
+        "responses": {
+          "201": { "description": "创建成功" }
+        }
+      }
+    },
+    "/api/tasks/{id}/request": {
+      "put": {
+        "summary": "更新邀约任务信息",
+        "tags": ["任务模块"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "更新成功" }
+        }
+      }
+    },
+    "/api/tasks/{id}/request-response": {
+      "put": {
+        "summary": "处理邀约任务回应",
+        "tags": ["任务模块"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "处理成功" }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "summary": "获取通知列表",
+        "tags": ["通知"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/notifications/deadline-reminders": {
+      "post": {
+        "summary": "创建截止日期提醒通知",
+        "tags": ["通知"],
+        "responses": {
+          "201": { "description": "创建成功" }
+        }
+      }
+    },
+    "/api/notifications/{id}": {
+      "delete": {
+        "summary": "删除通知",
+        "tags": ["通知"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "删除成功" }
+        }
+      }
+    },
+    "/api/notifications/{id}/read": {
+      "put": {
+        "summary": "标记单条通知为已读",
+        "tags": ["通知"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "操作成功" }
+        }
+      }
+    },
+    "/api/notifications/mark-all-read": {
+      "put": {
+        "summary": "将所有通知标记为已读",
+        "tags": ["通知"],
+        "responses": {
+          "200": { "description": "操作成功" }
+        }
+      }
+    },
+    "/api/checkin/points": {
+      "get": {
+        "summary": "获取用户当前积分",
+        "tags": ["签到与积分"],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "要查询的用户ID；为空时默认使用当前登录用户"
+          }
+        ],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/checkin/records": {
+      "get": {
+        "summary": "获取用户签到记录（按月）",
+        "tags": ["签到与积分"],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "要查询的用户ID；为空时默认当前登录用户"
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "年份，例如 2025；不传则使用当前年份"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "月份，1-12；不传则使用当前月份"
+          }
+        ],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/checkin/points-history": {
+      "get": {
+        "summary": "获取积分获取/消耗记录",
+        "tags": ["签到与积分"],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "要查询的用户ID；为空时默认当前登录用户"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["earn", "spend"],
+              "default": "earn"
+            },
+            "description": "记录类型：earn=获取积分，spend=消耗积分；默认 earn"
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "年份，例如 2025；不传则使用当前年份"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "月份，1-12；不传则使用当前月份"
+          }
+        ],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/checkin/consecutive": {
+      "get": {
+        "summary": "获取连续签到信息",
+        "tags": ["签到与积分"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/checkin": {
+      "post": {
+        "summary": "每日签到",
+        "tags": ["签到与积分"],
+        "responses": {
+          "200": { "description": "签到成功" }
+        }
+      }
+    },
+    "/api/checkin/redeem": {
+      "post": {
+        "summary": "使用积分兑换奖励",
+        "tags": ["签到与积分"],
+        "responses": {
+          "200": { "description": "兑换成功" }
+        }
+      }
+    },
+    "/api/upload-image": {
+      "post": {
+        "summary": "上传单张图片",
+        "description": "上传单张图片文件，支持 jpeg、jpg、png、gif、webp 格式，最大 10MB。字段名：image",
+        "tags": ["文件上传"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["image"],
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "图片文件，支持 jpeg、jpg、png、gif、webp 格式，最大 10MB"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上传成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "url": { "type": "string", "description": "图片访问URL" },
+                    "filename": { "type": "string", "description": "保存的文件名" }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "url": "/uploads/img-1234567890-123456789.png",
+                  "filename": "img-1234567890-123456789.png"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                },
+                "example": {
+                  "error": "没有上传文件"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "details": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/upload-images": {
+      "post": {
+        "summary": "批量上传图片",
+        "description": "批量上传多张图片，最多 10 张，支持 jpeg、jpg、png、gif、webp 格式，每张最大 10MB。字段名：images",
+        "tags": ["文件上传"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["images"],
+                "properties": {
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "description": "图片文件数组，最多 10 张，支持 jpeg、jpg、png、gif、webp 格式，每张最大 10MB"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上传成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "images": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "url": { "type": "string", "description": "图片访问URL" },
+                          "filename": { "type": "string", "description": "保存的文件名" }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "images": [
+                    {
+                      "url": "/uploads/img-1234567890-123456789.png",
+                      "filename": "img-1234567890-123456789.png"
+                    },
+                    {
+                      "url": "/uploads/img-1234567891-123456790.jpg",
+                      "filename": "img-1234567891-123456790.jpg"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                },
+                "example": {
+                  "error": "没有上传文件"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "details": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/personal-logs": {
+      "post": {
+        "summary": "创建个人日志",
+        "tags": ["日志与个人信息"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "content": { "type": "string" },
+                  "category": { "type": "string" },
+                  "log_date": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "日志时间，例如 2025-12-03T08:00:00+08:00"
+                  }
+                }
+              },
+              "example": {
+                "title": "每日复盘",
+                "content": "今天完成了需求评审和接口联调……",
+                "category": "work",
+                "log_date": "2025-12-03T08:00:00+08:00"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "创建成功" }
+        }
+      },
+      "get": {
+        "summary": "获取个人日志列表",
+        "tags": ["日志与个人信息"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/personal-logs/{id}": {
+      "put": {
+        "summary": "更新个人日志",
+        "tags": ["日志与个人信息"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "content": { "type": "string" },
+                  "category": { "type": "string" },
+                  "log_date": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              },
+              "example": {
+                "title": "每日复盘（更新）",
+                "content": "补充了一些新的想法……",
+                "category": "work",
+                "log_date": "2025-12-03T09:00:00+08:00"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "更新成功" }
+        }
+      },
+      "delete": {
+        "summary": "删除个人日志",
+        "tags": ["日志与个人信息"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "删除成功" }
+        }
+      }
+    },
+    "/api/personal-info/{userId}": {
+      "get": {
+        "summary": "获取用户个人信息",
+        "tags": ["日志与个人信息"],
+        "parameters": [
+          { "name": "userId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/logs": {
+      "get": {
+        "summary": "获取系统日志列表",
+        "tags": ["日志与个人信息"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/calendar/month-view": {
+      "get": {
+        "summary": "获取月视图任务数据",
+        "tags": ["日历视图"],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "年份，例如 2025"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "月份，1-12"
+          }
+        ],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/month-view/{userId}/{year}/{month}": {
+      "get": {
+        "summary": "获取指定用户指定月份任务视图",
+        "parameters": [
+          { "name": "userId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "year", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "month", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/calendar/day-detail": {
+      "get": {
+        "summary": "获取某天任务详情",
+        "tags": ["日历视图"],
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "日期，格式 YYYY-MM-DD，例如 2025-12-02"
+          }
+        ],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/mbti-records": {
+      "post": {
+        "summary": "创建 MBTI 测评记录",
+        "tags": ["MBTI"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["mbti_type", "test_scores", "personality_traits"],
+                "properties": {
+                  "mbti_type": {
+                    "type": "string",
+                    "description": "MBTI类型，格式为4个字符，如ENFP",
+                    "example": "ENFP"
+                  },
+                  "test_scores": {
+                    "type": "object",
+                    "description": "测试分数，包含8个维度",
+                    "properties": {
+                      "E": { "type": "number", "example": 75 },
+                      "I": { "type": "number", "example": 25 },
+                      "S": { "type": "number", "example": 20 },
+                      "N": { "type": "number", "example": 80 },
+                      "T": { "type": "number", "example": 30 },
+                      "F": { "type": "number", "example": 70 },
+                      "J": { "type": "number", "example": 35 },
+                      "P": { "type": "number", "example": 65 }
+                    }
+                  },
+                  "personality_traits": {
+                    "type": "object",
+                    "description": "性格特质",
+                    "example": {
+                      "extroversion": "外向型，善于社交和沟通",
+                      "intuition": "直觉型，喜欢探索新可能性",
+                      "feeling": "情感型，重视人际关系和价值观",
+                      "perceiving": "感知型，灵活适应环境变化"
+                    }
+                  },
+                  "personal_info": {
+                    "type": "object",
+                    "description": "个人信息（可选）",
+                    "example": {
+                      "full_name": "测试用户",
+                      "birth_date": "1990-01-01",
+                      "address": "测试地址"
+                    }
+                  },
+                  "test_version": {
+                    "type": "string",
+                    "description": "测试版本（可选，默认v1.0）",
+                    "example": "v1.0"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "创建成功" },
+          "400": { "description": "请求参数错误" },
+          "401": { "description": "未认证" }
+        }
+      },
+      "get": {
+        "summary": "获取 MBTI 测评记录列表",
+        "tags": ["MBTI"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/mbti-records/latest": {
+      "get": {
+        "summary": "获取最近一次 MBTI 测评记录",
+        "tags": ["MBTI"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/mbti-records/{id}": {
+      "get": {
+        "summary": "获取单条 MBTI 测评记录",
+        "tags": ["MBTI"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      },
+      "put": {
+        "summary": "更新 MBTI 测评记录",
+        "tags": ["MBTI"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mbti_type": {
+                    "type": "string",
+                    "description": "MBTI类型，格式为4个字符，如ENFP",
+                    "example": "ENFP"
+                  },
+                  "test_scores": {
+                    "type": "object",
+                    "description": "测试分数，包含8个维度",
+                    "properties": {
+                      "E": { "type": "number", "example": 75 },
+                      "I": { "type": "number", "example": 25 },
+                      "S": { "type": "number", "example": 20 },
+                      "N": { "type": "number", "example": 80 },
+                      "T": { "type": "number", "example": 30 },
+                      "F": { "type": "number", "example": 70 },
+                      "J": { "type": "number", "example": 35 },
+                      "P": { "type": "number", "example": 65 }
+                    }
+                  },
+                  "personality_traits": {
+                    "type": "object",
+                    "description": "性格特质",
+                    "example": {
+                      "extroversion": "外向型，善于社交和沟通",
+                      "intuition": "直觉型，喜欢探索新可能性",
+                      "feeling": "情感型，重视人际关系和价值观",
+                      "perceiving": "感知型，灵活适应环境变化"
+                    }
+                  },
+                  "personal_info": {
+                    "type": "object",
+                    "description": "个人信息",
+                    "example": {
+                      "full_name": "测试用户",
+                      "birth_date": "1990-01-01",
+                      "address": "测试地址"
+                    }
+                  },
+                  "ai_analysis": {
+                    "type": "object",
+                    "description": "AI分析结果"
+                  },
+                  "work_suggestions": {
+                    "type": "object",
+                    "description": "工作建议"
+                  },
+                  "improvement_advice": {
+                    "type": "object",
+                    "description": "改进建议"
+                  },
+                  "confidence_score": {
+                    "type": "number",
+                    "description": "置信度分数",
+                    "example": 0.85
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "更新成功" },
+          "400": { "description": "请求参数错误" },
+          "401": { "description": "未认证" },
+          "404": { "description": "记录不存在" }
+        }
+      },
+      "delete": {
+        "summary": "删除 MBTI 测评记录",
+        "tags": ["MBTI"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "删除成功" }
+        }
+      }
+    },
+    "/api/mbti-records/statistics": {
+      "get": {
+        "summary": "获取 MBTI 统计信息",
+        "tags": ["MBTI"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/ai/analyze-log": {
+      "post": {
+        "summary": "对日志进行 AI 分析",
+        "tags": ["AI 分析"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "日志文本内容"
+                  },
+                  "topK": {
+                    "type": "integer",
+                    "description": "返回的关键词数量，默认20",
+                    "default": 20
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "description": "用户ID"
+                  },
+                  "log_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "日志日期"
+                  }
+                },
+                "required": ["text"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "成功" },
+          "400": { "description": "请求参数错误" }
+        }
+      }
+    },
+    "/api/ai/analyze-today": {
+      "get": {
+        "summary": "分析今日任务/日志",
+        "tags": ["AI 分析"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/ai/save-wordcloud": {
+      "post": {
+        "summary": "保存词云分析结果",
+        "tags": ["AI 分析"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "analysisDate": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "分析日期"
+                  },
+                  "keywords": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "word": { "type": "string" },
+                        "weight": { "type": "number" }
+                      }
+                    },
+                    "description": "关键词列表"
+                  },
+                  "wordFrequencies": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "word": { "type": "string" },
+                        "count": { "type": "integer" }
+                      }
+                    },
+                    "description": "词频列表"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "分析描述"
+                  }
+                },
+                "required": ["keywords", "wordFrequencies"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "保存成功" }
+        }
+      }
+    },
+    "/api/ai/wordcloud-history": {
+      "get": {
+        "summary": "获取词云历史记录",
+        "tags": ["AI 分析"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/ai/personality-analysis": {
+      "post": {
+        "summary": "发起人格分析请求",
+        "tags": ["AI 分析"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "logText": {
+                    "type": "string",
+                    "description": "日志文本内容"
+                  },
+                  "mbtiType": {
+                    "type": "string",
+                    "description": "MBTI类型"
+                  },
+                  "useDeepSeek": {
+                    "type": "boolean",
+                    "description": "是否使用DeepSeek API"
+                  }
+                },
+                "required": ["logText"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    },
+    "/api/ai/personality-history": {
+      "get": {
+        "summary": "获取人格分析历史记录",
+        "tags": ["AI 分析"],
+        "responses": {
+          "200": { "description": "成功" }
+        }
+      }
+    }
+  }
+}
+
+

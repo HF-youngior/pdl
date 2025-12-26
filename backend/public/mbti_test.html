@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MBTI性格测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .progress-container {
+            padding: 20px 30px;
+            background: #f8f9fa;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .progress-text {
+            text-align: center;
+            margin-top: 10px;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .question-container {
+            padding: 40px 30px;
+            display: none;
+        }
+
+        .question-container.active {
+            display: block;
+        }
+
+        .question {
+            font-size: 1.3em;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            color: #2c3e50;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .option {
+            display: flex;
+            align-items: center;
+            padding: 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .option:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .option.selected {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .option input[type="radio"] {
+            margin-right: 15px;
+            transform: scale(1.2);
+        }
+
+        .option label {
+            cursor: pointer;
+            flex: 1;
+            font-size: 1.1em;
+        }
+
+        .navigation {
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8f9fa;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .result-container {
+            padding: 40px 30px;
+            text-align: center;
+            display: none;
+        }
+
+        .result-container.active {
+            display: block;
+        }
+
+        .mbti-type {
+            font-size: 4em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .mbti-description {
+            font-size: 1.2em;
+            color: #6c757d;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .traits {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .trait {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .trait-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .trait-value {
+            font-size: 1.1em;
+            color: #667eea;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .question {
+                font-size: 1.1em;
+            }
+            
+            .option {
+                padding: 15px;
+            }
+            
+            .navigation {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>MBTI性格测试</h1>
+            <p>通过93道精心设计的问题，深入了解你的性格类型</p>
+        </div>
+
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">第 1 题，共 93 题</div>
+        </div>
+
+        <div class="question-container active" id="questionContainer">
+            <div class="question" id="questionText"></div>
+            <div class="options" id="optionsContainer"></div>
+        </div>
+
+        <div class="loading" id="loadingContainer">
+            <div class="spinner"></div>
+            <p>正在分析你的性格类型...</p>
+        </div>
+
+        <div class="result-container" id="resultContainer">
+            <div class="mbti-type" id="mbtiType"></div>
+            <div class="mbti-description" id="mbtiDescription"></div>
+            <div class="traits" id="traitsContainer"></div>
+            <button class="btn btn-primary" onclick="saveResult()">保存结果</button>
+        </div>
+
+        <div class="navigation">
+            <button class="btn btn-secondary" id="prevBtn" onclick="previousQuestion()" disabled>上一题</button>
+            <button class="btn btn-primary" id="nextBtn" onclick="nextQuestion()" disabled>下一题</button>
+        </div>
+    </div>
+
+    <script src="mbti_questions.js"></script>
+    <script>
+        // 使用完整的93题数据
+        const extendedQuestions = mbtiQuestions.map((question, index) => ({
+            ...question,
+            question: `${index + 1}. ${question.question}`
+        }));
+
+        let currentQuestion = 0;
+        let answers = {};
+        let scores = { E: 0, I: 0, S: 0, N: 0, T: 0, F: 0, J: 0, P: 0 };
+
+        // MBTI类型描述
+        const mbtiDescriptions = {
+            'INFP': '理想主义者，富有创造力，重视价值观和意义',
+            'ENFP': '热情洋溢，富有想象力，善于激励他人',
+            'INTJ': '战略思想家，独立自主，追求完美',
+            'ENTJ': '天生的领导者，果断坚定，目标导向',
+            'ISFJ': '温暖关怀，忠诚可靠，注重细节',
+            'ESFJ': '热情友好，乐于助人，重视和谐',
+            'ISTJ': '务实可靠，有条理，注重传统',
+            'ESTJ': '高效组织者，果断决策，注重结果',
+            'INTP': '逻辑分析家，独立思考，追求真理',
+            'ENTP': '创新思想家，充满活力，善于辩论',
+            'ISFP': '温和艺术家，灵活适应，重视个人价值',
+            'ESFP': '活泼表演者，热情友好，享受当下',
+            'ISTP': '实用主义者，冷静分析，善于动手',
+            'ESTP': '行动派，充满活力，善于应对挑战',
+            'INFJ': '神秘理想主义者，富有洞察力，追求意义',
+            'ENFJ': '魅力领导者，善于激励，重视他人成长'
+        };
+
+        function initTest() {
+            showQuestion();
+            updateProgress();
+        }
+
+        function showQuestion() {
+            const question = extendedQuestions[currentQuestion];
+            document.getElementById('questionText').textContent = question.question;
+            
+            const optionsContainer = document.getElementById('optionsContainer');
+            optionsContainer.innerHTML = '';
+            
+            question.options.forEach((option, index) => {
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'option';
+                optionDiv.onclick = () => selectOption(index);
+                
+                const radio = document.createElement('input');
+                radio.type = 'radio';
+                radio.name = 'question';
+                radio.value = index;
+                radio.id = `option${index}`;
+                
+                const label = document.createElement('label');
+                label.htmlFor = `option${index}`;
+                label.textContent = option;
+                
+                optionDiv.appendChild(radio);
+                optionDiv.appendChild(label);
+                optionsContainer.appendChild(optionDiv);
+            });
+
+            // 如果已经回答过，选中之前的答案
+            if (answers[currentQuestion] !== undefined) {
+                const selectedOption = document.querySelector(`input[value="${answers[currentQuestion]}"]`);
+                if (selectedOption) {
+                    selectedOption.checked = true;
+                    selectedOption.parentElement.classList.add('selected');
+                }
+            }
+        }
+
+        function selectOption(optionIndex) {
+            // 清除之前的选择
+            document.querySelectorAll('.option').forEach(option => {
+                option.classList.remove('selected');
+            });
+            
+            // 选中当前选项
+            const selectedOption = document.querySelector(`input[value="${optionIndex}"]`);
+            selectedOption.checked = true;
+            selectedOption.parentElement.classList.add('selected');
+            
+            // 保存答案
+            answers[currentQuestion] = optionIndex;
+            
+            // 更新按钮状态
+            document.getElementById('nextBtn').disabled = false;
+            if (currentQuestion > 0) {
+                document.getElementById('prevBtn').disabled = false;
+            }
+        }
+
+        function nextQuestion() {
+            if (answers[currentQuestion] === undefined) {
+                alert('请选择一个答案');
+                return;
+            }
+
+            if (currentQuestion < extendedQuestions.length - 1) {
+                currentQuestion++;
+                showQuestion();
+                updateProgress();
+                updateNavigation();
+            } else {
+                finishTest();
+            }
+        }
+
+        function previousQuestion() {
+            if (currentQuestion > 0) {
+                currentQuestion--;
+                showQuestion();
+                updateProgress();
+                updateNavigation();
+            }
+        }
+
+        function updateProgress() {
+            const progress = ((currentQuestion + 1) / extendedQuestions.length) * 100;
+            document.getElementById('progressFill').style.width = progress + '%';
+            document.getElementById('progressText').textContent = `第 ${currentQuestion + 1} 题，共 ${extendedQuestions.length} 题`;
+        }
+
+        function updateNavigation() {
+            document.getElementById('prevBtn').disabled = currentQuestion === 0;
+            document.getElementById('nextBtn').disabled = answers[currentQuestion] === undefined;
+            
+            if (currentQuestion === extendedQuestions.length - 1) {
+                document.getElementById('nextBtn').textContent = '完成测试';
+            } else {
+                document.getElementById('nextBtn').textContent = '下一题';
+            }
+        }
+
+        function finishTest() {
+            // 计算分数
+            calculateScores();
+            
+            // 确定MBTI类型
+            const mbtiType = determineMBTIType();
+            
+            // 显示结果
+            showResult(mbtiType);
+        }
+
+        function calculateScores() {
+            scores = { E: 0, I: 0, S: 0, N: 0, T: 0, F: 0, J: 0, P: 0 };
+            
+            extendedQuestions.forEach((question, index) => {
+                const answer = answers[index];
+                if (answer !== undefined) {
+                    const dimension = question.dimension;
+                    if (answer === 0) {
+                        scores[dimension[0]]++;
+                    } else {
+                        scores[dimension[1]]++;
+                    }
+                }
+            });
+        }
+
+        function determineMBTIType() {
+            let mbtiType = '';
+            
+            // E vs I
+            mbtiType += scores.E > scores.I ? 'E' : 'I';
+            
+            // S vs N
+            mbtiType += scores.S > scores.N ? 'S' : 'N';
+            
+            // T vs F
+            mbtiType += scores.T > scores.F ? 'T' : 'F';
+            
+            // J vs P
+            mbtiType += scores.J > scores.P ? 'J' : 'P';
+            
+            return mbtiType;
+        }
+
+        function showResult(mbtiType) {
+            // 隐藏问题容器，显示加载
+            document.getElementById('questionContainer').style.display = 'none';
+            document.getElementById('loadingContainer').style.display = 'block';
+            document.querySelector('.navigation').style.display = 'none';
+            
+            setTimeout(() => {
+                // 隐藏加载，显示结果
+                document.getElementById('loadingContainer').style.display = 'none';
+                document.getElementById('resultContainer').classList.add('active');
+                
+                // 显示MBTI类型
+                document.getElementById('mbtiType').textContent = mbtiType;
+                document.getElementById('mbtiDescription').textContent = mbtiDescriptions[mbtiType] || '独特的性格类型';
+                
+                // 显示特质分数
+                showTraits();
+            }, 2000);
+        }
+
+        function showTraits() {
+            const traitsContainer = document.getElementById('traitsContainer');
+            traitsContainer.innerHTML = '';
+            
+            const traits = [
+                { title: '外向性 (E)', value: `${scores.E}`, max: scores.E + scores.I },
+                { title: '内向性 (I)', value: `${scores.I}`, max: scores.E + scores.I },
+                { title: '感觉 (S)', value: `${scores.S}`, max: scores.S + scores.N },
+                { title: '直觉 (N)', value: `${scores.N}`, max: scores.S + scores.N },
+                { title: '思考 (T)', value: `${scores.T}`, max: scores.T + scores.F },
+                { title: '情感 (F)', value: `${scores.F}`, max: scores.T + scores.F },
+                { title: '判断 (J)', value: `${scores.J}`, max: scores.J + scores.P },
+                { title: '感知 (P)', value: `${scores.P}`, max: scores.J + scores.P }
+            ];
+            
+            traits.forEach(trait => {
+                const traitDiv = document.createElement('div');
+                traitDiv.className = 'trait';
+                traitDiv.innerHTML = `
+                    <div class="trait-title">${trait.title}</div>
+                    <div class="trait-value">${trait.value}/${trait.max}</div>
+                `;
+                traitsContainer.appendChild(traitDiv);
+            });
+        }
+
+        function saveResult() {
+            const mbtiType = document.getElementById('mbtiType').textContent;
+            
+            // 准备测试数据
+            const testData = {
+                mbti_type: mbtiType,
+                test_scores: {
+                    E: scores.E,
+                    I: scores.I,
+                    S: scores.S,
+                    N: scores.N,
+                    T: scores.T,
+                    F: scores.F,
+                    J: scores.J,
+                    P: scores.P,
+                    total_score: scores.E + scores.I + scores.S + scores.N + scores.T + scores.F + scores.J + scores.P
+                },
+                personality_traits: {
+                    extroversion: scores.E > scores.I ? '外向型，善于社交和沟通' : '内向型，喜欢深度思考',
+                    sensing: scores.S > scores.N ? '感觉型，注重细节和实际' : '直觉型，关注可能性和意义',
+                    thinking: scores.T > scores.F ? '思维型，注重逻辑和客观' : '情感型，重视价值观和感受',
+                    judging: scores.J > scores.P ? '判断型，喜欢有序和计划' : '感知型，保持开放和灵活'
+                },
+                personal_info: {
+                    test_date: new Date().toISOString().split('T')[0],
+                    test_version: 'v1.0'
+                }
+            };
+
+            // 发送到后端保存
+            fetch('/api/mbti-records', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${getAuthToken()}`
+                },
+                body: JSON.stringify(testData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    alert('MBTI测试结果已保存！');
+                    // 可以跳转到AI分析页面
+                    window.parent.postMessage({ type: 'mbti_test_completed', mbtiType: mbtiType }, '*');
+                } else {
+                    alert('保存失败：' + (data.error || '未知错误'));
+                }
+            })
+            .catch(error => {
+                console.error('保存错误:', error);
+                alert('保存失败，请稍后重试');
+            });
+        }
+
+        function getAuthToken() {
+            // 首先尝试从URL参数获取token
+            const urlParams = new URLSearchParams(window.location.search);
+            let token = urlParams.get('token');
+            
+            // 如果没有URL参数，尝试从其他地方获取
+            if (!token) {
+                token = localStorage.getItem('authToken') || 
+                       localStorage.getItem('token') || 
+                       getCookie('authToken') || 
+                       getCookie('token') || '';
+            }
+            
+            if (!token) {
+                // 如果没有token，提示用户登录
+                alert('请先登录系统后再进行MBTI测试');
+                window.close();
+                return '';
+            }
+            
+            // 将token保存到localStorage，方便后续使用
+            localStorage.setItem('authToken', token);
+            
+            return token;
+        }
+
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return '';
+        }
+
+        // 初始化测试
+        initTest();
+    </script>
+</body>
+</html>

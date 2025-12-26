@@ -1,0 +1,701 @@
+{
+	"info": {
+		"_postman_id": "b8b6d847-a6b9-4336-814a-48c623bf2dff",
+		"name": "重要事项模块",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50567196",
+		"_collection_link": "https://gugu128-9386319.postman.co/workspace/FCC-'s-Workspace~f57949d0-84ea-44ef-83e7-72363fd3584c/collection/50567196-b8b6d847-a6b9-4336-814a-48c623bf2dff?action=share&source=collection_link&creator=50567196"
+	},
+	"item": [
+		{
+			"name": "IMP-001",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Response is an array\", function () {\r",
+							"    pm.expect(jsonData).to.be.an('array');\r",
+							"});\r",
+							"\r",
+							"// 验证包含特定ID的数据 (根据用例预期)\r",
+							"pm.test(\"Contains item-001\", function () {\r",
+							"    var item = jsonData.find(i => i.id === \"item-001\");\r",
+							"    pm.expect(item).to.not.be.undefined;\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJkZXBhcnRtZW50X2lkIjoiZGVwdC0wMDEiLCJpYXQiOjE3NjQ4MzcxMjYsImV4cCI6MTc2NDkyMzUyNn0.3sRDKEERQxTz_fnOoseUq0ohqcqgisvKmckMMbkg__s",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/important-items",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"important-items"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "IMP-002",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify item-001 is present\", function () {\r",
+							"    var item = jsonData.find(i => i.id === \"item-001\");\r",
+							"    pm.expect(item).to.exist;\r",
+							"    // 验证 is_selected 字段为 1 (选中)\r",
+							"    pm.expect(item.is_selected).to.eql(1);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJkZXBhcnRtZW50X2lkIjoiZGVwdC0wMDEiLCJpYXQiOjE3NjQ4MzcxMjYsImV4cCI6MTc2NDkyMzUyNn0.3sRDKEERQxTz_fnOoseUq0ohqcqgisvKmckMMbkg__s",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/company-important-items",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"company-important-items"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "IMP-010",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify data structure\", function () {\r",
+							"    pm.expect(jsonData).to.be.an('array');\r",
+							"    // 预期包含多个item，如item-001, item-002等\r",
+							"    pm.expect(jsonData.length).to.be.above(0);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJkZXBhcnRtZW50X2lkIjoiZGVwdC0wMDEiLCJpYXQiOjE3NjQ4MzcxMjYsImV4cCI6MTc2NDkyMzUyNn0.3sRDKEERQxTz_fnOoseUq0ohqcqgisvKmckMMbkg__s",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/company-important-items/all",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"company-important-items",
+						"all"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "IMP-003",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Success Message\", function () {\r",
+							"    pm.expect(jsonData.message).to.eql(\"重要事项添加成功\");\r",
+							"});\r",
+							"pm.test(\"Verify ID\", function () {\r",
+							"    pm.expect(jsonData.id).to.eql(\"item-005\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJkZXBhcnRtZW50X2lkIjoiZGVwdC0wMDEiLCJpYXQiOjE3NjQ4MzcxMjYsImV4cCI6MTc2NDkyMzUyNn0.3sRDKEERQxTz_fnOoseUq0ohqcqgisvKmckMMbkg__s",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"item_id\": \"item-005\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/company-important-items",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"company-important-items"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "IMP-004",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 404\", function () {\r",
+							"    pm.response.to.have.status(404);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Error Message\", function () {\r",
+							"    pm.expect(jsonData.error).to.include(\"指定的重要事项不存在\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJkZXBhcnRtZW50X2lkIjoiZGVwdC0wMDEiLCJpYXQiOjE3NjQ4MzcxMjYsImV4cCI6MTc2NDkyMzUyNn0.3sRDKEERQxTz_fnOoseUq0ohqcqgisvKmckMMbkg__s",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"item_id\": \"item-999\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/company-important-items",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"company-important-items"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "IMP-005",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Update Message\", function () {\r",
+							"    pm.expect(jsonData.message).to.eql(\"更新成功\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJkZXBhcnRtZW50X2lkIjoiZGVwdC0wMDEiLCJpYXQiOjE3NjQ4MzcxMjYsImV4cCI6MTc2NDkyMzUyNn0.3sRDKEERQxTz_fnOoseUq0ohqcqgisvKmckMMbkg__s",
+							"type": "string"
+						}
+					]
+				},
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"is_selected\": true\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/company-important-items/item-001/select",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"company-important-items",
+						"item-001",
+						"select"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "IMP-006",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Batch Update Message\", function () {\r",
+							"    pm.expect(jsonData.message).to.eql(\"批量更新成功\");\r",
+							"});\r",
+							"pm.test(\"Verify Counts\", function () {\r",
+							"    // 根据PDF预期，selectedCount应为3\r",
+							"    pm.expect(jsonData.selectedCount).to.eql(3);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJkZXBhcnRtZW50X2lkIjoiZGVwdC0wMDEiLCJpYXQiOjE3NjQ4MzcxMjYsImV4cCI6MTc2NDkyMzUyNn0.3sRDKEERQxTz_fnOoseUq0ohqcqgisvKmckMMbkg__s",
+							"type": "string"
+						}
+					]
+				},
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"selectedIds\": [\"item-007\", \"item-008\", \"item-009\"]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/company-important-items/batch-select",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"company-important-items",
+						"batch-select"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "IMP-007",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Message\", function () {\r",
+							"    pm.expect(jsonData.message).to.eql(\"更新成功\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJkZXBhcnRtZW50X2lkIjoiZGVwdC0wMDEiLCJpYXQiOjE3NjQ4MzcxMjYsImV4cCI6MTc2NDkyMzUyNn0.3sRDKEERQxTz_fnOoseUq0ohqcqgisvKmckMMbkg__s",
+							"type": "string"
+						}
+					]
+				},
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"title\": \"更新后的标题\",\r\n    \"description\": \"更新后的描述\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/company-important-items/item-001",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"company-important-items",
+						"item-001"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "IMP-008",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 404\", function () {\r",
+							"    pm.response.to.have.status(404);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Error\", function () {\r",
+							"    pm.expect(jsonData.error).to.include(\"不存在\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJkZXBhcnRtZW50X2lkIjoiZGVwdC0wMDEiLCJpYXQiOjE3NjQ4MzcxMjYsImV4cCI6MTc2NDkyMzUyNn0.3sRDKEERQxTz_fnOoseUq0ohqcqgisvKmckMMbkg__s",
+							"type": "string"
+						}
+					]
+				},
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"title\": \"更新后的标题\",\r\n    \"description\": \"更新后的描述\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/company-important-items/item-999",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"company-important-items",
+						"item-999"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "IMP-009",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Delete Message\", function () {\r",
+							"    pm.expect(jsonData.message).to.eql(\"删除成功\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJkZXBhcnRtZW50X2lkIjoiZGVwdC0wMDEiLCJpYXQiOjE3NjQ4MzcxMjYsImV4cCI6MTc2NDkyMzUyNn0.3sRDKEERQxTz_fnOoseUq0ohqcqgisvKmckMMbkg__s",
+							"type": "string"
+						}
+					]
+				},
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/company-important-items/item-006",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"company-important-items",
+						"item-006"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "IMP-PERM-001",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 403 Forbidden\", function () {\r",
+							"    pm.response.to.have.status(403);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Error is Access Denied\", function () {\r",
+							"    pm.expect(jsonData.error).to.include(\"权限不足\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJyb2xlIjoiZGVwYXJ0bWVudF9oZWFkIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODUxNTg1LCJleHAiOjE3NjQ5Mzc5ODV9.BoytZeeDGi1KmCNIXryrzcaYHYU29ZruceH3JFj-bOo",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/company-important-items/all",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"company-important-items",
+						"all"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "IMP-PERM-002",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 403 Forbidden\", function () {\r",
+							"    pm.response.to.have.status(403);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Error is Access Denied\", function () {\r",
+							"    pm.expect(jsonData.error).to.include(\"权限不足\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJyb2xlIjoiZGVwYXJ0bWVudF9oZWFkIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODUxNTg1LCJleHAiOjE3NjQ5Mzc5ODV9.BoytZeeDGi1KmCNIXryrzcaYHYU29ZruceH3JFj-bOo",
+							"type": "string"
+						}
+					]
+				},
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"selectedIds\": [\"item-007\", \"item-008\"]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/company-important-items/batch-select",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"company-important-items",
+						"batch-select"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

@@ -1,0 +1,139 @@
+{
+	"info": {
+		"_postman_id": "bf3e2864-2842-4d7b-9061-b87d808132ef",
+		"name": "获取仪表盘数据",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50564060",
+		"_collection_link": "https://shiyi-0929-3598011.postman.co/workspace/a5992b14-ae97-41c1-8001-1e6258c4495a/collection/50564060-bf3e2864-2842-4d7b-9061-b87d808132ef?action=share&source=collection_link&creator=50564060"
+	},
+	"item": [
+		{
+			"name": "DS-002",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// 1. 断言状态码为 200 OK\r",
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"// 2. 验证返回的数据结构和字段\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Dashboard Stats Fields\", function () {\r",
+							"    // 验证包含所有必要的统计字段\r",
+							"    pm.expect(jsonData).to.have.property(\"totalUsers\");\r",
+							"    pm.expect(jsonData).to.have.property(\"totalImportantItems\");\r",
+							"    pm.expect(jsonData).to.have.property(\"pendingTasks\");\r",
+							"    pm.expect(jsonData).to.have.property(\"todayLogs\");\r",
+							"});\r",
+							"\r",
+							"// 3. 验证字段值为数字 (通用验证)\r",
+							"pm.test(\"Values are numbers\", function () {\r",
+							"    pm.expect(jsonData.totalUsers).to.be.a('number');\r",
+							"    pm.expect(jsonData.pendingTasks).to.be.a('number');\r",
+							"});\r",
+							"\r",
+							"// 4. (可选) 严格匹配 PDF 中的预期值 \r",
+							"// 如果你的数据库数据和 PDF 截图完全一致，可以启用下面这段：\r",
+							"/*\r",
+							"pm.test(\"Verify Exact Values (Optional)\", function () {\r",
+							"    pm.expect(jsonData.totalUsers).to.eql(26);\r",
+							"    pm.expect(jsonData.totalImportantItems).to.eql(4);\r",
+							"    pm.expect(jsonData.pendingTasks).to.eql(70);\r",
+							"    pm.expect(jsonData.todayLogs).to.eql(0);\r",
+							"});\r",
+							"*/"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkbWluLTAwMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJuYW1lIjoi57O757uf566h55CG5ZGYIiwicm9sZSI6ImFkbWluIiwiZGVwYXJ0bWVudF9pZCI6ImRlcHQtMDAxIiwiaWF0IjoxNzY0ODU1NTU5LCJleHAiOjE3NjQ5NDE5NTl9.ZkYVZCACpcprc1VtCrmFi3MOpQXp82AJHXB00FI6myQ",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/admin/dashboard-stats",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"admin",
+						"dashboard-stats"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DS-001",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// 1. 断言状态码为 403 Forbidden\r",
+							"pm.test(\"Status code is 403\", function () {\r",
+							"    pm.response.to.have.status(403);\r",
+							"});\r",
+							"\r",
+							"// 2. 验证错误提示信息\r",
+							"var jsonData = pm.response.json();\r",
+							"pm.test(\"Verify Error Message\", function () {\r",
+							"    // 根据 PDF 预期返回：{\"error\": \"权限不足\"}\r",
+							"    pm.expect(jsonData.error).to.eql(\"权限不足\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlcHQtaGVhZC0wMDEiLCJ1c2VybmFtZSI6ImhyX2hlYWQiLCJuYW1lIjoi546L5Lq65LqL5oC755uRIiwicm9sZSI6ImRlcGFydG1lbnRfaGVhZCIsImRlcGFydG1lbnRfaWQiOiJkZXB0LTAwMSIsImlhdCI6MTc2NDg1NTQ4MCwiZXhwIjoxNzY0OTQxODgwfQ.2ZRNHgQqGXrqLrKUgC46_ETa2q2AKtYitTE6tXhVA7U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/api/admin/dashboard-stats",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"admin",
+						"dashboard-stats"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
