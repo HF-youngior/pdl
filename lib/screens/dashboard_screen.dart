@@ -300,7 +300,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   TextButton(
                     onPressed: () {
                       Navigator.of(context).pop();
-                      // 打开通知中心查看详情
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -310,19 +309,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     },
                     child: const Text('查看详情'),
                   ),
-                  if (!kIsWeb)
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => NotificationCenterScreen(user: widget.user),
-                          ),
-                        );
-                      },
-                      child: const Text('查看详情'),
-                    ),
                   if (notification.taskId.isNotEmpty)
                     TextButton(
                       onPressed: () async {
