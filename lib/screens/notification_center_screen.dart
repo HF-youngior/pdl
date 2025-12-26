@@ -431,7 +431,7 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
                   },
                   child: Text(toggledAllRead ? '全部取消' : '全部已读'),
                 ),
-                if (notification.taskId.isNotEmpty)
+                if (notification.taskId.isNotEmpty && notification.notificationType != 'focus_invite')
                   TextButton(
                     onPressed: () async {
                       Navigator.of(context).pop();
@@ -457,6 +457,15 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
                       }
                     },
                     child: const Text('查看任务'),
+                  ),
+                if (notification.notificationType == 'focus_invite')
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      // 可以导航到番茄专注页面
+                      // Navigator.push(...);
+                    },
+                    child: const Text('前往专注'),
                   ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -505,6 +514,8 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
         return '任务取消';
       case 'special_notes':
         return '特殊备注';
+      case 'focus_invite':
+        return '协同专注邀请';
       default:
         return '通知';
     }
@@ -660,6 +671,7 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
                                     const DropdownMenuItem(value: 'task_completed', child: Text('任务完成')),
                                     const DropdownMenuItem(value: 'task_cancelled', child: Text('任务取消')),
                                     const DropdownMenuItem(value: 'special_notes', child: Text('特殊备注')),
+                                    const DropdownMenuItem(value: 'focus_invite', child: Text('协同专注邀请')),
                                   ],
                                   onChanged: (value) {
                                     setState(() {
@@ -906,6 +918,8 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
         return Icons.cancel;
       case 'special_notes':
         return Icons.note;
+      case 'focus_invite':
+        return Icons.groups_2;
       default:
         return Icons.notifications;
     }

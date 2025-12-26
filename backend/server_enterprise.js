@@ -112,7 +112,7 @@ app.use(express.json());
 // 全局CSP配置：允许内联样式和脚本，解决页面格式错误问题
 app.use((req, res, next) => {
   // 设置宽松的CSP策略以允许内联样式和脚本
-  res.setHeader('Content-Security-Policy', 
+  res.setHeader('Content-Security-Policy',
     "default-src 'self'; " +
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; " +
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; " +
@@ -204,6 +204,7 @@ const upload = multer({
 });
 
 // 数据库连接配置
+// 数据库连接 - 云数据库配置
 const dbConfig = {
   host: process.env.DB_HOST || 'rm-2zeoa1b89ga70ikpifo.mysql.rds.aliyuncs.com',
   user: process.env.DB_USER || 'pdl123',
@@ -2548,8 +2549,8 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
 
   // 更新任务（完整更新，仅允许被分配人编辑）
   app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+      const { id } = req.params;
     const {
       title,
       description,
@@ -3459,6 +3460,9 @@ app.put('/api/tasks/:id/request-response', authenticateToken, async (req, res) =
 // 获取任务通知
 app.get('/api/notifications', authenticateToken, async (req, res) => {
   try {
+    const userId = req.user.id;
+    console.log(`[获取通知] 用户ID: ${userId}`);
+
     const [rows] = await db.execute(
       `SELECT tn.*, t.title as task_title, t.deadline as task_deadline, u.name as from_user_name
        FROM task_notifications tn
@@ -3469,6 +3473,9 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
+
+    console.log(`[获取通知] 找到 ${rows.length} 条通知`);
+
     // 将时间字段转换为北京时间格式
     const formattedRows = rows.map(row => {
       const formatted = { ...row };
@@ -3478,6 +3485,12 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
       if (row.task_deadline) {
         formatted.task_deadline = formatDateTimeForBeijing(row.task_deadline);
       }
+
+      // 调试日志：打印 focus_invite 类型的通知
+      if (row.notification_type === 'focus_invite') {
+        console.log(`[获取通知] focus_invite 通知: id=${row.id}, message="${row.message}", is_read=${row.is_read}`);
+      }
+
       return formatted;
     });
 
@@ -3685,7 +3698,7 @@ app.get(['/api/checkin/points', '/checkin/points'], authenticateToken, async (re
   try {
     // 使用字符串比较确保类型一致
     const userId = req.query.userId ? String(req.query.userId) : String(req.user.id);
-    
+
     // 验证权限：只能查询自己的积分，或者管理员/创始人可以查询其他人的
     if (userId !== String(req.user.id) && !['admin', 'founder'].includes(req.user.role)) {
       return res.status(403).json({ error: '无权查询该用户的积分' });
@@ -3715,13 +3728,13 @@ app.get(['/api/checkin/today', '/checkin/today'], authenticateToken, async (req,
     const now = Date.now(); // 当前UTC时间戳（毫秒）
     const beijingMillis = now + (8 * 60 * 60 * 1000); // 加上8小时
     const beijingDate = new Date(beijingMillis);
-    
+
     const year = beijingDate.getUTCFullYear();
     const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
     const day = String(beijingDate.getUTCDate()).padStart(2, '0');
     const todayStr = `${year}-${month}-${day}`;
-    
-    res.json({ 
+
+    res.json({
       today: todayStr,
       year: year,
       month: parseInt(month),
@@ -3909,7 +3922,7 @@ app.post(['/api/checkin', '/checkin'], authenticateToken, async (req, res) => {
     const currentUserId = String(req.user.id);
     const requestedUserId = req.body.userId ? String(req.body.userId) : null;
     let userId;
-    
+
     // 如果没有指定 userId 或指定的 userId 与当前用户相同，则为当前用户签到
     if (!requestedUserId || requestedUserId === currentUserId) {
       userId = currentUserId;
@@ -3931,7 +3944,7 @@ app.post(['/api/checkin', '/checkin'], authenticateToken, async (req, res) => {
         return res.status(403).json({ error: '目标用户已被禁用' });
       }
     }
-    
+
     console.log(`签到请求: userId=${userId}, currentUserId=${currentUserId}, role=${req.user.role}`);
 
     // 获取今天的日期（北京时间）
@@ -3963,7 +3976,7 @@ app.post(['/api/checkin', '/checkin'], authenticateToken, async (req, res) => {
     const yesterdayMonth = String(yesterdayDate.getUTCMonth() + 1).padStart(2, '0');
     const yesterdayDay = String(yesterdayDate.getUTCDate()).padStart(2, '0');
     const yesterdayStr = `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}`;
-    
+
     const [lastCheckin] = await db.execute(
       `SELECT checkin_date
        FROM checkin_records
@@ -4620,7 +4633,7 @@ async function createNotification(taskId, fromUserId, toUserId, type, message) {
     
     await db.execute(
       'INSERT INTO task_notifications (id, task_id, from_user_id, to_user_id, notification_type, message) VALUES (?, ?, ?, ?, ?, ?)',
-      [notificationId, taskId, fromUserId, toUserId, type, message]
+      [notificationId, finalTaskId, fromUserId, toUserId, type, message]
     );
     
     console.log(`   [createNotification] ✅ 通知已插入数据库: ${notificationId}`);
@@ -4966,7 +4979,7 @@ app.get('/api/calendar/month-view', authenticateToken, async (req, res) => {
         }
       }
     }
-    
+
     // 填充日志数据
     const processedLogs = await Promise.all(logs.map(async log => {
       // 如果有经纬度信息，转换为中文地址
@@ -5160,7 +5173,7 @@ app.get('/api/month-view/:userId/:year/:month', async (req, res) => {
         location_longitude: log.location_longitude
       };
     }));
-    
+
     // 获取每个任务的多负责人信息
       tasks: await Promise.all(tasks.map(async (task) => {
         const [assignees] = await db.execute(
@@ -6068,11 +6081,10 @@ app.get('/api/admin/search-users', authenticateToken, checkPermission(['admin'])
   }
 });
 
-// 获取员工统计数据（每天/每周/每月/全部任务完成情况）
 app.get('/api/admin/user-statistics', authenticateToken, checkPermission(['admin']), async (req, res) => {
   try {
     const { userId, period } = req.query; // period: 'daily', 'weekly', 'monthly', 'all'
-    
+
     if (!userId) {
       return res.status(400).json({ error: '请提供userId参数' });
     }

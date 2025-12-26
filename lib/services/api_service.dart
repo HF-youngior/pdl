@@ -951,4 +951,43 @@ class ApiService {
       throw Exception('图片上传失败: $e');
     }
   }
+
+  // 发送专注邀请
+  static Future<bool> inviteFocus({
+    required String senderId,
+    required String senderName,
+    required List<String> targetUserIds,
+  }) async {
+    try {
+      final response = await httpClient.post(
+        Uri.parse('$baseUrl/notify/invite-focus'),
+        headers: getAuthHeaders(),
+        body: jsonEncode({
+          'senderId': senderId,
+          'senderName': senderName,
+          'targetUserIds': targetUserIds,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // 检查返回的 success 字段和 sent 数量
+        final success = data['success'] == true;
+        final sent = data['sent'] ?? 0;
+        if (success && sent > 0) {
+          print('专注邀请发送成功: 已发送给 $sent 位用户');
+          return true;
+        } else {
+          print('专注邀请发送失败: success=$success, sent=$sent');
+          return false;
+        }
+      } else {
+        final errorBody = response.body;
+        print('邀请失败: ${response.statusCode} - $errorBody');
+        return false;
+      }
+    } catch (e) {
+      print('发送专注邀请出错: $e');
+      return false;
+    }
+  }
 }

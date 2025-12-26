@@ -21,6 +21,7 @@ import '../models/personal_info.dart';
 import '../models/personal_log.dart';
 import '../models/mbti_test_result.dart';
 import 'pomodoro_focus_screen.dart';
+import '../widgets/pomodoro_floating_button.dart';
 import '../models/deadline_reminder.dart';
 import '../models/notification.dart' show TaskNotification;
 import '../utils/time_utils.dart';
@@ -166,8 +167,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _checkNotifications() async {
-    if (kIsWeb ||
-        !mounted ||
+    if (!mounted ||
         _isGuestUser ||
         !_settings.notificationsEnabled ||
         _isCheckingNotifications ||
@@ -180,8 +180,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final notifications = await NotificationService.getNotifications();
       if (!mounted) return;
 
+      debugPrint('[通知检查] 获取到 ${notifications.length} 条通知');
+
+      // 调试：打印 focus_invite 类型的通知
+      final focusInviteNotifications = notifications.where((n) => n.notificationType == 'focus_invite').toList();
+      if (focusInviteNotifications.isNotEmpty) {
+        debugPrint('[通知检查] 找到 ${focusInviteNotifications.length} 条 focus_invite 通知:');
+        for (final n in focusInviteNotifications) {
+          debugPrint('  - id=${n.id}, message="${n.message}", isRead=${n.isRead}');
+        }
+      }
+
       // 更新未读通知数量（必须在筛选之前更新，确保数量准确）
       final unreadCount = notifications.where((n) => !n.isRead).length;
+      debugPrint('[通知检查] 未读通知数量: $unreadCount');
+
       if (mounted) {
         setState(() {
           _unreadNotificationCount = unreadCount;
@@ -193,6 +206,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .where((n) => !n.isRead && !_displayedNotificationIds.contains(n.id))
           .toList();
 
+      debugPrint('[通知检查] 新通知数量: ${newNotifications.length}');
+      if (newNotifications.isNotEmpty) {
+        debugPrint('[通知检查] 新通知列表:');
+        for (final n in newNotifications) {
+          debugPrint('  - id=${n.id}, type=${n.notificationType}, message="${n.message}"');
+        }
+      }
+
       if (newNotifications.isNotEmpty) {
         // 记录已显示的通知ID（只记录一次，避免重复弹窗）
         for (final notification in newNotifications) {
@@ -201,6 +222,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         // 显示通知弹窗（可以关闭，关闭后通知仍在通知栏中）
         if (mounted) {
+          debugPrint('[通知检查] 准备显示通知弹窗');
           await _showNotificationDialog(newNotifications);
         }
       }
@@ -274,6 +296,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('关闭'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      // 打开通知中心查看详情
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => NotificationCenterScreen(user: widget.user),
+                        ),
+                      );
+                    },
+                    child: const Text('查看详情'),
                   ),
                   if (!kIsWeb)
                     TextButton(
@@ -513,6 +548,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return '任务取消';
       case 'special_notes':
         return '特殊备注';
+      case 'focus_invite':
+        return '协同专注邀请';
       default:
         return '通知';
     }
@@ -828,6 +865,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       body: Stack(
+        clipBehavior: Clip.none, // 允许子元素超出 Stack 边界显示
         children: [
           Container(
             decoration: BoxDecoration(
@@ -1008,72 +1046,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 
 
-          Positioned(
-            right: 24,
-            bottom: 32,
-            child: GestureDetector(
-              onTap: _openPomodoroScreen,
-              child: Container(
-                width: 116,
-                height: 132,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: const Color(0xFFFF7A7A), width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.redAccent.withOpacity(0.18),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      height: 64,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Container(
-                            width: 62,
-                            height: 62,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: const Color(0xFFFFEBEC),
-                              border: Border.all(color: const Color(0xFFFFA8B4), width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.redAccent.withOpacity(0.15),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Icon(
-                            Icons.alarm_rounded,
-                            size: 32,
-                            color: Color(0xFFFF6A88),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      '番茄专注',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF3C3C3C),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          // 可拖拽的番茄专注悬浮按钮（放在最后以确保显示在最上层）
+          PomodoroFloatingButton(
+            onTap: _openPomodoroScreen,
           ),
         ],
       ),
