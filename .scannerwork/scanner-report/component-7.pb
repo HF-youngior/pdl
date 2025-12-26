@@ -1,0 +1,1 @@
+ 2jsX5hr$backend/check_personal_logs_table.js

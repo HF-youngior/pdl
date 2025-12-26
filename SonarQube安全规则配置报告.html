@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDL企业管理系统 - SonarQube安全规则配置报告</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        h1 {
+            text-align: center;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .rule-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .rule-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: white;
+            border-left: 4px solid #3498db;
+        }
+        .status {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 3px;
+            color: white;
+        }
+        .completed {
+            background-color: #27ae60;
+        }
+        .info-box {
+            background-color: #e8f4fc;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .button {
+            display: inline-block;
+            background-color: #3498db;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .button:hover {
+            background-color: #2980b9;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PDL企业管理系统 - SonarQube安全规则配置报告</h1>
+        
+        <div class="info-box">
+            <p><strong>生成时间:</strong> <span id="current-time"></span></p>
+            <p><strong>项目名称:</strong> PDL企业管理系统</p>
+            <p><strong>项目密钥:</strong> pdl_enterprise_backend</p>
+            <p><strong>扫描状态:</strong> <span class="status completed">已完成</span></p>
+        </div>
+
+        <div class="rule-section">
+            <h2>1. OWASP Top 10 规则集</h2>
+            <p>已启用以下OWASP Top 10相关规则：</p>
+            <div class="rule-item">
+                <strong>S2078</strong> - 硬编码凭证检测 (Java)
+            </div>
+            <div class="rule-item">
+                <strong>S2068</strong> - 硬编码密码检测 (Java, JavaScript, Dart)
+            </div>
+            <div class="rule-item">
+                <strong>S5122</strong> - JavaScript硬编码凭证检测
+            </div>
+            <p class="status completed">已启用</p>
+        </div>
+
+        <div class="rule-section">
+            <h2>2. CWE Top 25 规则集</h2>
+            <p>已启用以下CWE Top 25相关规则：</p>
+            <div class="rule-item">
+                <strong>S112</strong> - 未处理异常检测 (Java, JavaScript, Dart)
+            </div>
+            <div class="rule-item">
+                <strong>S4792</strong> - 配置安全检测 (Java, JavaScript)
+            </div>
+            <p class="status completed">已启用</p>
+        </div>
+
+        <div class="rule-section">
+            <h2>3. 自定义规则</h2>
+            <p>已配置以下自定义规则：</p>
+            <div class="rule-item">
+                <strong>硬编码密钥检测</strong> - 检测所有硬编码的密钥和凭证
+            </div>
+            <div class="rule-item">
+                <strong>密码存储检查</strong> - 检测不安全的密码存储方式
+            </div>
+            <p class="status completed">已启用</p>
+        </div>
+
+        <div class="rule-section">
+            <h2>4. 扫描结果</h2>
+            <p>最新扫描已完成，扫描结果可在SonarQube仪表板查看：</p>
+            <a href="http://localhost:9000/dashboard?id=pdl_enterprise_backend" class="button" target="_blank">查看SonarQube仪表板</a>
+            
+            <table>
+                <tr>
+                    <th>扫描项目</th>
+                    <th>状态</th>
+                    <th>详情</th>
+                </tr>
+                <tr>
+                    <td>源文件分析</td>
+                    <td>74个文件</td>
+                    <td>JavaScript, Dart, HTML</td>
+                </tr>
+                <tr>
+                    <td>文本和密钥分析</td>
+                    <td>已完成</td>
+                    <td>74个源文件</td>
+                </tr>
+                <tr>
+                    <td>重复代码检测</td>
+                    <td>已完成</td>
+                    <td>73个文件</td>
+                </tr>
+                <tr>
+                    <td>安全漏洞扫描</td>
+                    <td>已完成</td>
+                    <td>OWASP Top 10, CWE Top 25</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="rule-section">
+            <h2>5. 后续操作</h2>
+            <p>要重新运行安全扫描，请执行以下操作：</p>
+            <ol>
+                <li>运行 <strong>F:\pdl\运行安全扫描.bat</strong> 脚本</li>
+                <li>或手动执行命令: <br>
+                    <code>"D:\sonar-scanner-4.8.0.2856\bin\sonar-scanner.bat" -D sonar.login=sqp_5d7884ce3957f7c0f5449d1a8d5a9bd1ec355d49</code>
+                </li>
+                <li>访问 <a href="http://localhost:9000/dashboard?id=pdl_enterprise_backend" target="_blank">SonarQube仪表板</a> 查看结果</li>
+            </ol>
+        </div>
+
+        <div class="info-box">
+            <p><strong>注意:</strong> SonarQube服务器必须运行才能查看扫描结果。如果服务器未运行，请执行 <strong>F:\pdl\启动SonarQube服务.bat</strong> 脚本。</p>
+        </div>
+    </div>
+
+    <script>
+        // 显示当前时间
+        document.getElementById('current-time').textContent = new Date().toLocaleString('zh-CN');
+    </script>
+</body>
+</html>

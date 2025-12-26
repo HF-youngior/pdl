@@ -1,0 +1,1 @@
+' 2jsXMhr$backend/sonar_compatible_coverage.js
