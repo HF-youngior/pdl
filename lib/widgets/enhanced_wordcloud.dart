@@ -152,7 +152,10 @@ class _EnhancedWordCloudState extends State<EnhancedWordCloud>
       opacity: _fadeAnimation,
       child: Container(
         width: widget.width,
-        height: widget.height ?? 300,
+        constraints: BoxConstraints(
+          minHeight: 100,
+          maxHeight: widget.height ?? 300,
+        ),
         decoration: BoxDecoration(
           color: widget.backgroundColor ?? Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -185,166 +188,168 @@ class _EnhancedWordCloudState extends State<EnhancedWordCloud>
             ),
             child: Padding(
               padding: const EdgeInsets.all(20),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    alignment: WrapAlignment.center,
-                    children: List.generate(sortedWords.length, (index) {
-                      final w = sortedWords[index];
-                      
-                      // 优先使用importance，如果没有则使用count
-                      final importance = (w['importance'] is num)
-                          ? (w['importance'] as num).toDouble()
-                          : ((w['count'] is num)
-                              ? (w['count'] as num).toDouble()
-                              : 0.0);
-                      
-                      // 归一化重要性（0-1范围）
-                      final normalizedImportance = (maxImportance - minImportance) > 0
-                          ? ((importance - minImportance) / (maxImportance - minImportance)).clamp(0.0, 1.0)
-                          : (sortedWords.length > 1 
-                              ? (sortedWords.length - index) / sortedWords.length 
-                              : 0.5); // 如果所有值相同，使用索引位置
-                      
-                      // 根据重要程度计算字体大小（更大范围，确保有明显差异）
-                      // 最小12px，最大48px
-                      final fontSize = 12.0 + normalizedImportance * 36.0;
-                      
-                      // 根据重要程度选择颜色渐变（更明显的区分）
-                      int colorIndex;
-                      if (normalizedImportance >= 0.8) {
-                        colorIndex = 0; // 极高重要 - 紫色
-                      } else if (normalizedImportance >= 0.6) {
-                        colorIndex = 1; // 高重要 - 蓝色
-                      } else if (normalizedImportance >= 0.4) {
-                        colorIndex = 2; // 中等重要 - 绿色
-                      } else {
-                        colorIndex = 3; // 一般重要 - 橙色
-                      }
-                      
-                      final colorPair = colorGradients[colorIndex];
-                      // 根据normalizedImportance在颜色对之间插值，产生更丰富的颜色变化
-                      final colorProgress = (normalizedImportance % 0.2) / 0.2; // 在每个颜色段内的进度
-                      final baseColor = Color.lerp(
-                        colorPair[0],
-                        colorPair[1],
-                        colorProgress.clamp(0.0, 1.0),
-                      ) ?? colorPair[0];
-                      
-                      // 根据重要程度计算透明度和边框宽度
-                      final opacity = 0.7 + normalizedImportance * 0.3;
-                      final borderWidth = normalizedImportance > 0.7 ? 2.0 : 1.0;
-                      
-                      // 重要程度标签
-                      String importanceLabel = '';
-                      Color? labelColor;
-                      if (normalizedImportance >= 0.75) {
-                        importanceLabel = '极高';
-                        labelColor = const Color(0xFF8B5CF6);
-                      } else if (normalizedImportance >= 0.5) {
-                        importanceLabel = '高';
-                        labelColor = const Color(0xFF3B82F6);
-                      }
-                      
-                      return AnimatedBuilder(
-                        animation: _wordAnimations[index],
-                        builder: (context, child) {
-                          final scale = _wordAnimations[index].value;
-                          final rotation = (normalizedImportance - 0.5) * 0.1 * (1 - scale);
-                          
-                          return Transform.scale(
-                            scale: scale,
-                            child: Transform.rotate(
-                              angle: rotation,
-                              child: Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 10 + normalizedImportance * 6,
-                                  vertical: 6 + normalizedImportance * 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      baseColor.withOpacity(0.15),
-                                      baseColor.withOpacity(0.08),
-                                    ],
+              child: SingleChildScrollView(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      alignment: WrapAlignment.center,
+                      children: List.generate(sortedWords.length, (index) {
+                        final w = sortedWords[index];
+                        
+                        // 优先使用importance，如果没有则使用count
+                        final importance = (w['importance'] is num)
+                            ? (w['importance'] as num).toDouble()
+                            : ((w['count'] is num)
+                                ? (w['count'] as num).toDouble()
+                                : 0.0);
+                        
+                        // 归一化重要性（0-1范围）
+                        final normalizedImportance = (maxImportance - minImportance) > 0
+                            ? ((importance - minImportance) / (maxImportance - minImportance)).clamp(0.0, 1.0)
+                            : (sortedWords.length > 1 
+                                ? (sortedWords.length - index) / sortedWords.length 
+                                : 0.5); // 如果所有值相同，使用索引位置
+                        
+                        // 根据重要程度计算字体大小（缩小范围避免溢出）
+                        // 最小12px，最大32px
+                        final fontSize = 12.0 + normalizedImportance * 20.0;
+                        
+                        // 根据重要程度选择颜色渐变（更明显的区分）
+                        int colorIndex;
+                        if (normalizedImportance >= 0.8) {
+                          colorIndex = 0; // 极高重要 - 紫色
+                        } else if (normalizedImportance >= 0.6) {
+                          colorIndex = 1; // 高重要 - 蓝色
+                        } else if (normalizedImportance >= 0.4) {
+                          colorIndex = 2; // 中等重要 - 绿色
+                        } else {
+                          colorIndex = 3; // 一般重要 - 橙色
+                        }
+                        
+                        final colorPair = colorGradients[colorIndex];
+                        // 根据normalizedImportance在颜色对之间插值，产生更丰富的颜色变化
+                        final colorProgress = (normalizedImportance % 0.2) / 0.2; // 在每个颜色段内的进度
+                        final baseColor = Color.lerp(
+                          colorPair[0],
+                          colorPair[1],
+                          colorProgress.clamp(0.0, 1.0),
+                        ) ?? colorPair[0];
+                        
+                        // 根据重要程度计算透明度和边框宽度
+                        final opacity = 0.7 + normalizedImportance * 0.3;
+                        final borderWidth = normalizedImportance > 0.7 ? 2.0 : 1.0;
+                        
+                        // 重要程度标签
+                        String importanceLabel = '';
+                        Color? labelColor;
+                        if (normalizedImportance >= 0.75) {
+                          importanceLabel = '极高';
+                          labelColor = const Color(0xFF8B5CF6);
+                        } else if (normalizedImportance >= 0.5) {
+                          importanceLabel = '高';
+                          labelColor = const Color(0xFF3B82F6);
+                        }
+                        
+                        return AnimatedBuilder(
+                          animation: _wordAnimations[index],
+                          builder: (context, child) {
+                            final scale = _wordAnimations[index].value;
+                            final rotation = (normalizedImportance - 0.5) * 0.1 * (1 - scale);
+                            
+                            return Transform.scale(
+                              scale: scale,
+                              child: Transform.rotate(
+                                angle: rotation,
+                                child: Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 10 + normalizedImportance * 6,
+                                    vertical: 6 + normalizedImportance * 4,
                                   ),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: baseColor.withOpacity(opacity * 0.5),
-                                    width: borderWidth,
-                                  ),
-                                  boxShadow: normalizedImportance > 0.7
-                                      ? [
-                                          BoxShadow(
-                                            color: baseColor.withOpacity(0.3),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 2),
-                                            spreadRadius: 1,
-                                          ),
-                                        ]
-                                      : null,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      w['word'].toString(),
-                                      style: TextStyle(
-                                        fontSize: fontSize,
-                                        color: baseColor.withOpacity(opacity),
-                                        fontWeight: normalizedImportance > 0.7
-                                            ? FontWeight.bold
-                                            : FontWeight.w600,
-                                        letterSpacing: 0.5,
-                                        shadows: normalizedImportance > 0.7
-                                            ? [
-                                                Shadow(
-                                                  color: baseColor.withOpacity(0.3),
-                                                  blurRadius: 4,
-                                                ),
-                                              ]
-                                            : null,
-                                      ),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        baseColor.withOpacity(0.15),
+                                        baseColor.withOpacity(0.08),
+                                      ],
                                     ),
-                                    if (importanceLabel.isNotEmpty) ...[
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 4,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: labelColor!.withOpacity(0.2),
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(
-                                            color: labelColor.withOpacity(0.5),
-                                            width: 0.5,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          importanceLabel,
-                                          style: TextStyle(
-                                            fontSize: 8,
-                                            color: labelColor,
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: baseColor.withOpacity(opacity * 0.5),
+                                      width: borderWidth,
+                                    ),
+                                    boxShadow: normalizedImportance > 0.7
+                                        ? [
+                                            BoxShadow(
+                                              color: baseColor.withOpacity(0.3),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 2),
+                                              spreadRadius: 1,
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        w['word'].toString(),
+                                        style: TextStyle(
+                                          fontSize: fontSize,
+                                          color: baseColor.withOpacity(opacity),
+                                          fontWeight: normalizedImportance > 0.7
+                                              ? FontWeight.bold
+                                              : FontWeight.w600,
+                                          letterSpacing: 0.5,
+                                          shadows: normalizedImportance > 0.7
+                                              ? [
+                                                  Shadow(
+                                                    color: baseColor.withOpacity(0.3),
+                                                    blurRadius: 4,
+                                                  ),
+                                                ]
+                                              : null,
                                         ),
                                       ),
+                                      if (importanceLabel.isNotEmpty) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 4,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: labelColor!.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(
+                                              color: labelColor.withOpacity(0.5),
+                                              width: 0.5,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            importanceLabel,
+                                            style: TextStyle(
+                                              fontSize: 8,
+                                              color: labelColor,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
-                      );
-                    }),
-                  );
-                },
+                            );
+                          },
+                        );
+                      }),
+                    );
+                  },
+                ),
               ),
             ),
           ),
