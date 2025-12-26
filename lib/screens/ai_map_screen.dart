@@ -1465,10 +1465,6 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 今日日志展示
-            _buildTodayLogsSection(),
-            const SizedBox(height: 20),
-            
             // 日期范围选择器
             Container(
               padding: const EdgeInsets.all(16),
@@ -1762,6 +1758,10 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
                 ),
               ),
             ],
+            
+            // 今日日志展示
+            _buildTodayLogsSection(),
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -3294,14 +3294,22 @@ class _AiMapScreenState extends State<AiMapScreen> with TickerProviderStateMixin
       builder: (context) => AlertDialog(
         title: Text(analysis.description ?? '词云分析详情'),
         content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('分析日期: ${DateFormat('yyyy-MM-dd').format(analysis.analysisDate.toLocal())}'),
-              const SizedBox(height: 16),
-              EnhancedWordCloud(words: analysis.wordFrequencies),
-            ],
+          width: MediaQuery.of(context).size.width * 0.9,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '分析日期: ${DateFormat('yyyy-MM-dd').format(analysis.analysisDate.toLocal())}',
+                  style: const TextStyle(color: Color(0xFF6B7280)),
+                ),
+                const SizedBox(height: 16),
+                EnhancedWordCloud(
+                  words: analysis.wordFrequencies,
+                  height: MediaQuery.of(context).size.height * 0.4,
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
